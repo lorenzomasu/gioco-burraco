@@ -15,6 +15,11 @@ const card = (rank: Rank, suit: Suit, deckNumber: 1 | 2 = 1): Card =>
   )!
 const joker = (): Card => deck.find((candidate) => candidate.rank === 'joker')!
 
+/** A stock above the unplayable threshold, so ordinary discards keep the round in progress. */
+const playableDrawPile = (): readonly Card[] => [
+  card('king', 'clubs', 2), card('queen', 'diamonds', 2), card('jack', 'hearts', 2),
+]
+
 const validatedMeld = (cards: readonly Card[]): ValidatedMeld => {
   const result = validateMeld(cards)
   if (!result.valid) throw new Error(`Expected a valid test meld, received ${result.reason}`)
@@ -57,7 +62,7 @@ const stateFor = ({
       melds: team.id === teamId ? melds : [],
       hasTakenPozzetto: team.id === teamId ? hasTakenPozzetto : false,
     })),
-    drawPile: [],
+    drawPile: playableDrawPile(),
     discardPile,
     pozzetti,
     round: {

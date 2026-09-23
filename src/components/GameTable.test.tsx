@@ -65,7 +65,10 @@ const automaticSequenceState = (botMeld = false): InProgressGameState => {
     ...initial,
     players: initial.players.map((player) => ({ ...player, hand: playerHands.get(player.id)! })),
     teams: initial.teams.map((team) => ({ ...team, melds: [], hasTakenPozzetto: false })),
-    drawPile: [card('king', 'clubs'), card('queen', 'diamonds'), card('ace', 'hearts')],
+    drawPile: [
+      card('king', 'clubs'), card('queen', 'diamonds'), card('ace', 'hearts'),
+      card('jack', 'spades'), card('ten', 'diamonds'), card('nine', 'spades'),
+    ],
     discardPile: [],
     round: {
       status: 'in-progress',
@@ -310,7 +313,7 @@ describe('GameTable', () => {
       teams: base.teams.map((team) => team.id === 'team-1'
         ? { ...team, hasTakenPozzetto: true }
         : team),
-      round: { status: 'completed', closedByPlayerId: 'player-1', closingTeamId: 'team-1' },
+      round: { status: 'completed', ending: 'closure', closedByPlayerId: 'player-1', closingTeamId: 'team-1' },
     }
 
     render(<GameTable initialState={completed} />)
@@ -322,6 +325,22 @@ describe('GameTable', () => {
     expect(screen.getAllByText('Carte in mano')).toHaveLength(2)
     expect(screen.getAllByText('Pozzetto')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Cala' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Scarta e passa' })).not.toBeInTheDocument()
+  })
+
+  it('reports a draw-pile exhaustion with the player who made the last discard', () => {
+    const base = actionState([])
+    const completed: CompletedGameState = {
+      ...base,
+      round: { status: 'completed', ending: 'draw-pile-exhausted', lastDiscardPlayerId: 'player-2' },
+    }
+
+    render(<GameTable initialState={completed} />)
+
+    expect(screen.getByRole('heading', { name: 'Tallone esaurito' })).toBeInTheDocument()
+    expect(screen.getByText(/L’ultimo scarto è di North\./)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Ha chiuso/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/La Squadra . ottiene il bonus di chiusura/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Scarta e passa' })).not.toBeInTheDocument()
   })
 })

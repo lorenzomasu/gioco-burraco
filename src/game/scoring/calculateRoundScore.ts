@@ -26,7 +26,7 @@ const calculateTeamScore = (
     (total, meld) => total + BURRACO_BONUSES[classifyBurraco(meld)],
     0,
   )
-  const closingBonus = state.round.closingTeamId === team.id ? 100 : 0
+  const closingBonus = state.round.ending === 'closure' && state.round.closingTeamId === team.id ? 100 : 0
   const handPenalty = state.players.reduce(
     (total, player) => player.teamId === team.id
       ? total + player.hand.reduce((handTotal, card) => handTotal + cardValue(card), 0)

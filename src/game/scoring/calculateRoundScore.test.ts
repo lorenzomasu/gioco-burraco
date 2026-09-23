@@ -78,6 +78,7 @@ const completedState = ({
   pozzetti: [[], []],
   round: {
     status: 'completed',
+    ending: 'closure',
     closedByPlayerId: closingTeamId === 'team-1' ? 'player-1' : 'player-2',
     closingTeamId,
   },
@@ -140,6 +141,45 @@ describe('calculateRoundScore', () => {
       expect.objectContaining({ teamId: 'team-1', closingBonus: 0 }),
       expect.objectContaining({ teamId: 'team-2', closingBonus: 100 }),
     ]))
+  })
+
+  it('awards no closing bonus after draw-pile exhaustion and keeps every other component', () => {
+    const state: CompletedGameState = {
+      ...completedState({
+        team1Melds: [cleanBurraco()],
+        team2Melds: [dirtyBurraco()],
+        hands: {
+          'player-1': [card('king', 'hearts'), joker(2, 1)],
+          'player-2': [card('two', 'clubs')],
+          'player-3': [card('ace', 'diamonds')],
+        },
+      }),
+      round: { status: 'completed', ending: 'draw-pile-exhausted', lastDiscardPlayerId: 'player-1' },
+    }
+
+    // team-1: 3♠–7♠ (5 each) + 8♠ 9♠ (10 each) = 45, clean +200, hand K♥ 10 + joker 30 + A♦ 15 = 55.
+    // team-2: 3♦ 4♦ 6♦ 7♦ (5 each) + joker 30 + 8♦ 9♦ (10 each) = 70, dirty +100,
+    // hand pinella 20, and 100 for the pozzetto it did not take while team-1 did.
+    expect(calculateRoundScore(state).teams).toEqual([
+      {
+        teamId: 'team-1',
+        meldCardPoints: 45,
+        burracoBonus: 200,
+        closingBonus: 0,
+        handPenalty: 55,
+        pozzettoPenalty: 0,
+        total: 190,
+      },
+      {
+        teamId: 'team-2',
+        meldCardPoints: 70,
+        burracoBonus: 100,
+        closingBonus: 0,
+        handPenalty: 20,
+        pozzettoPenalty: 100,
+        total: 50,
+      },
+    ])
   })
 
   it('combines the cards left in both teammates hands and subtracts them from total', () => {

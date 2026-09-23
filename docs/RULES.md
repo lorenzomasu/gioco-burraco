@@ -75,11 +75,12 @@ implementazione.
 - Un singolo comando di scarto termina atomicamente il turno: non esiste un comando
   separato di fine turno.
 
-### Funzionalità non ancora implementate
+### Esaurimento del tallone
 
-- Se il tallone è esaurito, `drawCard` restituisce l'errore di dominio
-  `DRAW_PILE_EMPTY`. La procedura FIBUR di conclusione/ripristino del tallone non è
-  ancora implementata e non viene simulata in questo milestone.
+- La conclusione della smazzata per esaurimento del tallone è descritta nella
+  milestone 13. `drawCard` su un tallone vuoto continua a restituire l'errore di
+  dominio `DRAW_PILE_EMPTY` come difesa, benché tale stato non sia più raggiungibile
+  nel gioco normale.
 
 ## Dominio e validazione delle nuove calate — milestone 3
 
@@ -256,8 +257,8 @@ senza memorizzarla nello stato.
   la visione fuori turno, le carte esposte, le ammonizioni o le altre procedure
   arbitrali legate ai pozzi; un'eventuale UI potrà limitarne la visibilità.
 
-I bonus di chiusura, il punteggio e l'esaurimento regolamentare del tallone restano
-funzionalità rinviate.
+I bonus di chiusura e il punteggio sono descritti nella milestone 9; l'esaurimento
+regolamentare del tallone nella milestone 13.
 
 ## Chiusura definitiva della smazzata — milestone 8
 
@@ -332,7 +333,8 @@ funzionalità rinviate.
 
 Non sono ancora implementati Victory Points, Match Points, punteggio cumulativo tra
 più smazzate, soglia o vincitore della partita, punteggio da torneo, bonus e penalità
-arbitrali, timeout, stallo o conclusione per esaurimento del tallone.
+arbitrali, timeout e stallo. La conclusione per esaurimento del tallone è descritta
+nella milestone 13.
 
 ## Tavolo locale giocabile — milestone 10
 
@@ -393,9 +395,9 @@ non aggiunge né modifica regole ufficiali FIBUR.
 La strategia non cerca il gioco ottimale e non valuta convenienza del monte degli
 scarti, valore delle carte, probabilità, avversari o cooperazione col compagno. Restano
 rinviati anche livelli di difficoltà, personalità, configurazione del posto umano,
-gioco di rete, persistenza, gestione ufficiale dell'esaurimento del tallone e ogni
-altra euristica avanzata. Queste omissioni sono funzionalità future, non regole di
-Burraco.
+gioco di rete, persistenza e ogni altra euristica avanzata. Queste omissioni sono
+funzionalità future, non regole di Burraco. La gestione ufficiale dell'esaurimento
+del tallone è stata successivamente introdotta dalla milestone 13.
 
 ## Milestone 12 — bot strategici deterministici
 
@@ -431,6 +433,51 @@ non introduce né modifica regole ufficiali FIBUR.
   casualità, probabilità sulle mani, lookahead profondo, minimax o simulazioni Monte
   Carlo. I limiti di candidate si aggiungono alle guardie sul numero di azioni per
   turno e di turni bot consecutivi, mantenendo la ricerca bounded.
+
+## Milestone 13 — Esaurimento del tallone
+
+### Fonte
+
+- Codice di Gara, art. 16 "Chiusure", caso della chiusura senza bonus per tallone
+  esaurito; art. 17 "Punteggi" per i negativi. La regola compare con formulazione
+  equivalente nei Codici di Gara FIBUR e nel Codice di Gara Unico FGB (edizione
+  gennaio 2018). Il testo dell'edizione FIBUR aprile 2024 non è stato verificato
+  direttamente.
+
+### Regole ufficiali applicate
+
+- Le ultime due carte del tallone non sono giocabili.
+- Il giocatore che pesca la terzultima carta, portando il tallone da tre a due carte,
+  completa normalmente il proprio turno: può calare, legare e prendere il pozzetto
+  secondo le regole già descritte, e deve scartare.
+- Se con quello scarto effettua una chiusura valida secondo la milestone 8, si applica
+  la chiusura ordinaria con il relativo bonus.
+- Altrimenti il suo scarto conclude la smazzata per esaurimento del tallone. Nessun
+  giocatore può in seguito raccogliere il monte degli scarti per proseguire.
+- Nel punteggio nessuna squadra riceve il bonus di chiusura. Il resto della
+  milestone 9 resta invariato: valori delle carte calate, bonus Burraco, penalità per
+  le carte in mano e regola esistente sulla penalità del pozzetto non preso.
+
+### Astrazioni digitali dell'implementazione
+
+- La smazzata conclusa distingue la chiusura ordinaria, che registra
+  `closedByPlayerId` e `closingTeamId`, dall'esaurimento del tallone, che registra
+  soltanto l'ID del giocatore il cui scarto l'ha conclusa.
+- Dopo uno scarto che non chiude la smazzata, se il tallone contiene due carte o meno
+  la smazzata passa allo stato `completed` per esaurimento. Una raccolta del monte
+  degli scarti non modifica il tallone e quindi non attiva da sola la conclusione.
+- Scelta di modellazione non esplicitata dal Codice: gli effetti ordinari dello scarto
+  conclusivo si applicano prima della conclusione, compresa la presa del pozzetto con
+  lo scarto. Un pozzetto preso in questo modo resta nella mano e le sue carte sono
+  conteggiate negativamente, coerentemente con il "pozzetto preso e non giocato"
+  dell'art. 17.
+- Dopo la conclusione per esaurimento tutti i comandi di gioco sono rifiutati con
+  `ROUND_COMPLETED`, come dopo una chiusura.
+
+### Fuori ambito
+
+- Stallo (art. 18), time out (art. 15), conclusione per decisione arbitrale e partita
+  su più smazzate.
 
 ## Riproducibilità
 

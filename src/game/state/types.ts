@@ -41,11 +41,19 @@ export type InProgressRoundState = Readonly<{
   status: 'in-progress'
   turn: TurnState
 }>
-export type CompletedRoundState = Readonly<{
+export type ClosedRoundState = Readonly<{
   status: 'completed'
+  ending: 'closure'
   closedByPlayerId: PlayerId
   closingTeamId: TeamId
 }>
+/** The round ended because a non-closing discard left only unplayable draw-pile cards. */
+export type DrawPileExhaustedRoundState = Readonly<{
+  status: 'completed'
+  ending: 'draw-pile-exhausted'
+  lastDiscardPlayerId: PlayerId
+}>
+export type CompletedRoundState = ClosedRoundState | DrawPileExhaustedRoundState
 export type RoundState = InProgressRoundState | CompletedRoundState
 
 export type GameState = Readonly<{

@@ -9,7 +9,7 @@ import type {
 } from '../state/types'
 import { GameRuleError } from './errors'
 import { acquirePozzettoIfEligible } from './pozzetto'
-import { isClosingWildcard, teamHasBurraco } from './roundClosure'
+import { concludeIfDrawPileExhausted, isClosingWildcard, teamHasBurraco } from './roundClosure'
 import { requireInProgressRound } from './roundGuards'
 
 const PLAYER_ORDER: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -92,7 +92,10 @@ export const takeDiscardPile = (state: GameState, playerId: PlayerId): InProgres
   }
 }
 
-/** Discards a physical card and atomically advances to the next player's draw choice. */
+/**
+ * Discards a physical card and atomically advances to the next player's draw choice,
+ * unless the discard closes the round or leaves only unplayable draw-pile cards.
+ */
 export const discardCard = (state: GameState, playerId: PlayerId, cardId: string): GameState => {
   const round = requireInProgressRound(state)
   requireCurrentPlayer(round, playerId)
@@ -137,7 +140,7 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
       ...state,
       players: replacePlayerHand(state, playerId, []),
       discardPile: [...state.discardPile, card],
-      round: { status: 'completed', closedByPlayerId: playerId, closingTeamId: team.id },
+      round: { status: 'completed', ending: 'closure', closedByPlayerId: playerId, closingTeamId: team.id },
     }
   }
 
@@ -151,7 +154,7 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
     },
   }
 
-  return acquirePozzettoIfEligible(nextState, playerId)
+  return concludeIfDrawPileExhausted(acquirePozzettoIfEligible(nextState, playerId), playerId)
 }
 
 export { playMeld } from './playMeld'

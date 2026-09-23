@@ -23,6 +23,11 @@ const joker = (): Card => {
   return found
 }
 
+/** A stock above the unplayable threshold, so ordinary discards keep the round in progress. */
+const playableDrawPile = (): readonly Card[] => [
+  card('king', 'clubs', 2), card('queen', 'diamonds', 2), card('jack', 'hearts', 2),
+]
+
 const validatedMeld = (cards: readonly Card[]): ValidatedMeld => {
   const result = validateMeld(cards)
   if (!result.valid) throw new Error(`Expected valid test meld, received ${result.reason}`)
@@ -43,7 +48,7 @@ const stateFor = ({
   playerId = 'player-2',
   hand,
   phase = 'action',
-  drawPile = [],
+  drawPile = playableDrawPile(),
   discardPile = [],
   melds = [],
   hasTakenPozzetto = false,
@@ -124,12 +129,12 @@ describe('deterministic bot turns', () => {
     const state = stateFor({
       hand: [firstInHand, card('five', 'hearts')],
       phase: 'mustDraw',
-      drawPile: [drawn],
+      drawPile: [drawn, ...playableDrawPile()],
     })
 
     const next = playBotTurn(state, 'player-2')
 
-    expect(next.drawPile).toEqual([])
+    expect(next.drawPile).toEqual(playableDrawPile())
     expect(next.discardPile.at(-1)).toBe(drawn)
     expect(getPlayer(next, 'player-2').hand).toContain(firstInHand)
     expect(next.round).toEqual({
@@ -143,16 +148,18 @@ describe('deterministic bot turns', () => {
     const state = stateFor({
       hand: [card('three', 'clubs'), card('five', 'hearts')],
       phase: 'mustDraw',
+      drawPile: [],
       discardPile: [collected],
     })
 
     const next = playBotTurn(state, 'player-2')
 
     expect(getPlayer(next, 'player-2').hand).toContain(collected)
-    expect(next.round.status).toBe('in-progress')
-    if (next.round.status === 'in-progress') {
-      expect(next.round.turn.currentPlayerId).toBe('player-3')
-    }
+    expect(next.round).toEqual({
+      status: 'completed',
+      ending: 'draw-pile-exhausted',
+      lastDiscardPlayerId: 'player-2',
+    })
   })
 
   it('extends its team meld one card at a time through the engine', () => {
@@ -254,6 +261,7 @@ describe('deterministic bot turns', () => {
 
     expect(next.round).toEqual({
       status: 'completed',
+      ending: 'closure',
       closedByPlayerId: 'player-2',
       closingTeamId: 'team-2',
     })
@@ -272,7 +280,7 @@ describe('deterministic bot turns', () => {
     const base = stateFor({
       hand: [card('three', 'clubs'), card('four', 'hearts')],
       phase: 'mustDraw',
-      drawPile: [card('king', 'clubs'), card('queen', 'diamonds'), card('jack', 'hearts')],
+      drawPile: [card('king', 'clubs'), card('queen', 'diamonds'), card('jack', 'hearts'), ...playableDrawPile()],
     })
     const state: InProgressGameState = {
       ...base,
@@ -451,6 +459,32 @@ describe('strategic action ranking', () => {
     expect(action?.cardIds).toEqual(kings.map(({ id }) => id).sort())
     expect(action?.enablesClosure).toBe(true)
     expect(playBotTurn(state, 'player-2').round.status).toBe('completed')
+  })
+
+  it('keeps preferring a real closure when every final-turn discard would exhaust the draw pile', () => {
+    const burraco = validatedMeld([
+      card('three', 'hearts'), card('four', 'hearts'), card('five', 'hearts'),
+      card('six', 'hearts'), card('seven', 'hearts'), card('eight', 'hearts'),
+      card('nine', 'hearts'),
+    ])
+    const nearBurraco = validatedMeld([
+      card('three', 'clubs'), card('four', 'clubs'), card('five', 'clubs'),
+      card('six', 'clubs'), card('seven', 'clubs'), card('eight', 'clubs'),
+    ])
+    const closingDiscard = card('nine', 'clubs')
+    const kings = [card('king', 'clubs'), card('king', 'diamonds'), card('king', 'spades')]
+    const state = stateFor({
+      hand: [...kings, closingDiscard],
+      melds: [burraco, nearBurraco],
+      hasTakenPozzetto: true,
+      drawPile: playableDrawPile().slice(1),
+    })
+
+    const action = chooseBestAction(state, 'player-2')
+
+    expect(action?.cardIds).toEqual(kings.map(({ id }) => id).sort())
+    expect(action?.enablesClosure).toBe(true)
+    expect(playBotTurn(state, 'player-2').round).toMatchObject({ status: 'completed', ending: 'closure' })
   })
 
   it('prefers the move that completes a clean Burraco over a mediocre new meld', () => {

@@ -61,6 +61,10 @@ export const tryEngineAction = <T>(action: () => T): T | null => {
 
 const isWildcard = (card: Card): boolean => isJoker(card) || isPinella(card)
 
+/** Only an ordinary closure counts: a draw-pile exhaustion ends the round without a bonus. */
+const isClosedRound = (state: GameState | null): boolean =>
+  state?.round.status === 'completed' && state.round.ending === 'closure'
+
 const classificationValue: Readonly<Record<BurracoClassification, number>> = {
   none: 0,
   dirty: 1,
@@ -123,7 +127,7 @@ const actionCandidate = ({
   const sortedIds = cards.map(({ id }) => id).sort()
   const takesPozzetto = !teamBefore.hasTakenPozzetto && teamAfter.hasTakenPozzetto
   const enablesClosure = !takesPozzetto && playerById(after, playerId).hand.some((card) =>
-    tryEngineAction(() => discardCard(after, playerId, card.id))?.round.status === 'completed',
+    isClosedRound(tryEngineAction(() => discardCard(after, playerId, card.id))),
   )
 
   return {
@@ -261,7 +265,7 @@ export const generateDiscardCandidates = (
     return [{
       card,
       state: next,
-      closesRound: next.round.status === 'completed',
+      closesRound: isClosedRound(next),
       extendsOwnMeld: ownTeam.melds.some((meld) => canExtendMeld(meld, card)),
       futureMeldCount: futureMeldCount(player.hand, card),
       isWildcard: isWildcard(card),

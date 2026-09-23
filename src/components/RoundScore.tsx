@@ -1,5 +1,5 @@
 import { calculateRoundScore } from '../game/scoring'
-import type { CompletedGameState } from '../game/state/types'
+import type { CompletedGameState, PlayerId } from '../game/state/types'
 
 type RoundScoreProps = Readonly<{
   game: CompletedGameState
@@ -9,14 +9,27 @@ const signed = (value: number): string => value > 0 ? `+${value}` : `${value}`
 
 export function RoundScore({ game }: RoundScoreProps) {
   const score = calculateRoundScore(game)
-  const closer = game.players.find((player) => player.id === game.round.closedByPlayerId)
-  const closingTeam = game.round.closingTeamId === 'team-1' ? '1' : '2'
+  const round = game.round
+  const playerName = (playerId: PlayerId): string =>
+    game.players.find((player) => player.id === playerId)?.name ?? playerId
 
   return (
     <section className="round-complete" aria-labelledby="round-complete-title">
       <span className="round-complete__eyebrow">Smazzata conclusa</span>
-      <h1 id="round-complete-title">Ha chiuso {closer?.name ?? game.round.closedByPlayerId}</h1>
-      <p>La Squadra {closingTeam} ottiene il bonus di chiusura.</p>
+      {round.ending === 'closure' ? (
+        <>
+          <h1 id="round-complete-title">Ha chiuso {playerName(round.closedByPlayerId)}</h1>
+          <p>La Squadra {round.closingTeamId === 'team-1' ? '1' : '2'} ottiene il bonus di chiusura.</p>
+        </>
+      ) : (
+        <>
+          <h1 id="round-complete-title">Tallone esaurito</h1>
+          <p>
+            L’ultimo scarto è di {playerName(round.lastDiscardPlayerId)}. Nessuna squadra
+            ottiene il bonus di chiusura.
+          </p>
+        </>
+      )}
 
       <div className="score-grid">
         {score.teams.map((teamScore) => (
