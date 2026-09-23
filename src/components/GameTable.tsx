@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { playBotsUntilHumanTurn } from '../game/bot'
 import { GameRuleError } from '../game/engine/errors'
 import { extendMeld } from '../game/engine/extendMeld'
 import { playMeld } from '../game/engine/playMeld'
@@ -17,6 +18,7 @@ type GameTableProps = Readonly<{
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
+const humanPlayerId: PlayerId = 'player-1'
 
 const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
   const activeIndex = playerOrder.indexOf(activeId)
@@ -44,7 +46,9 @@ const italianErrorMessages: Readonly<Record<string, string>> = {
 }
 
 export function GameTable({ initialState, createGame = startGame }: GameTableProps) {
-  const [game, setGame] = useState<GameState>(() => initialState ?? createGame())
+  const [game, setGame] = useState<GameState>(() =>
+    playBotsUntilHumanTurn(initialState ?? createGame(), humanPlayerId),
+  )
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
 
@@ -54,13 +58,13 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
   }
 
   const beginNewGame = () => {
-    setGame(createGame())
+    setGame(playBotsUntilHumanTurn(createGame(), humanPlayerId))
     resetTransientState()
   }
 
   const commitAction = (action: () => GameState) => {
     try {
-      const nextGame = action()
+      const nextGame = playBotsUntilHumanTurn(action(), humanPlayerId)
       setGame(nextGame)
       resetTransientState()
     } catch (error) {
@@ -105,10 +109,13 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
   if (!activePlayer) throw new Error(`Missing current player: ${round.turn.currentPlayerId}`)
   const activeTeam = game.teams.find((team) => team.id === activePlayer.teamId)
   if (!activeTeam) throw new Error(`Missing active team: ${activePlayer.teamId}`)
-  const seats = relativeSeats(game.players, activePlayer.id)
-  const isActionPhase = round.turn.phase === 'action'
+  const humanPlayer = game.players.find((player) => player.id === humanPlayerId)
+  if (!humanPlayer) throw new Error(`Missing human player: ${humanPlayerId}`)
+  const seats = relativeSeats(game.players, humanPlayerId)
+  const isHumanTurn = activePlayer.id === humanPlayerId
+  const isActionPhase = isHumanTurn && round.turn.phase === 'action'
   const selectedIds = [...selectedCardIds]
-  const sortedHand = sortCardsForDisplay(activePlayer.hand)
+  const sortedHand = sortCardsForDisplay(humanPlayer.hand)
   const untouchedPozzetti = game.pozzetti.filter((pozzetto) => pozzetto.length > 0).length
   const discardTop = game.discardPile.at(-1)
 
@@ -116,9 +123,9 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
     <main className="game-shell">
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
-        <PlayerSeat player={seats.top} position="top" />
-        <PlayerSeat player={seats.left} position="left" />
-        <PlayerSeat player={seats.right} position="right" />
+        <PlayerSeat player={seats.top} position="top" bot />
+        <PlayerSeat player={seats.left} position="left" bot />
+        <PlayerSeat player={seats.right} position="right" bot />
 
         <div className="table-center">
           <div className="turn-banner" aria-live="polite">
@@ -137,8 +144,8 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
             <button
               type="button"
               className="pile-control"
-              onClick={() => commitAction(() => drawCard(game, activePlayer.id))}
-              disabled={round.turn.phase !== 'mustDraw' || game.drawPile.length === 0}
+              onClick={() => commitAction(() => drawCard(game, humanPlayerId))}
+              disabled={!isHumanTurn || round.turn.phase !== 'mustDraw' || game.drawPile.length === 0}
               aria-label={`Pesca dal tallone, ${game.drawPile.length} carte rimaste`}
             >
               <span className="card-back" aria-hidden="true"><span>B</span></span>
@@ -155,8 +162,8 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
             <button
               type="button"
               className="pile-control"
-              onClick={() => commitAction(() => takeDiscardPile(game, activePlayer.id))}
-              disabled={round.turn.phase !== 'mustDraw' || !discardTop}
+              onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId))}
+              disabled={!isHumanTurn || round.turn.phase !== 'mustDraw' || !discardTop}
               aria-label={discardTop
                 ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
                 : 'Monte degli scarti vuoto'}
@@ -176,28 +183,28 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
                 team={team}
                 activeTeam={team.id === activeTeam.id}
                 canExtend={isActionPhase && selectedCardIds.size > 0}
-                onExtend={(meldIndex) => commitAction(() => extendMeld(game, activePlayer.id, meldIndex, selectedIds))}
+                onExtend={(meldIndex) => commitAction(() => extendMeld(game, humanPlayerId, meldIndex, selectedIds))}
               />
             ))}
           </div>
         </div>
 
-        <section className="active-player" aria-label={`Mano di ${activePlayer.name}`}>
+        <section className="active-player" aria-label={`Mano di ${humanPlayer.name}`}>
           <header className="active-player__header">
             <div>
-              <span className="section-kicker">Giocatore attivo · Squadra {activePlayer.teamId === 'team-1' ? '1' : '2'}</span>
-              <h1>{activePlayer.name}</h1>
+              <span className="section-kicker">Giocatore umano · Squadra {humanPlayer.teamId === 'team-1' ? '1' : '2'}</span>
+              <h1>{humanPlayer.name}</h1>
             </div>
-            <span className="hand-count">{activePlayer.hand.length} carte</span>
+            <span className="hand-count">{humanPlayer.hand.length} carte</span>
           </header>
 
-          <div className="hand" aria-label={`Carte di ${activePlayer.name}`}>
+          <div className="hand" aria-label={`Carte di ${humanPlayer.name}`}>
             {sortedHand.map((card) => (
               <PlayingCard
                 key={card.id}
                 card={card}
                 selected={selectedCardIds.has(card.id)}
-                onToggle={toggleCard}
+                onToggle={isHumanTurn ? toggleCard : undefined}
               />
             ))}
           </div>
@@ -211,7 +218,7 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
               type="button"
               className="button button--primary"
               disabled={!isActionPhase || selectedCardIds.size === 0}
-              onClick={() => commitAction(() => playMeld(game, activePlayer.id, selectedIds))}
+              onClick={() => commitAction(() => playMeld(game, humanPlayerId, selectedIds))}
             >
               Cala
             </button>
@@ -219,7 +226,7 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
               type="button"
               className="button button--secondary"
               disabled={!isActionPhase || selectedCardIds.size !== 1}
-              onClick={() => commitAction(() => discardCard(game, activePlayer.id, selectedIds[0]!))}
+              onClick={() => commitAction(() => discardCard(game, humanPlayerId, selectedIds[0]!))}
             >
               Scarta e passa
             </button>

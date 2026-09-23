@@ -351,7 +351,51 @@ regole ufficiali di Burraco.
   lo stato restituito e mostra gli errori di regola senza applicare una propria copia
   delle regole.
 - Tutti e quattro i giocatori sono controllati manualmente nello stesso dispositivo.
-  Bot e strategie automatiche restano esplicitamente fuori da questa milestone.
+  Bot e strategie automatiche restano esplicitamente fuori da questa milestone. Questa
+  modalità *hot-seat* è stata successivamente sostituita, come comportamento predefinito,
+  dalla configurazione descritta nella milestone 11.
+
+## Milestone 11 — bot deterministici
+
+Questa sezione descrive un'astrazione di prodotto e una strategia automatica di base:
+non aggiunge né modifica regole ufficiali FIBUR.
+
+- `player-1` è l'unico giocatore umano. `player-2`, `player-3` e `player-4` sono
+  controllati automaticamente; `player-3` resta il compagno dell'umano nella normale
+  composizione a coppie.
+- La mano interamente visibile e interattiva resta sempre quella di `player-1`. Per i
+  bot il tavolo mostra soltanto nome, squadra e numero di carte; le carte diventano
+  visibili soltanto quando entrano in una calata o nel monte degli scarti.
+- Dopo lo scarto umano, i turni consecutivi dei bot vengono risolti immediatamente e
+  senza ritardi artificiali finché il turno torna a `player-1` o la smazzata termina.
+  La presa del pozzetto al volo non interrompe il bot: lo stesso turno continua finché
+  il motore non lo fa avanzare.
+- La strategia è pura, deterministica e volutamente elementare. A parità di
+  `GameState`, percorre sempre nello stesso ordine giocatori, calate e carte; non usa
+  casualità propria. In `mustDraw` pesca normalmente dal tallone e, soltanto se il
+  tallone è vuoto, tenta di raccogliere il monte degli scarti.
+- In fase `action` prova prima estensioni di una carta alle calate della propria
+  squadra. Poi esamina in ordine stabile le combinazioni di tre carte della mano,
+  usa `validateMeld` per trovare un seme valido e lo amplia avidamente con altre carte
+  che mantengono valida la calata. Ripete finché non trova altre mosse semplici.
+- Prima di conservare una calata o un'estensione candidata, verifica tramite il motore
+  che rimanga almeno uno scarto finale legale. Per lo scarto prova le carte nell'ordine
+  stabile della mano e sceglie la prima accettata dal motore.
+- I bot non contengono una seconda implementazione delle regole. Pesca, raccolta,
+  calata, estensione e scarto passano rispettivamente da `drawCard`,
+  `takeDiscardPile`, `playMeld`, `extendMeld` e `discardCard`; il validatore e questi
+  comandi restano l'unica autorità per turno, possesso, pozzetto, chiusura, matte,
+  riscarto e validità delle calate.
+- Limiti difensivi sul numero di azioni e sulla catena di turni trasformano un
+  eventuale mancato progresso in un errore diagnostico, invece di permettere un ciclo
+  infinito. Negli stati normali raggiungibili tali limiti non intervengono.
+
+La strategia non cerca il gioco ottimale e non valuta convenienza del monte degli
+scarti, valore delle carte, probabilità, avversari o cooperazione col compagno. Restano
+rinviati anche livelli di difficoltà, personalità, configurazione del posto umano,
+gioco di rete, persistenza, gestione ufficiale dell'esaurimento del tallone e ogni
+altra euristica avanzata. Queste omissioni sono funzionalità future, non regole di
+Burraco.
 
 ## Riproducibilità
 
