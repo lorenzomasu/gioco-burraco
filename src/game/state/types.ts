@@ -31,7 +31,16 @@ export type ActionTurnState = Readonly<{
   acquisition: TurnAcquisition
 }>
 export type TurnState = MustDrawTurnState | ActionTurnState
-export type RoundState = Readonly<{ status: 'in-progress'; turn: TurnState }>
+export type InProgressRoundState = Readonly<{
+  status: 'in-progress'
+  turn: TurnState
+}>
+export type CompletedRoundState = Readonly<{
+  status: 'completed'
+  closedByPlayerId: PlayerId
+  closingTeamId: TeamId
+}>
+export type RoundState = InProgressRoundState | CompletedRoundState
 
 export type GameState = Readonly<{
   players: readonly Player[]
@@ -40,4 +49,8 @@ export type GameState = Readonly<{
   discardPile: DiscardPile
   pozzetti: readonly [Pozzetto, Pozzetto]
   round: RoundState
+}>
+
+export type InProgressGameState = Omit<GameState, 'round'> & Readonly<{
+  round: InProgressRoundState
 }>

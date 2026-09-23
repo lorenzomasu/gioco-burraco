@@ -1,12 +1,15 @@
 import type { Pozzetto } from '../cards/types'
-import type { GameState, PlayerId } from '../state/types'
+import type { InProgressGameState, PlayerId } from '../state/types'
 
 /**
  * Assigns the first available pozzetto when a valid move empties a player's first hand.
  * Turn timing remains the caller's responsibility: meld commands continue in action,
  * while discard has already advanced to the next player.
  */
-export const acquirePozzettoIfEligible = (state: GameState, playerId: PlayerId): GameState => {
+export const acquirePozzettoIfEligible = (
+  state: InProgressGameState,
+  playerId: PlayerId,
+): InProgressGameState => {
   const player = state.players.find((candidate) => candidate.id === playerId)
   if (!player) throw new Error(`Game state does not contain player: ${playerId}`)
   if (player.hand.length > 0) return state

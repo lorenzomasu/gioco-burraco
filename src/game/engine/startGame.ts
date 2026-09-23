@@ -1,7 +1,7 @@
 import { createBurracoDeck } from '../cards/deck'
 import { shuffleDeck, type RandomSource } from '../cards/shuffle'
 import type { Card, Deck } from '../cards/types'
-import type { GameState, Player, PlayerId, Team } from '../state/types'
+import type { GameState, InProgressGameState, Player, PlayerId, Team } from '../state/types'
 
 const PLAYER_DEFINITIONS: readonly Omit<Player, 'hand'>[] = [
   { id: 'player-1', name: 'You', teamId: 'team-1' },
@@ -23,7 +23,7 @@ export const INITIAL_DECK_SIZE = 108
  * Applies the deterministic, digital dealing order to an already ordered deck.
  * Shuffling deliberately belongs to the caller so this operation is independently testable.
  */
-export const dealInitialState = (orderedDeck: Deck): GameState => {
+export const dealInitialState = (orderedDeck: Deck): InProgressGameState => {
   if (orderedDeck.length !== INITIAL_DECK_SIZE) {
     throw new RangeError(`Initial deal requires exactly ${INITIAL_DECK_SIZE} cards.`)
   }
@@ -52,7 +52,7 @@ export const dealInitialState = (orderedDeck: Deck): GameState => {
 }
 
 /** Starts only the initial round layout. Subsequent player actions are future commands. */
-export const startGame = (random?: RandomSource): GameState =>
+export const startGame = (random?: RandomSource): InProgressGameState =>
   dealInitialState(shuffleDeck(createBurracoDeck(), random))
 
 export const getPlayer = (state: GameState, playerId: PlayerId): Player => {

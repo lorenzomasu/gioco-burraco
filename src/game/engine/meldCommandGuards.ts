@@ -1,15 +1,18 @@
 import type { Card } from '../cards/types'
-import type { GameState, Player, PlayerId } from '../state/types'
+import type { GameState, InProgressRoundState, Player, PlayerId } from '../state/types'
 import { GameRuleError } from './errors'
+import { requireInProgressRound } from './roundGuards'
 
-export const requireCurrentPlayer = (state: GameState, playerId: PlayerId): void => {
-  if (state.round.turn.currentPlayerId !== playerId) {
+export const requireCurrentPlayer = (state: GameState, playerId: PlayerId): InProgressRoundState => {
+  const round = requireInProgressRound(state)
+  if (round.turn.currentPlayerId !== playerId) {
     throw new GameRuleError('NOT_CURRENT_PLAYER', 'Only the current player may act.')
   }
+  return round
 }
 
-export const requireMeldActionPhase = (state: GameState): void => {
-  if (state.round.turn.phase !== 'action') {
+export const requireMeldActionPhase = (round: InProgressRoundState): void => {
+  if (round.turn.phase !== 'action') {
     throw new GameRuleError('INVALID_TURN_PHASE', 'Playing or extending a meld requires the action phase.')
   }
 }

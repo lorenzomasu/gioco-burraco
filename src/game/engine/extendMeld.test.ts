@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import type { Card, Rank, Suit } from '../cards/types'
 import { classifyBurraco, validateMeld, type ValidatedMeld } from '../melds'
-import type { GameState, PlayerId, TeamId } from '../state/types'
+import type { GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
 import { GameRuleError, type GameErrorCode } from './errors'
 import { extendMeld } from './extendMeld'
 import { dealInitialState, getPlayer } from './startGame'
@@ -26,7 +26,7 @@ const stateFor = (
   melds: readonly ValidatedMeld[],
   playerId: PlayerId = 'player-1',
   phase: 'mustDraw' | 'action' = 'action',
-): GameState => {
+): InProgressGameState => {
   const initial = dealInitialState(deck)
   return {
     ...initial,

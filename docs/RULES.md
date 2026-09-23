@@ -160,8 +160,7 @@ dalla mano e non colloca ancora calate sul tavolo.
 ### Funzionalità rinviate
 
 - sostituire o spostare jolly e pinelle già sul tavolo;
-- punteggio;
-- chiusura.
+- punteggio.
 
 Queste funzioni restano fuori dall'attuale implementazione.
 
@@ -226,8 +225,9 @@ Queste funzioni restano fuori dall'attuale implementazione.
   rivalidata produce sempre la classificazione aggiornata senza metadati di ciclo di
   vita ridondanti.
 
-La classificazione non implementa punteggio, sostituzione o spostamento delle matte,
-chiusura o determinazione del vincitore.
+La classificazione non implementa punteggio, sostituzione o spostamento delle matte
+o determinazione del vincitore; la chiusura usa dinamicamente questa classificazione
+senza memorizzarla nello stato.
 
 ## Acquisizione del pozzetto — milestone 7
 
@@ -244,8 +244,8 @@ chiusura o determinazione del vincitore.
   successivo turno del giocatore che lo ha preso, dopo la normale pesca o raccolta.
 - Andare a pozzo con lo scarto non è una chiusura definitiva: l'ultima carta può essere
   anche un jolly o una pinella, ferme restando le altre regole già applicate allo
-  scarto. Il divieto relativo alla chiusura definitiva non è anticipato in questa
-  milestone.
+  scarto. Il divieto di scartare una matta vale soltanto per la chiusura definitiva
+  descritta nella milestone 8.
 - I due pozzetti non sono preassegnati alle squadre. L'astrazione digitale assegna in
   modo deterministico il primo pozzetto ancora disponibile; il suo slot diventa vuoto
   e la seconda squadra riceverà quello restante quando maturerà il diritto.
@@ -254,8 +254,51 @@ chiusura o determinazione del vincitore.
   la visione fuori turno, le carte esposte, le ammonizioni o le altre procedure
   arbitrali legate ai pozzi; un'eventuale UI potrà limitarne la visibilità.
 
-La chiusura definitiva, la fine della smazzata, i relativi requisiti e bonus, il
-punteggio e l'esaurimento regolamentare del tallone restano funzionalità rinviate.
+I bonus di chiusura, il punteggio e l'esaurimento regolamentare del tallone restano
+funzionalità rinviate.
+
+## Chiusura definitiva della smazzata — milestone 8
+
+### Requisiti e transizione
+
+- La chiusura definitiva può avvenire soltanto quando il giocatore di turno, in fase
+  `action`, termina la propria seconda mano effettuando lo scarto finale. La squadra
+  deve quindi avere già preso il pozzetto (`hasTakenPozzetto: true`).
+- La squadra deve possedere almeno una calata che `classifyBurraco` classifica come
+  `clean`, `semi-clean` oppure `dirty`. La classificazione viene derivata dalle calate
+  correnti; non esiste un flag `hasBurraco` ridondante. Una classificazione `none` non
+  soddisfa il requisito.
+- La carta fisicamente scartata per chiudere non può essere una matta: sono vietati
+  sia ogni jolly sia ogni carta di rango `two`, indipendentemente dall'eventuale ruolo
+  naturale che quella pinella avrebbe potuto assumere in una calata.
+- Una chiusura valida rimuove l'ultima carta dalla mano, la aggiunge normalmente in
+  cima al monte degli scarti e porta il round allo stato `completed`, registrando
+  `closedByPlayerId` e `closingTeamId`. Lo stato completato non contiene un turno e
+  non assegna un altro pozzetto.
+- Dopo il completamento, `drawCard`, `takeDiscardPile`, `discardCard`, `playMeld` ed
+  `extendMeld` sono tutti rifiutati con `ROUND_COMPLETED`; nessun comando di gameplay
+  successivo può modificare lo stato.
+
+### Distinzione dal pozzetto e chiusure irregolari
+
+- Se la squadra non ha ancora preso il pozzetto, scartare l'unica carta rimasta è la
+  presa del pozzetto con lo scarto della milestone 7, non una chiusura. Il round resta
+  `in-progress`, il turno passa normalmente e lo scarto può essere anche un jolly o
+  una pinella.
+- Prima del pozzetto resta valida anche la presa *al volo*: `playMeld` o `extendMeld`
+  possono svuotare la prima mano, assegnare immediatamente il pozzetto e conservare lo
+  stesso turno in fase `action`.
+- Dopo che il pozzetto è già stato preso, `playMeld` ed `extendMeld` non possono
+  consumare tutte le carte residue: la chiusura senza scarto viene impedita con
+  `CANNOT_CLOSE_WITHOUT_DISCARD`.
+- Un tentativo di scartare l'ultima carta dopo il pozzetto viene impedito con
+  `CANNOT_CLOSE_WITHOUT_BURRACO` se manca un Burraco e con
+  `CANNOT_CLOSE_WITH_WILDCARD` se lo scarto finale è un jolly o una pinella.
+- Come nelle altre validazioni del motore digitale, le chiusure irregolari vengono
+  respinte prima di qualsiasi mutation. Non sono simulate le procedure arbitrali di
+  ripristino delle carte o le penalità previste per il gioco fisico.
+- Questa milestone rappresenta esclusivamente la conclusione della smazzata: non
+  assegna il bonus numerico di chiusura, non calcola punti e non determina un vincitore.
 
 ## Riproducibilità
 

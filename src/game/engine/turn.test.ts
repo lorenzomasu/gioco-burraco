@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import { haveEquivalentFaces, type Card } from '../cards/types'
+import type { GameState } from '../state/types'
 import { GameRuleError, type GameErrorCode } from './errors'
 import { dealInitialState, getPlayer } from './startGame'
 import { discardCard, drawCard, takeDiscardPile } from './turn'
@@ -14,7 +15,7 @@ const stateWithNonEquivalentSingleDiscard = () => {
   return dealInitialState(deck)
 }
 
-const allCards = (state: ReturnType<typeof initialState>): Card[] => [
+const allCards = (state: GameState): Card[] => [
   ...state.players.flatMap((player) => player.hand),
   ...state.pozzetti.flat(),
   ...state.drawPile,
@@ -149,6 +150,7 @@ describe('turn transitions', () => {
   it('clears acquisition information when a discard advances the turn', () => {
     const afterDraw = drawCard(initialState(), 'player-1')
     const next = discardCard(afterDraw, 'player-1', getPlayer(afterDraw, 'player-1').hand[0]!.id)
+    if (next.round.status !== 'in-progress') throw new Error('Expected an in-progress round')
     expect(next.round.turn).toEqual({ currentPlayerId: 'player-2', phase: 'mustDraw' })
   })
 
@@ -184,12 +186,14 @@ describe('turn transitions', () => {
   })
 
   it('advances a successful discard through the complete player rotation', () => {
-    let state = initialState()
+    let state: GameState = initialState()
     const expectedPlayers = ['player-2', 'player-3', 'player-4', 'player-1']
     for (const expectedPlayer of expectedPlayers) {
+      if (state.round.status !== 'in-progress') throw new Error('Expected an in-progress round')
       const currentPlayer = state.round.turn.currentPlayerId
       const afterDraw = drawCard(state, currentPlayer)
       state = discardCard(afterDraw, currentPlayer, getPlayer(afterDraw, currentPlayer).hand[0]!.id)
+      if (state.round.status !== 'in-progress') throw new Error('Expected an in-progress round')
       expect(state.round.turn).toEqual({ currentPlayerId: expectedPlayer, phase: 'mustDraw' })
     }
   })

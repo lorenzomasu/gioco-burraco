@@ -1,8 +1,9 @@
 import { validateMeld } from '../melds'
-import type { GameState, PlayerId } from '../state/types'
+import type { GameState, InProgressGameState, PlayerId } from '../state/types'
 import { GameRuleError } from './errors'
 import { cardsByPhysicalId, playerById, requireCurrentPlayer, requireMeldActionPhase } from './meldCommandGuards'
 import { acquirePozzettoIfEligible } from './pozzetto'
+import { requireFinalDiscard } from './roundClosure'
 
 /** Adds hand cards to one zero-based meld in the current player's team without ending the turn. */
 export const extendMeld = (
@@ -10,9 +11,9 @@ export const extendMeld = (
   playerId: PlayerId,
   meldIndex: number,
   cardIds: readonly string[],
-): GameState => {
-  requireCurrentPlayer(state, playerId)
-  requireMeldActionPhase(state)
+): InProgressGameState => {
+  const round = requireCurrentPlayer(state, playerId)
+  requireMeldActionPhase(round)
 
   const player = playerById(state, playerId)
   const team = state.teams.find((candidate) => candidate.id === player.teamId)
@@ -32,10 +33,12 @@ export const extendMeld = (
   if (!validation.valid) {
     throw new GameRuleError('INVALID_MELD', `Cannot extend meld: ${validation.reason}.`)
   }
+  requireFinalDiscard(player, team, addedCards.length)
 
   const addedCardIds = new Set(cardIds)
-  const nextState: GameState = {
+  const nextState: InProgressGameState = {
     ...state,
+    round,
     players: state.players.map((candidate) => candidate.id === playerId
       ? { ...candidate, hand: candidate.hand.filter((card) => !addedCardIds.has(card.id)) }
       : candidate),

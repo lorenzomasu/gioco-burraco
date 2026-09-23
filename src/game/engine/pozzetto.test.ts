@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import type { Card, Pozzetto, Rank, Suit } from '../cards/types'
 import { validateMeld, type ValidatedMeld } from '../melds'
-import type { GameState, PlayerId, TeamId } from '../state/types'
+import type { GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
 import { extendMeld } from './extendMeld'
 import { playMeld } from './playMeld'
 import { dealInitialState, getPlayer } from './startGame'
@@ -43,7 +43,7 @@ const stateFor = ({
   hasTakenPozzetto?: boolean
   discardPile?: readonly Card[]
   acquisition?: { source: 'drawPile' | 'discardPile'; cardIds: readonly string[] }
-}): GameState => {
+}): InProgressGameState => {
   const initial = dealInitialState(deck)
   const teamId = getPlayer(initial, playerId).teamId
   return {
@@ -130,6 +130,8 @@ describe('pozzetto lifecycle', () => {
     expect(getPlayer(next, 'player-1').hand).toEqual(firstPozzetto)
     expect(teamById(next, 'team-1').hasTakenPozzetto).toBe(true)
     expect(next.pozzetti).toEqual([[], state.pozzetti[1]])
+    expect(next.round.status).toBe('in-progress')
+    if (next.round.status !== 'in-progress') throw new Error('Expected an in-progress round')
     expect(next.round.turn).toEqual({ currentPlayerId: 'player-2', phase: 'mustDraw' })
     expect(state).toEqual(before)
   })
@@ -147,15 +149,16 @@ describe('pozzetto lifecycle', () => {
     expect(teamById(next, 'team-1').hasTakenPozzetto).toBe(true)
   })
 
-  it('does not consume another pozzetto when the team has already taken one', () => {
+  it('rejects emptying the second hand through a meld instead of a final discard', () => {
     const hand = [card('queen', 'clubs'), card('queen', 'diamonds'), card('queen', 'hearts')]
     const state = stateFor({ hand, playerId: 'player-3', hasTakenPozzetto: true })
+    const before = structuredClone(state)
 
-    const next = playMeld(state, 'player-3', hand.map(({ id }) => id))
+    expect(() => playMeld(state, 'player-3', hand.map(({ id }) => id))).toThrowError(
+      expect.objectContaining({ code: 'CANNOT_CLOSE_WITHOUT_DISCARD' }),
+    )
 
-    expect(getPlayer(next, 'player-3').hand).toEqual([])
-    expect(next.pozzetti).toBe(state.pozzetti)
-    expect(teamById(next, 'team-1').hasTakenPozzetto).toBe(true)
+    expect(state).toEqual(before)
   })
 
   it('assigns the remaining pozzetto to the second team to finish its first hand', () => {
@@ -164,7 +167,7 @@ describe('pozzetto lifecycle', () => {
     const pozzetti = pozzettiExcluding(team1Hand, team2Hand)
     const initial = stateFor({ hand: team1Hand, pozzetti })
     const afterTeam1 = playMeld(initial, 'player-1', team1Hand.map(({ id }) => id))
-    const team2Turn: GameState = {
+    const team2Turn: InProgressGameState = {
       ...afterTeam1,
       players: afterTeam1.players.map((player) => player.id === 'player-2'
         ? { ...player, hand: team2Hand }

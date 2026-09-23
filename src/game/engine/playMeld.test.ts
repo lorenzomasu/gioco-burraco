@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import type { Card, Rank, Suit } from '../cards/types'
 import { validateMeld } from '../melds'
-import type { GameState, PlayerId, TeamId } from '../state/types'
+import type { GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
 import { GameRuleError, type GameErrorCode } from './errors'
 import { dealInitialState, getPlayer } from './startGame'
 import { playMeld } from './playMeld'
@@ -18,7 +18,7 @@ const stateFor = (
   hand: readonly Card[],
   playerId: PlayerId = 'player-1',
   phase: 'mustDraw' | 'action' = 'action',
-): GameState => {
+): InProgressGameState => {
   const initial = dealInitialState(deck)
   return {
     ...initial,
@@ -102,7 +102,7 @@ describe('playMeld', () => {
     if (!existing.valid) throw new Error('Expected the existing test meld to be valid')
     const partnerCards = [card('jack', 'clubs'), card('jack', 'diamonds'), card('jack', 'hearts')]
     const base = stateFor(partnerCards, 'player-3')
-    const state: GameState = {
+    const state: InProgressGameState = {
       ...base,
       teams: base.teams.map((team) => team.id === 'team-1'
         ? { ...team, melds: [existing.meld] }
