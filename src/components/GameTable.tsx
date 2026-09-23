@@ -5,7 +5,17 @@ import { extendMeld } from '../game/engine/extendMeld'
 import { playMeld } from '../game/engine/playMeld'
 import { startGame } from '../game/engine/startGame'
 import { discardCard, drawCard, takeDiscardPile } from '../game/engine/turn'
-import type { GameState, Player, PlayerId } from '../game/state/types'
+import {
+  advanceMatch,
+  calculateCumulativeScores,
+  getFinalMatchOutcome,
+  MATCH_ROUND_COUNT,
+  startMatch,
+  synchronizeMatch,
+  updateCurrentRound,
+  type MatchState,
+} from '../game/match'
+import type { GameState, InProgressGameState, Player, PlayerId } from '../game/state/types'
 import { sortCardsForDisplay } from './cardPresentation'
 import { MeldArea } from './MeldArea'
 import { PlayerSeat } from './PlayerSeat'
@@ -13,12 +23,20 @@ import { PlayingCard } from './PlayingCard'
 import { RoundScore } from './RoundScore'
 
 type GameTableProps = Readonly<{
+  initialMatch?: MatchState
   initialState?: GameState
-  createGame?: () => GameState
+  createGame?: () => InProgressGameState
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 const humanPlayerId: PlayerId = 'player-1'
+
+const prepareMatchForUi = (match: MatchState): MatchState => {
+  const synchronized = synchronizeMatch(match)
+  if (synchronized.status === 'completed') return synchronized
+  const automatedRound = playBotsUntilHumanTurn(synchronized.currentRound, humanPlayerId)
+  return updateCurrentRound(synchronized, automatedRound)
+}
 
 const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
   const activeIndex = playerOrder.indexOf(activeId)
@@ -45,27 +63,41 @@ const italianErrorMessages: Readonly<Record<string, string>> = {
   CANNOT_CLOSE_WITHOUT_DISCARD: 'La chiusura deve avvenire con lo scarto finale.',
 }
 
-export function GameTable({ initialState, createGame = startGame }: GameTableProps) {
-  const [game, setGame] = useState<GameState>(() =>
-    playBotsUntilHumanTurn(initialState ?? createGame(), humanPlayerId),
-  )
+export function GameTable({ initialMatch, initialState, createGame = startGame }: GameTableProps) {
+  const [match, setMatch] = useState<MatchState>(() => {
+    const startingMatch: MatchState = initialMatch ?? (initialState
+      ? {
+          status: 'in-progress',
+          currentRoundNumber: 1,
+          currentRound: initialState,
+          roundResults: [],
+        }
+      : startMatch(createGame))
+    return prepareMatchForUi(startingMatch)
+  })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
+  const game = match.currentRound
 
   const resetTransientState = () => {
     setSelectedCardIds(new Set())
     setRuleError(null)
   }
 
-  const beginNewGame = () => {
-    setGame(playBotsUntilHumanTurn(createGame(), humanPlayerId))
+  const beginNewMatch = () => {
+    setMatch(prepareMatchForUi(startMatch(createGame)))
+    resetTransientState()
+  }
+
+  const beginNextRound = () => {
+    setMatch(prepareMatchForUi(advanceMatch(match, createGame)))
     resetTransientState()
   }
 
   const commitAction = (action: () => GameState) => {
     try {
       const nextGame = playBotsUntilHumanTurn(action(), humanPlayerId)
-      setGame(nextGame)
+      setMatch(updateCurrentRound(match, nextGame))
       resetTransientState()
     } catch (error) {
       if (!(error instanceof GameRuleError)) throw error
@@ -91,15 +123,61 @@ export function GameTable({ initialState, createGame = startGame }: GameTablePro
           <strong>Burraco</strong>
         </div>
       </div>
-      <button type="button" className="button button--new" onClick={beginNewGame}>Nuova partita</button>
+      <div className="game-header__actions">
+        <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
+        <button type="button" className="button button--new" onClick={beginNewMatch}>Nuova partita</button>
+      </div>
     </header>
   )
 
   if (game.round.status === 'completed') {
+    const currentResult = match.roundResults.find(
+      ({ roundNumber }) => roundNumber === match.currentRoundNumber,
+    )
+    if (!currentResult) throw new Error(`Missing result for round ${match.currentRoundNumber}.`)
+    const cumulativeScores = calculateCumulativeScores(match)
+    const outcome = match.status === 'completed' ? getFinalMatchOutcome(match) : null
+
     return (
       <main className="game-shell">
         {shellHeader}
-        <RoundScore game={{ ...game, round: game.round }} />
+        <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} />
+        <section className="match-summary" aria-labelledby="match-summary-title">
+          <span className="round-complete__eyebrow">
+            {outcome ? 'Partita conclusa' : `Dopo ${match.currentRoundNumber} smazzate`}
+          </span>
+          <h2 id="match-summary-title">Punteggio cumulativo</h2>
+          <div className="cumulative-score" aria-label="Punti cumulativi">
+            {cumulativeScores.map((teamScore) => (
+              <div key={teamScore.teamId}>
+                <span>Squadra {teamScore.teamId === 'team-1' ? '1' : '2'}</span>
+                <strong>{teamScore.total}</strong>
+              </div>
+            ))}
+          </div>
+
+          {outcome ? (
+            <div className="final-result">
+              <h3>Risultato finale</h3>
+              <p>Match Points <strong>{outcome.matchPoints}</strong></p>
+              <div className="victory-points" aria-label="Victory Points">
+                {outcome.victoryPoints.map((teamResult) => (
+                  <div key={teamResult.teamId}>
+                    <span>Squadra {teamResult.teamId === 'team-1' ? '1' : '2'}</span>
+                    <strong>{teamResult.victoryPoints} VP</strong>
+                  </div>
+                ))}
+              </div>
+              <p>{outcome.leadingTeamId
+                ? `Prima la Squadra ${outcome.leadingTeamId === 'team-1' ? '1' : '2'}.`
+                : 'Parità esatta.'}</p>
+            </div>
+          ) : (
+            <button type="button" className="button button--primary match-summary__action" onClick={beginNextRound}>
+              Inizia smazzata {match.currentRoundNumber + 1}
+            </button>
+          )}
+        </section>
       </main>
     )
   }

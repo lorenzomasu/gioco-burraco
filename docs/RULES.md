@@ -331,10 +331,10 @@ regolamentare del tallone nella milestone 13.
   già nella mano digitale del giocatore e vengono quindi sottratte una sola volta come
   `handPenalty`; non esiste una seconda penalità per quelle stesse carte.
 
-Non sono ancora implementati Victory Points, Match Points, punteggio cumulativo tra
-più smazzate, soglia o vincitore della partita, punteggio da torneo, bonus e penalità
-arbitrali, timeout e stallo. La conclusione per esaurimento del tallone è descritta
-nella milestone 13.
+Il punteggio cumulativo, i Match Points e i Victory Points della partita locale su
+quattro smazzate sono descritti nella milestone 14. Non sono implementati punteggio
+da torneo, bonus e penalità arbitrali, timeout e stallo. La conclusione per
+esaurimento del tallone è descritta nella milestone 13.
 
 ## Tavolo locale giocabile — milestone 10
 
@@ -476,8 +476,48 @@ non introduce né modifica regole ufficiali FIBUR.
 
 ### Fuori ambito
 
-- Stallo (art. 18), time out (art. 15), conclusione per decisione arbitrale e partita
-  su più smazzate.
+- Stallo (art. 18), time out (art. 15) e conclusione per decisione arbitrale.
+
+## Milestone 14 — Partita su quattro smazzate
+
+- Una partita locale è composta da esattamente quattro smazzate. Ogni smazzata usa
+  un `GameState` completamente nuovo e conserva tutte le regole di preparazione,
+  turno, pozzetto, chiusura ed esaurimento già descritte.
+- La smazzata conclusa viene conteggiata una sola volta tramite il punteggio della
+  milestone 9. Il risultato storico conserva numero della smazzata, tipo di
+  conclusione e breakdown immutabile del punteggio.
+- Dopo le smazzate 1, 2 e 3 il risultato resta visibile finché il giocatore avvia
+  esplicitamente la successiva. La quarta smazzata conclude la partita e non può
+  essere seguita da una quinta.
+- Il punteggio cumulativo di ciascuna squadra è la somma algebrica dei suoi totali
+  nelle quattro smazzate; i risultati negativi restano negativi. Non si sommano gli
+  scarti assoluti delle singole smazzate.
+- I Match Points sono il valore assoluto della differenza tra i due totali cumulativi.
+  La squadra con il totale maggiore è in vantaggio; totali identici costituiscono una
+  parità esatta.
+
+### Victory Points per quattro smazzate
+
+| Match Points | Victory Points |
+| ---: | :--- |
+| 0–100 | 10–10 |
+| 105–300 | 11–9 |
+| 305–500 | 12–8 |
+| 505–700 | 13–7 |
+| 705–900 | 14–6 |
+| 905–1100 | 15–5 |
+| 1105–1300 | 16–4 |
+| 1305–1500 | 17–3 |
+| 1505–1700 | 18–2 |
+| 1705–2000 | 19–1 |
+| oltre 2000 | 20–0 |
+
+Oltre la fascia 10–10, il valore maggiore è assegnato alla squadra con il punteggio
+cumulativo più alto. I punteggi legali sono multipli di cinque, quindi gli intervalli
+ufficiali non lasciano valori raggiungibili senza classificazione.
+
+Restano rinviate le tabelle per due o tre smazzate, le tabelle e classifiche per
+tornei a squadre, gli abbinamenti, le procedure arbitrali e ogni gestione di evento.
 
 ## Riproducibilità
 

@@ -4,6 +4,7 @@ import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
 import { drawCard } from '../game/engine/turn'
 import { dealInitialState } from '../game/engine/startGame'
+import type { MatchState, SettledRoundResult } from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
@@ -106,6 +107,50 @@ const botClosureState = (): InProgressGameState => {
   }
 }
 
+const settledResult = (
+  roundNumber: 1 | 2 | 3 | 4,
+  team1Total: number,
+  team2Total: number,
+): SettledRoundResult => ({
+  roundNumber,
+  ending: 'draw-pile-exhausted',
+  score: {
+    teams: [
+      {
+        teamId: 'team-1',
+        meldCardPoints: 0,
+        burracoBonus: 0,
+        closingBonus: 0,
+        handPenalty: 0,
+        pozzettoPenalty: 0,
+        total: team1Total,
+      },
+      {
+        teamId: 'team-2',
+        meldCardPoints: 0,
+        burracoBonus: 0,
+        closingBonus: 0,
+        handPenalty: 0,
+        pozzettoPenalty: 0,
+        total: team2Total,
+      },
+    ],
+  },
+})
+
+const emptyCompletedRound = (): CompletedGameState => {
+  const initial = dealInitialState(deck)
+  return {
+    ...initial,
+    players: initial.players.map((player) => ({ ...player, hand: [] })),
+    teams: initial.teams.map((team) => ({ ...team, melds: [], hasTakenPozzetto: false })),
+    drawPile: [],
+    discardPile: [],
+    pozzetti: [[], []],
+    round: { status: 'completed', ending: 'draw-pile-exhausted', lastDiscardPlayerId: 'player-2' },
+  }
+}
+
 describe('GameTable', () => {
   it('renders the initial table, all four players, piles, and draw phase', () => {
     const state = dealInitialState(deck)
@@ -123,6 +168,7 @@ describe('GameTable', () => {
     expect(screen.getByText('North · Bot')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: cardLabel(hiddenBotCard) })).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: cardLabel(hiddenBotCard) })).not.toBeInTheDocument()
+    expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
   })
 
   it('draws through the engine and reflects the action phase and enlarged hand', () => {
@@ -342,5 +388,57 @@ describe('GameTable', () => {
     expect(screen.queryByRole('heading', { name: /Ha chiuso/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/La Squadra . ottiene il bonus di chiusura/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Scarta e passa' })).not.toBeInTheDocument()
+  })
+
+  it('shows an intermediate result and starts the next fresh round only on request', () => {
+    const completed = emptyCompletedRound()
+    const createGame = vi.fn(() => dealInitialState(deck))
+
+    render(<GameTable initialState={completed} createGame={createGame} />)
+
+    expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Tallone esaurito' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Punteggio cumulativo' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Inizia smazzata 2' })).toBeInTheDocument()
+    expect(createGame).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    expect(createGame).toHaveBeenCalledOnce()
+    expect(screen.getByText('Smazzata 2/4')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Tavolo di Burraco' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Punteggio cumulativo' })).not.toBeInTheDocument()
+  })
+
+  it('shows the terminal four-round result and resets the complete match', () => {
+    const finalRound = emptyCompletedRound()
+    const initialMatch: MatchState = {
+      status: 'in-progress',
+      currentRoundNumber: 4,
+      currentRound: finalRound,
+      roundResults: [
+        settledResult(1, 100, 0),
+        settledResult(2, 100, 0),
+        settledResult(3, 100, 0),
+      ],
+    }
+    const createGame = vi.fn(() => dealInitialState(deck))
+
+    render(<GameTable initialMatch={initialMatch} createGame={createGame} />)
+
+    expect(screen.getByText('Smazzata 4/4')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Risultato finale' })).toBeInTheDocument()
+    expect(screen.getByText('Match Points')).toHaveTextContent('300')
+    const victoryPoints = screen.getByLabelText('Victory Points')
+    expect(within(victoryPoints).getByText('11 VP')).toBeInTheDocument()
+    expect(within(victoryPoints).getByText('9 VP')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Inizia smazzata 5/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(createGame).toHaveBeenCalledOnce()
+    expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Tavolo di Burraco' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Risultato finale' })).not.toBeInTheDocument()
   })
 })

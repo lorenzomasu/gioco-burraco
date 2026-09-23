@@ -1,14 +1,14 @@
-import { calculateRoundScore } from '../game/scoring'
+import type { RoundScore as RoundScoreValue } from '../game/scoring'
 import type { CompletedGameState, PlayerId } from '../game/state/types'
 
 type RoundScoreProps = Readonly<{
   game: CompletedGameState
+  score: RoundScoreValue
 }>
 
 const signed = (value: number): string => value > 0 ? `+${value}` : `${value}`
 
-export function RoundScore({ game }: RoundScoreProps) {
-  const score = calculateRoundScore(game)
+export function RoundScore({ game, score }: RoundScoreProps) {
   const round = game.round
   const playerName = (playerId: PlayerId): string =>
     game.players.find((player) => player.id === playerId)?.name ?? playerId

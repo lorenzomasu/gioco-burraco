@@ -16,6 +16,7 @@ React components render state, collect player intent, and invoke the game engine
 - `src/game/engine` — deterministic game commands and state transitions.
 - `src/game/melds` — pure meld validation and Burraco classification.
 - `src/game/scoring` — pure round-scoring logic.
+- `src/game/match` — four-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
 - `src/game/bot` — deterministic bot candidate generation, ranking, and turn execution.
 - `src/components` — React UI for human and bot-controlled seats.
 
@@ -62,6 +63,21 @@ Bots may not inspect hidden opponent hands, future draw-pile order or identity, 
 Candidate generation may propose moves, but the engine remains authoritative for legality.
 
 Do not duplicate game-rule validation inside bot strategy code.
+
+## Match lifecycle
+
+`GameState` remains the complete state of exactly one smazzata. The match layer owns
+the current round number, current `GameState`, chronological settled-result history,
+and the terminal state of the fixed four-smazzate match.
+
+Completed rounds are settled exactly once through `calculateRoundScore`. Cumulative
+team totals are derived from the immutable score snapshots in match history rather
+than stored as a second mutable total. Match Points, the leading team or exact tie,
+and the four-smazzate Victory Points allocation are also pure derived domain values.
+
+Only the match layer may advance to a fresh `GameState`, and round four is terminal.
+React may render match state and invoke match operations, but it must not implement
+settlement, cumulative scoring, VP thresholds, or lifecycle decisions itself.
 
 ## UI
 

@@ -36,6 +36,15 @@ button:focus-visible {
   gap: 1rem;
 }
 
+.game-header__actions { display: flex; align-items: center; gap: .75rem; }
+
+.round-indicator {
+  color: #f6c760;
+  font-size: .78rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
 .brand { display: flex; align-items: center; gap: .75rem; }
 
 .brand__mark {
@@ -483,6 +492,51 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   text-align: center;
 }
 
+.match-summary {
+  width: min(950px, 100%);
+  margin: 1rem auto 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 1.25rem;
+  background: rgba(3, 24, 18, .72);
+  text-align: center;
+}
+
+.match-summary h2,
+.final-result h3 {
+  margin: .45rem 0 1rem;
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.cumulative-score,
+.victory-points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.cumulative-score > div,
+.victory-points > div {
+  padding: .8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: .75rem;
+  background: rgba(255, 255, 255, .06);
+}
+
+.cumulative-score strong,
+.victory-points strong {
+  color: #f6c760;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.35rem;
+}
+
+.match-summary__action { margin-top: 1.25rem; }
+.final-result { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid rgba(255, 255, 255, .1); }
+.final-result > p { color: #b9cfc5; }
+.final-result > p strong { color: #f6c760; font-size: 1.2rem; }
+
 .round-complete__eyebrow { color: #f6c760; font-size: .7rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .round-complete h1 { margin: .5rem 0; font-family: 'Playfair Display', Georgia, serif; font-size: clamp(2rem, 5vw, 3.4rem); }
 .round-complete > p { margin: 0; color: #b9cfc5; }
@@ -533,6 +587,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 
 @media (max-width: 440px) {
   .game-header { align-items: flex-end; }
+  .game-header__actions { align-items: flex-end; flex-direction: column-reverse; gap: .3rem; }
   .brand__mark { display: none; }
   .button--new { min-height: 2.25rem; padding: .5rem .7rem; font-size: .76rem; }
   .pile-zone { gap: .25rem; }
@@ -542,6 +597,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   .playing-card--compact { width: 3.3rem; height: 4.5rem; }
   .action-bar .button { flex: 1; padding-inline: .55rem; }
   .score-grid { grid-template-columns: 1fr; }
+  .cumulative-score, .victory-points { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
