@@ -159,7 +159,6 @@ dalla mano e non colloca ancora calate sul tavolo.
 
 ### Funzionalità rinviate
 
-- aggiungere carte a una calata esistente;
 - sostituire o spostare jolly e pinelle già sul tavolo;
 - classificazione del Burraco pulito, semipulito o sporco;
 - punteggio;
@@ -186,6 +185,22 @@ dedotte dal solo risultato di validazione di una nuova calata.
 - Le calate sono memorizzate una sola volta nella collezione `melds` della squadra.
   Entrambi i compagni contribuiscono quindi allo stesso insieme, mentre la squadra
   avversaria non viene modificata.
+
+## Estensione delle calate di squadra — milestone 5
+
+- Durante la fase `action`, il giocatore di turno può aggiungere una o più carte
+  fisiche della propria mano a una calata già presente nella raccolta della sua
+  squadra, inclusa una calata originariamente creata dal compagno. Non può agire
+  sulle calate avversarie.
+- La calata bersaglio è identificata dal suo indice zero-based nella raccolta
+  `team.melds`. La selezione vuota e un indice inesistente sono errori espliciti.
+- Il motore ricostruisce l'insieme completo usando le carte fisiche della calata e
+  quelle aggiunte, quindi lo passa nuovamente a `validateMeld`. Solo un risultato
+  completo valido sostituisce la calata precedente; ruoli e rango rappresentato da
+  jolly o pinelle possono quindi essere ricalcolati dal validatore.
+- La riuscita rimuove dalla mano soltanto gli ID fisici richiesti, sostituisce solo
+  la calata selezionata e non termina il turno. Qualunque errore lascia invariato
+  l'intero stato di gioco.
 
 ## Riproducibilità
 

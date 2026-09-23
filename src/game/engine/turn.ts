@@ -109,3 +109,4 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
 }
 
 export { playMeld } from './playMeld'
+export { extendMeld } from './extendMeld'
