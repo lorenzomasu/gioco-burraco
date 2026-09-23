@@ -397,6 +397,41 @@ gioco di rete, persistenza, gestione ufficiale dell'esaurimento del tallone e og
 altra euristica avanzata. Queste omissioni sono funzionalità future, non regole di
 Burraco.
 
+## Milestone 12 — bot strategici deterministici
+
+Questa sezione descrive esclusivamente scelte di prodotto e di strategia automatica:
+non introduce né modifica regole ufficiali FIBUR.
+
+- I bot non si fermano più alla prima mossa valida. Generano un insieme limitato di
+  estensioni di una carta e di nuove calate costruite da semi di tre carte, con limiti
+  espliciti sul numero di semi e candidate. Ogni candidata passa comunque da
+  `validateMeld`, `playMeld` o `extendMeld`; il motore resta l'unica autorità sulla
+  legalità.
+- Quando tallone e monte degli scarti sono entrambi disponibili, il bot raccoglie gli
+  scarti soltanto se almeno una carta raccolta partecipa subito a una nuova calata o a
+  un'estensione legale. In assenza di un vantaggio concreto preferisce il tallone. La
+  decisione conosce del tallone soltanto la disponibilità e non ne osserva né simula
+  la prossima carta.
+- Le azioni sono confrontate con un ordinamento lessicografico stabile: chiusura
+  immediatamente raggiungibile, presa del pozzetto, creazione o miglioramento di un
+  Burraco, qualità del Burraco (`clean > semi-clean > dirty > none`), numero di carte
+  giocate, conservazione delle matte, punti calati e tie-break deterministico. La
+  chiusura legale ha priorità anche nella scelta dello scarto finale.
+- Tutti gli scarti candidati vengono prima verificati con `discardCard`. Il ranking
+  conserva jolly e pinelle, evita carte che possono ancora estendere le calate della
+  squadra o partecipare a una calata valida con la mano, preferisce liberarsi di carte
+  costose ma poco utili e, a parità strategica, evita di alimentare direttamente una
+  calata avversaria visibile.
+- La strategia usa esclusivamente la mano del bot e le informazioni pubbliche: calate
+  di entrambe le squadre, monte degli scarti, conteggi delle mani, turno e stato
+  pubblico del pozzetto. Non consulta identità delle carte avversarie, identità o
+  ordine del tallone, né contenuto di un pozzetto non ancora acquisito. Una volta
+  acquisito, il pozzetto è parte della mano del bot e può naturalmente essere giocato.
+- A parità di stato pubblico e bot la scelta resta deterministica; non vengono usate
+  casualità, probabilità sulle mani, lookahead profondo, minimax o simulazioni Monte
+  Carlo. I limiti di candidate si aggiungono alle guardie sul numero di azioni per
+  turno e di turni bot consecutivi, mantenendo la ricerca bounded.
+
 ## Riproducibilità
 
 Il motore riceve opzionalmente una sorgente pseudo-casuale. `createSeededRandom` usa
