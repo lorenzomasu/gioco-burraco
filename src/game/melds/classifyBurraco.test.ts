@@ -50,6 +50,13 @@ describe('classifyBurraco', () => {
     expect(classifyBurraco(validatedMeld(allOfRank('queen').slice(0, 7)))).toBe('clean')
   })
 
+  it('classifies an eight-card natural combination as clean', () => {
+    const meld = validatedMeld(allOfRank('queen'))
+
+    expect(meld.activeWildcard).toBeNull()
+    expect(classifyBurraco(meld)).toBe('clean')
+  })
+
   it('treats a physical pinella interpreted as the natural 2 as clean', () => {
     const meld = spadeSequence(['ace', 'two', 'three', 'four', 'five', 'six', 'seven'])
     const pinella = meld.cards.find((placement) => placement.card.rank === 'two')
@@ -134,6 +141,17 @@ describe('classifyBurraco', () => {
     expect(classifyBurraco(validatedMeld([
       ...allOfRank('seven').slice(0, 7), joker(),
     ]))).toBe('semi-clean')
+  })
+
+  it('classifies an eight-card combination with a wildcard pinella as semi-clean', () => {
+    const wildPinella = card('two', 'spades')
+    const meld = validatedMeld([
+      ...allOfRank('seven').slice(0, 7), wildPinella,
+    ])
+    const pinellaPlacement = meld.cards.find((placement) => placement.card.id === wildPinella.id)
+
+    expect(pinellaPlacement).toMatchObject({ card: wildPinella, role: 'wildcard' })
+    expect(classifyBurraco(meld)).toBe('semi-clean')
   })
 
   it('classifies the legal nine-card combination including a wildcard as dirty', () => {

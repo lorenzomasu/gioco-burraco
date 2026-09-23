@@ -2,9 +2,9 @@
 
 La base normativa del gameplay è il **Codice di Gara FIBUR — Edizione Gennaio 2026**.
 Questo documento distingue le regole ufficiali già rilevanti, le astrazioni digitali
-usate dall'implementazione e le assunzioni temporanee di prodotto. Le regole su
-calate, presa degli scarti, uso del pozzetto, chiusura e punteggio saranno aggiunte
-prima della relativa implementazione.
+usate dall'implementazione e le assunzioni temporanee di prodotto. Le regole relative
+alle funzionalità non ancora implementate saranno aggiunte prima della relativa
+implementazione.
 
 ## Mazzo
 
