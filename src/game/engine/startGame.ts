@@ -11,8 +11,8 @@ const PLAYER_DEFINITIONS: readonly Omit<Player, 'hand'>[] = [
 ]
 
 const TEAMS: readonly Team[] = [
-  { id: 'team-1', playerIds: ['player-1', 'player-3'], melds: [] },
-  { id: 'team-2', playerIds: ['player-2', 'player-4'], melds: [] },
+  { id: 'team-1', playerIds: ['player-1', 'player-3'], melds: [], hasTakenPozzetto: false },
+  { id: 'team-2', playerIds: ['player-2', 'player-4'], melds: [], hasTakenPozzetto: false },
 ]
 
 export const HAND_SIZE = 11

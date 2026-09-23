@@ -15,6 +15,7 @@ export type Team = Readonly<{
   id: TeamId
   playerIds: readonly [PlayerId, PlayerId]
   melds: readonly ValidatedMeld[]
+  hasTakenPozzetto: boolean
 }>
 
 /** `mustDraw` is the start-of-turn choice; `action` permits future non-draw actions and the final discard. */

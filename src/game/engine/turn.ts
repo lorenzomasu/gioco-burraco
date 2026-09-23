@@ -1,6 +1,7 @@
 import { haveEquivalentFaces, type Card } from '../cards/types'
 import type { GameState, Player, PlayerId, TurnPhase } from '../state/types'
 import { GameRuleError } from './errors'
+import { acquirePozzettoIfEligible } from './pozzetto'
 
 const PLAYER_ORDER: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 
@@ -97,7 +98,7 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
     )
   }
 
-  return {
+  const nextState: GameState = {
     ...state,
     players: replacePlayerHand(state, playerId, player.hand.filter((_, index) => index !== cardIndex)),
     discardPile: [...state.discardPile, card],
@@ -106,6 +107,8 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
       turn: { currentPlayerId: nextPlayerId(playerId), phase: 'mustDraw' },
     },
   }
+
+  return acquirePozzettoIfEligible(nextState, playerId)
 }
 
 export { playMeld } from './playMeld'

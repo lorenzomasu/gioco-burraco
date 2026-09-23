@@ -33,8 +33,8 @@ describe('dealInitialState', () => {
   it('sets up four players in two opposing pairs', () => {
     expect(game.players).toHaveLength(4)
     expect(game.teams).toEqual([
-      { id: 'team-1', playerIds: ['player-1', 'player-3'], melds: [] },
-      { id: 'team-2', playerIds: ['player-2', 'player-4'], melds: [] },
+      { id: 'team-1', playerIds: ['player-1', 'player-3'], melds: [], hasTakenPozzetto: false },
+      { id: 'team-2', playerIds: ['player-2', 'player-4'], melds: [], hasTakenPozzetto: false },
     ])
   })
 

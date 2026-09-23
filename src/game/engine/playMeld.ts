@@ -2,6 +2,7 @@ import { validateMeld, type ValidatedMeld } from '../melds'
 import type { GameState, PlayerId, TeamId } from '../state/types'
 import { GameRuleError } from './errors'
 import { cardsByPhysicalId, playerById, requireCurrentPlayer, requireMeldActionPhase } from './meldCommandGuards'
+import { acquirePozzettoIfEligible } from './pozzetto'
 
 const addTeamMeld = (
   state: GameState,
@@ -37,11 +38,13 @@ export const playMeld = (
   const playedCardIds = new Set(cardIds)
   const teams = addTeamMeld(state, player.teamId, validation.meld)
 
-  return {
+  const nextState: GameState = {
     ...state,
     players: state.players.map((candidate) => candidate.id === playerId
       ? { ...candidate, hand: candidate.hand.filter((card) => !playedCardIds.has(card.id)) }
       : candidate),
     teams,
   }
+
+  return acquirePozzettoIfEligible(nextState, playerId)
 }

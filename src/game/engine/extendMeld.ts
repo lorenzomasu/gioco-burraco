@@ -2,6 +2,7 @@ import { validateMeld } from '../melds'
 import type { GameState, PlayerId } from '../state/types'
 import { GameRuleError } from './errors'
 import { cardsByPhysicalId, playerById, requireCurrentPlayer, requireMeldActionPhase } from './meldCommandGuards'
+import { acquirePozzettoIfEligible } from './pozzetto'
 
 /** Adds hand cards to one zero-based meld in the current player's team without ending the turn. */
 export const extendMeld = (
@@ -33,7 +34,7 @@ export const extendMeld = (
   }
 
   const addedCardIds = new Set(cardIds)
-  return {
+  const nextState: GameState = {
     ...state,
     players: state.players.map((candidate) => candidate.id === playerId
       ? { ...candidate, hand: candidate.hand.filter((card) => !addedCardIds.has(card.id)) }
@@ -45,4 +46,6 @@ export const extendMeld = (
         }
       : candidate),
   }
+
+  return acquirePozzettoIfEligible(nextState, playerId)
 }

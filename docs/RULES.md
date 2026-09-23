@@ -161,7 +161,6 @@ dalla mano e non colloca ancora calate sul tavolo.
 
 - sostituire o spostare jolly e pinelle già sul tavolo;
 - punteggio;
-- acquisizione del pozzetto;
 - chiusura.
 
 Queste funzioni restano fuori dall'attuale implementazione.
@@ -228,7 +227,35 @@ Queste funzioni restano fuori dall'attuale implementazione.
   vita ridondanti.
 
 La classificazione non implementa punteggio, sostituzione o spostamento delle matte,
-pozzetto, chiusura o determinazione del vincitore.
+chiusura o determinazione del vincitore.
+
+## Acquisizione del pozzetto — milestone 7
+
+- Ogni coppia può prendere un solo pozzetto. Il diritto nasce automaticamente quando
+  uno dei due giocatori termina la prima mano; lo stato della squadra lo registra con
+  `hasTakenPozzetto`, senza dedurlo dal solo contenuto dei pozzetti.
+- Se il giocatore termina la mano aprendo una calata o legando carte a una calata
+  esistente, prende il pozzetto *al volo*: non effettua lo scarto, mantiene il turno
+  in fase `action` e può giocare immediatamente le carte ricevute. L'acquisizione
+  registrata nel turno continua a descrivere la pesca o raccolta che lo ha aperto.
+- Se il giocatore termina la mano scartando l'ultima carta, prende il pozzetto *con lo
+  scarto*: la carta entra normalmente nel monte degli scarti, il turno passa al
+  giocatore successivo in fase `mustDraw` e il pozzetto sarà giocabile soltanto al
+  successivo turno del giocatore che lo ha preso, dopo la normale pesca o raccolta.
+- Andare a pozzo con lo scarto non è una chiusura definitiva: l'ultima carta può essere
+  anche un jolly o una pinella, ferme restando le altre regole già applicate allo
+  scarto. Il divieto relativo alla chiusura definitiva non è anticipato in questa
+  milestone.
+- I due pozzetti non sono preassegnati alle squadre. L'astrazione digitale assegna in
+  modo deterministico il primo pozzetto ancora disponibile; il suo slot diventa vuoto
+  e la seconda squadra riceverà quello restante quando maturerà il diritto.
+- Nella presa con scarto le carte vengono inserite subito nella mano digitale, pur non
+  essendo giocabili fino al turno successivo. Non sono simulate la consegna materiale,
+  la visione fuori turno, le carte esposte, le ammonizioni o le altre procedure
+  arbitrali legate ai pozzi; un'eventuale UI potrà limitarne la visibilità.
+
+La chiusura definitiva, la fine della smazzata, i relativi requisiti e bonus, il
+punteggio e l'esaurimento regolamentare del tallone restano funzionalità rinviate.
 
 ## Riproducibilità
 

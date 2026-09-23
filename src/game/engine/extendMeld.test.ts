@@ -94,10 +94,16 @@ describe('extendMeld', () => {
       card('six', 'hearts'), card('seven', 'hearts'), card('eight', 'hearts'),
     ])
     const additions = [card('four', 'hearts'), card('five', 'hearts'), card('nine', 'hearts')]
+    const untouched = card('king', 'clubs')
 
-    const next = extendMeld(stateFor(additions, [existing]), 'player-1', 0, additions.map(({ id }) => id))
+    const next = extendMeld(
+      stateFor([...additions, untouched], [existing]),
+      'player-1',
+      0,
+      additions.map(({ id }) => id),
+    )
 
-    expect(getPlayer(next, 'player-1').hand).toEqual([])
+    expect(getPlayer(next, 'player-1').hand).toEqual([untouched])
     expect(teamById(next, 'team-1').melds[0]!.cards).toHaveLength(6)
   })
 
