@@ -177,6 +177,20 @@ describe('round closure', () => {
 
   it.each([
     ['a joker', joker()],
+    ['a physical two used as the final discard', card('two', 'clubs')],
+  ])('prioritizes the wildcard error for %s even without a Burraco', (_, finalCard) => {
+    const state = stateFor({ hand: [finalCard], melds: [] })
+    const before = structuredClone(state)
+
+    expectRuleError(
+      () => discardCard(state, 'player-1', finalCard.id),
+      'CANNOT_CLOSE_WITH_WILDCARD',
+    )
+    expect(state).toEqual(before)
+  })
+
+  it.each([
+    ['a joker', joker()],
     ['a pinella', card('two', 'clubs')],
     ['an ordinary card', card('king', 'clubs')],
   ])('keeps the M7 pozzetto-with-discard behavior for %s', (_, finalCard) => {

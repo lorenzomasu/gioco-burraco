@@ -114,16 +114,16 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
   if (!team) throw new Error(`Game state does not contain team: ${player.teamId}`)
   const isClosingAttempt = player.hand.length === 1 && team.hasTakenPozzetto
   if (isClosingAttempt) {
-    if (!teamHasBurraco(team)) {
-      throw new GameRuleError(
-        'CANNOT_CLOSE_WITHOUT_BURRACO',
-        'Cannot close the round without a Burraco.',
-      )
-    }
     if (isClosingWildcard(card)) {
       throw new GameRuleError(
         'CANNOT_CLOSE_WITH_WILDCARD',
         'Cannot close the round by discarding a joker or pinella.',
+      )
+    }
+    if (!teamHasBurraco(team)) {
+      throw new GameRuleError(
+        'CANNOT_CLOSE_WITHOUT_BURRACO',
+        'Cannot close the round without a Burraco.',
       )
     }
 

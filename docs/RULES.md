@@ -293,7 +293,9 @@ funzionalità rinviate.
   `CANNOT_CLOSE_WITHOUT_DISCARD`.
 - Un tentativo di scartare l'ultima carta dopo il pozzetto viene impedito con
   `CANNOT_CLOSE_WITHOUT_BURRACO` se manca un Burraco e con
-  `CANNOT_CLOSE_WITH_WILDCARD` se lo scarto finale è un jolly o una pinella.
+  `CANNOT_CLOSE_WITH_WILDCARD` se lo scarto finale è un jolly o una pinella. In
+  quest'ultimo caso l'errore relativo alla matta ha precedenza e la presenza del
+  Burraco non viene valutata.
 - Come nelle altre validazioni del motore digitale, le chiusure irregolari vengono
   respinte prima di qualsiasi mutation. Non sono simulate le procedure arbitrali di
   ripristino delle carte o le penalità previste per il gioco fisico.
