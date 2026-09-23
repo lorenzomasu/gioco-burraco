@@ -40,7 +40,7 @@ const mustDrawState = ({
   melds = [],
   hasTakenPozzetto = false,
   discardPile = [card('four', 'diamonds', 2)],
-  pozzetti = [[card('ace', 'clubs', 2), card('queen', 'clubs', 2)], [card('queen', 'hearts', 2)]],
+  pozzetti = [[card('ace', 'clubs', 2), card('queen', 'clubs', 2)], [card('queen', 'spades', 2)]],
 }: {
   hand: readonly Card[]
   drawPile: readonly Card[]
