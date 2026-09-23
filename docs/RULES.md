@@ -334,6 +334,25 @@ Non sono ancora implementati Victory Points, Match Points, punteggio cumulativo 
 più smazzate, soglia o vincitore della partita, punteggio da torneo, bonus e penalità
 arbitrali, timeout, stallo o conclusione per esaurimento del tallone.
 
+## Tavolo locale giocabile — milestone 10
+
+Questa sezione descrive il comportamento dell'applicazione, non introduce nuove
+regole ufficiali di Burraco.
+
+- L'interfaccia usa una modalità *hot-seat*: mostra integralmente soltanto la mano
+  del giocatore indicato dal turno del motore, mentre gli altri tre posti mostrano
+  nome, squadra e numero di carte. Al cambio turno, la mano visibile cambia
+  automaticamente.
+- Selezione, calata, legame e scarto identificano sempre le carte tramite l'ID della
+  carta fisica. L'eventuale ordinamento visivo della mano non modifica lo stato né
+  l'ordine conservato dal motore.
+- Pesca, raccolta degli scarti, nuove calate, estensioni, scarto, presa del pozzetto,
+  chiusura e punteggio restano delegati alle API del motore. L'interfaccia rappresenta
+  lo stato restituito e mostra gli errori di regola senza applicare una propria copia
+  delle regole.
+- Tutti e quattro i giocatori sono controllati manualmente nello stesso dispositivo.
+  Bot e strategie automatiche restano esplicitamente fuori da questa milestone.
+
 ## Riproducibilità
 
 Il motore riceve opzionalmente una sorgente pseudo-casuale. `createSeededRandom` usa
