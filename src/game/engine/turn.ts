@@ -69,6 +69,9 @@ export const takeDiscardPile = (state: GameState, playerId: PlayerId): InProgres
     throw new GameRuleError('DISCARD_PILE_EMPTY', 'Cannot take: the discard pile is empty.')
   }
   const player = playerById(state, playerId)
+  const singleCollectedCard = state.discardPile.length === 1 ? state.discardPile[0]! : undefined
+  const canRediscardSingleCollectedCard = singleCollectedCard !== undefined
+    && player.hand.some((candidate) => haveEquivalentFaces(candidate, singleCollectedCard))
 
   return {
     ...state,
@@ -79,7 +82,11 @@ export const takeDiscardPile = (state: GameState, playerId: PlayerId): InProgres
       turn: {
         currentPlayerId: playerId,
         phase: 'action',
-        acquisition: { source: 'discardPile', cardIds: state.discardPile.map((card) => card.id) },
+        acquisition: {
+          source: 'discardPile',
+          cardIds: state.discardPile.map((card) => card.id),
+          canRediscardSingleCollectedCard,
+        },
       },
     },
   }
@@ -97,13 +104,12 @@ export const discardCard = (state: GameState, playerId: PlayerId, cardId: string
   }
   const card = player.hand[cardIndex]!
   const acquisition = round.turn.phase === 'action' ? round.turn.acquisition : undefined
-  const isOnlyCollectedDiscard = acquisition?.source === 'discardPile'
+  if (
+    acquisition?.source === 'discardPile'
     && acquisition.cardIds.length === 1
     && acquisition.cardIds[0] === card.id
-  const hasEquivalentCardAlreadyInHand = player.hand.some((candidate) =>
-    candidate.id !== card.id && haveEquivalentFaces(candidate, card),
-  )
-  if (isOnlyCollectedDiscard && !hasEquivalentCardAlreadyInHand) {
+    && !acquisition.canRediscardSingleCollectedCard
+  ) {
     throw new GameRuleError(
       'CANNOT_REDISCARD_SINGLE_COLLECTED_CARD',
       'Cannot immediately discard the only card collected from the discard pile.',

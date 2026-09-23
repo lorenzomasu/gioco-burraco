@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import type { Card, Pozzetto, Rank, Suit } from '../cards/types'
 import { validateMeld, type ValidatedMeld } from '../melds'
-import type { GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
+import type { GameState, InProgressGameState, PlayerId, TeamId, TurnAcquisition } from '../state/types'
 import { extendMeld } from './extendMeld'
 import { playMeld } from './playMeld'
 import { dealInitialState, getPlayer } from './startGame'
@@ -42,7 +42,7 @@ const stateFor = ({
   pozzetti?: readonly [Pozzetto, Pozzetto]
   hasTakenPozzetto?: boolean
   discardPile?: readonly Card[]
-  acquisition?: { source: 'drawPile' | 'discardPile'; cardIds: readonly string[] }
+  acquisition?: TurnAcquisition
 }): InProgressGameState => {
   const initial = dealInitialState(deck)
   const teamId = getPlayer(initial, playerId).teamId
@@ -229,7 +229,11 @@ describe('pozzetto lifecycle', () => {
     const collected = card('five', 'clubs')
     const state = stateFor({
       hand: [collected],
-      acquisition: { source: 'discardPile', cardIds: [collected.id] },
+      acquisition: {
+        source: 'discardPile',
+        cardIds: [collected.id],
+        canRediscardSingleCollectedCard: false,
+      },
     })
     const before = structuredClone(state)
 

@@ -68,8 +68,10 @@ implementazione.
   uno scarto viene aggiunto in coda.
 - Raccogliere gli scarti trasferisce l'intero monte, nell'ordine interno conservato,
   nella mano del giocatore e svuota `discardPile`. Durante `action`, il turno conserva
-  soltanto la sorgente e gli ID fisici delle carte acquisite, necessari per applicare
-  il vincolo sullo scarto singolo; al passaggio di turno queste informazioni spariscono.
+  la sorgente e gli ID fisici delle carte acquisite; per un monte di una sola carta,
+  conserva anche se al momento della raccolta la mano conteneva già una carta equivalente.
+  Queste informazioni applicano il vincolo sullo scarto singolo e spariscono al passaggio
+  di turno.
 - Un singolo comando di scarto termina atomicamente il turno: non esiste un comando
   separato di fine turno.
 

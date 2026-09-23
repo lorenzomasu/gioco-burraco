@@ -20,10 +20,16 @@ export type Team = Readonly<{
 
 /** `mustDraw` is the start-of-turn choice; `action` permits future non-draw actions and the final discard. */
 export type TurnPhase = 'mustDraw' | 'action'
-export type TurnAcquisition = Readonly<{
-  source: 'drawPile' | 'discardPile'
-  cardIds: readonly string[]
-}>
+export type TurnAcquisition =
+  | Readonly<{
+      source: 'drawPile'
+      cardIds: readonly string[]
+    }>
+  | Readonly<{
+      source: 'discardPile'
+      cardIds: readonly string[]
+      canRediscardSingleCollectedCard: boolean
+    }>
 export type MustDrawTurnState = Readonly<{ currentPlayerId: PlayerId; phase: 'mustDraw' }>
 export type ActionTurnState = Readonly<{
   currentPlayerId: PlayerId
