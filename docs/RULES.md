@@ -438,11 +438,12 @@ non introduce né modifica regole ufficiali FIBUR.
 
 ### Fonte
 
-- Codice di Gara, art. 16 "Chiusure", caso della chiusura senza bonus per tallone
-  esaurito; art. 17 "Punteggi" per i negativi. La regola compare con formulazione
+- Codice di Gara FIBUR, ed. gennaio 2026 (Burraco tradizionale): art. 17 "Chiusure
+  (tipologie e bonus)", caso della chiusura senza bonus per tallone esaurito; art. 18
+  "Conteggio dei punti" per i negativi. La regola compare con formulazione
   equivalente nei Codici di Gara FIBUR e nel Codice di Gara Unico FGB (edizione
-  gennaio 2018). Il testo dell'edizione FIBUR aprile 2024 non è stato verificato
-  direttamente.
+  gennaio 2018). I codici Burraco Internazionale e Burraco Revolution usano una
+  numerazione diversa e non sono il riferimento del progetto.
 
 ### Regole ufficiali applicate
 
@@ -470,7 +471,7 @@ non introduce né modifica regole ufficiali FIBUR.
   conclusivo si applicano prima della conclusione, compresa la presa del pozzetto con
   lo scarto. Un pozzetto preso in questo modo resta nella mano e le sue carte sono
   conteggiate negativamente, coerentemente con il "pozzetto preso e non giocato"
-  dell'art. 17.
+  dell'art. 18.
 - Dopo la conclusione per esaurimento tutti i comandi di gioco sono rifiutati con
   `ROUND_COMPLETED`, come dopo una chiusura.
 
