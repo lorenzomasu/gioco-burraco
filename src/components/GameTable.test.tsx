@@ -67,7 +67,7 @@ const automaticSequenceState = (botMeld = false): InProgressGameState => {
     teams: initial.teams.map((team) => ({ ...team, melds: [], hasTakenPozzetto: false })),
     drawPile: [
       card('king', 'clubs'), card('queen', 'diamonds'), card('ace', 'hearts'),
-      card('jack', 'spades'), card('ten', 'diamonds'), card('nine', 'spades'),
+      card('jack', 'diamonds'), card('ten', 'diamonds'), card('eight', 'diamonds'),
     ],
     discardPile: [],
     round: {
