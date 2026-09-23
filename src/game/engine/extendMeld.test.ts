@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import type { Card, Rank, Suit } from '../cards/types'
-import { validateMeld, type ValidatedMeld } from '../melds'
+import { classifyBurraco, validateMeld, type ValidatedMeld } from '../melds'
 import type { GameState, PlayerId, TeamId } from '../state/types'
 import { GameRuleError, type GameErrorCode } from './errors'
 import { extendMeld } from './extendMeld'
@@ -160,6 +160,22 @@ describe('extendMeld', () => {
     expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'two' })
     expect(extended.activeWildcard?.card).toBe(wild)
     expect(extended.cards.find((placement) => placement.card.id === naturalFour.id)?.role).toBe('natural')
+  })
+
+  it('derives an updated Burraco classification after extending the stored meld', () => {
+    const wild = joker()
+    const existing = validatedMeld([
+      card('ace', 'spades'), card('two', 'spades'), card('three', 'spades'),
+      card('four', 'spades'), card('five', 'spades'), card('six', 'spades'), wild,
+    ])
+    expect(classifyBurraco(existing)).toBe('dirty')
+    const naturalSeven = card('seven', 'spades')
+
+    const next = extendMeld(stateFor([naturalSeven], [existing]), 'player-1', 0, [naturalSeven.id])
+    const extended = teamById(next, 'team-1').melds[0]!
+
+    expect(extended.cards.at(-1)?.role).toBe('wildcard')
+    expect(classifyBurraco(extended)).toBe('semi-clean')
   })
 
   it('keeps the current action turn and its acquisition data unchanged', () => {

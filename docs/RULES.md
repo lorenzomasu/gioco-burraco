@@ -160,13 +160,11 @@ dalla mano e non colloca ancora calate sul tavolo.
 ### Funzionalità rinviate
 
 - sostituire o spostare jolly e pinelle già sul tavolo;
-- classificazione del Burraco pulito, semipulito o sporco;
 - punteggio;
 - acquisizione del pozzetto;
 - chiusura.
 
-Queste funzioni dipendono dal ciclo di vita delle calate di tavolo e non devono essere
-dedotte dal solo risultato di validazione di una nuova calata.
+Queste funzioni restano fuori dall'attuale implementazione.
 
 ## Integrazione delle nuove calate — milestone 4
 
@@ -201,6 +199,36 @@ dedotte dal solo risultato di validazione di una nuova calata.
 - La riuscita rimuove dalla mano soltanto gli ID fisici richiesti, sostituisce solo
   la calata selezionata e non termina il turno. Qualunque errore lascia invariato
   l'intero stato di gioco.
+
+## Classificazione del Burraco — milestone 6
+
+- Una calata valida è un Burraco soltanto quando contiene almeno sette carte fisiche;
+  le calate valide da tre a sei carte sono classificate come `none` e restano
+  perfettamente lecite.
+- Un Burraco è pulito (`clean`) quando non contiene alcuna matta attiva. Una pinella
+  interpretata semanticamente come 2 naturale ha ruolo `natural` e non sporca il
+  Burraco.
+- Un jolly ha sempre ruolo di matta attiva. Una pinella assume ruolo di matta attiva
+  solo quando il validatore la colloca come `wildcard`; in entrambi i casi la calata
+  è sporca (`dirty`) salvo la condizione semipulita descritta di seguito.
+- Una sequenza è semipulita (`semi-clean`) quando la matta attiva si trova a una
+  estremità dell'ordine semantico normalizzato e precede o segue almeno sette altre
+  carte. Una matta interna resta sporca. Anche una matta libera oltre la sequenza
+  naturale completa Asso–King, con `representedRank: null`, resta una matta attiva e
+  segue la stessa regola posizionale.
+- Una combinazione è semipulita soltanto quando è composta da esattamente otto carte,
+  matta inclusa. La combinazione da sette carte con matta è sporca. La combinazione
+  legale da nove carte (otto naturali più una matta) è anch'essa sporca: il Codice di
+  Gara FIBUR 2026 riserva espressamente il semipulito alla combinazione di otto carte,
+  mentre classifica come sporco ogni Burraco con matta che non sia il 2 naturale.
+- La classificazione usa esclusivamente i ruoli semantici prodotti dalla validazione,
+  non il rango stampato della carta. È una proprietà derivata dal `ValidatedMeld`
+  corrente e non viene memorizzata nello stato: dopo un'estensione, la nuova calata
+  rivalidata produce sempre la classificazione aggiornata senza metadati di ciclo di
+  vita ridondanti.
+
+La classificazione non implementa punteggio, sostituzione o spostamento delle matte,
+pozzetto, chiusura o determinazione del vincitore.
 
 ## Riproducibilità
 
