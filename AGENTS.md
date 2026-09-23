@@ -11,15 +11,20 @@ Development is incremental and milestone-based.
 Before implementing any task, read:
 
 1. the task or milestone specification;
-2. `docs/RULES.md`;
-3. `docs/ARCHITECTURE.md` when present;
-4. the relevant implementation and tests.
+2. `docs/WORKFLOW.md`;
+3. `docs/RULES.md`;
+4. `docs/ARCHITECTURE.md` when present;
+5. the relevant implementation and tests.
 
 `docs/RULES.md` is authoritative for implemented game behaviour.
 
 Do not invent Burraco rules, product behaviour, or technical requirements.
 
 If documentation, tests, and implementation materially conflict, report the conflict instead of silently choosing an interpretation.
+
+Milestone preparation, implementation, independent review, fix, and merge responsibilities are defined in `docs/WORKFLOW.md`.
+
+Follow `docs/WORKFLOW.md` unless the user explicitly requests a different process.
 
 ## Git workflow
 
