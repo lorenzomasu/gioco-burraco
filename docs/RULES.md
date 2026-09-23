@@ -300,7 +300,37 @@ funzionalità rinviate.
   respinte prima di qualsiasi mutation. Non sono simulate le procedure arbitrali di
   ripristino delle carte o le penalità previste per il gioco fisico.
 - Questa milestone rappresenta esclusivamente la conclusione della smazzata: non
-  assegna il bonus numerico di chiusura, non calcola punti e non determina un vincitore.
+  determina un vincitore; il punteggio viene derivato separatamente come descritto
+  nella milestone 9.
+
+## Punteggio della smazzata — milestone 9
+
+- Il punteggio viene calcolato in modo puro dallo stato concluso della smazzata e non
+  viene mantenuto incrementalmente durante il gioco. Per ogni squadra il breakdown
+  espone punti delle carte calate, bonus Burraco, bonus di chiusura, penalità delle
+  carte in mano, penalità del pozzetto e totale.
+- Le carte fisiche valgono: jolly 30 punti; pinella (2) 20; Asso 15; King, Queen,
+  Jack, 10, 9 e 8 valgono 10; dal 7 al 3 valgono 5. Il valore dipende sempre dalla
+  faccia fisica: il rango eventualmente rappresentato da una matta non viene usato.
+- Tutte le carte fisiche nelle calate della squadra contribuiscono positivamente e le
+  copie provenienti dai due mazzi vengono conteggiate separatamente.
+- Ogni calata riceve il bonus derivato da `classifyBurraco`: pulito 200 punti,
+  semipulito 150, sporco 100, non-Burraco 0. I bonus di più Burraco si sommano.
+- La squadra indicata da `closingTeamId` riceve 100 punti di chiusura; l'altra non
+  riceve alcun bonus di chiusura.
+- Il valore delle carte rimaste nelle mani di entrambi i compagni è una penalità. Una
+  squadra che non ha preso il pozzetto riceve inoltre 100 punti di penalità, ma solo
+  se almeno una delle due squadre lo ha preso. Se nessuna squadra ha preso un
+  pozzetto, la penalità fissa non si applica.
+- Le penalità del breakdown sono magnitudini positive. La formula è:
+  `total = meldCardPoints + burracoBonus + closingBonus - handPenalty - pozzettoPenalty`.
+- Quando un pozzetto preso con lo scarto non è stato ancora giocato, le sue carte sono
+  già nella mano digitale del giocatore e vengono quindi sottratte una sola volta come
+  `handPenalty`; non esiste una seconda penalità per quelle stesse carte.
+
+Non sono ancora implementati Victory Points, Match Points, punteggio cumulativo tra
+più smazzate, soglia o vincitore della partita, punteggio da torneo, bonus e penalità
+arbitrali, timeout, stallo o conclusione per esaurimento del tallone.
 
 ## Riproducibilità
 

@@ -54,3 +54,7 @@ export type GameState = Readonly<{
 export type InProgressGameState = Omit<GameState, 'round'> & Readonly<{
   round: InProgressRoundState
 }>
+
+export type CompletedGameState = Omit<GameState, 'round'> & Readonly<{
+  round: CompletedRoundState
+}>
