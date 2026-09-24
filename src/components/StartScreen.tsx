@@ -1,18 +1,28 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { MatchSetup } from '../shell/matchSetup'
 
 type StartScreenProps = Readonly<{
   initialName?: string
   /** Minimal non-blocking message, e.g. when a previous local save could not be restored. */
   notice?: string | null
+  /**
+   * Moves keyboard focus to the onboarding heading once mounted, used when onboarding
+   * replaces a match whose invoking control disappeared. Off for the first page load.
+   */
+  focusOnMount?: boolean
   onStart: (setup: MatchSetup) => void
 }>
 
 const MAX_NAME_LENGTH = 24
 
-export function StartScreen({ initialName = '', notice = null, onStart }: StartScreenProps) {
+export function StartScreen({ initialName = '', notice = null, focusOnMount = false, onStart }: StartScreenProps) {
   const [name, setName] = useState(initialName)
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const trimmedName = name.trim()
+
+  useEffect(() => {
+    if (focusOnMount) headingRef.current?.focus()
+  }, [focusOnMount])
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -27,7 +37,7 @@ export function StartScreen({ initialName = '', notice = null, onStart }: StartS
           <span className="brand__mark" aria-hidden="true">B</span>
           <div>
             <span className="section-kicker">Partita locale</span>
-            <h1 id="start-title">Burraco</h1>
+            <h1 id="start-title" ref={headingRef} tabIndex={-1}>Burraco</h1>
           </div>
         </div>
 

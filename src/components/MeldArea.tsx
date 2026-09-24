@@ -33,9 +33,12 @@ export function MeldArea({ team, activeTeam, canExtend, onExtend }: MeldAreaProp
           <span className="section-kicker">Squadra {teamNumber}</span>
           <h2>Calate</h2>
         </div>
-        <span className={`pozzetto-status ${team.hasTakenPozzetto ? 'pozzetto-status--taken' : ''}`}>
-          Pozzetto {team.hasTakenPozzetto ? 'preso' : 'da prendere'}
-        </span>
+        <div className="meld-area__states">
+          {activeTeam && <span className="turn-badge">Di turno</span>}
+          <span className={`pozzetto-status ${team.hasTakenPozzetto ? 'pozzetto-status--taken' : ''}`}>
+            Pozzetto {team.hasTakenPozzetto ? 'preso' : 'da prendere'}
+          </span>
+        </div>
       </header>
 
       {team.melds.length === 0 ? (
@@ -45,9 +48,16 @@ export function MeldArea({ team, activeTeam, canExtend, onExtend }: MeldAreaProp
           {team.melds.map((meld, meldIndex) => {
             const classification = classifyBurraco(meld)
             return (
-              <article className="meld" key={`${team.id}-meld-${meldIndex}`}>
+              <article
+                className="meld"
+                key={`${team.id}-meld-${meldIndex}`}
+                aria-label={`Calata ${meldIndex + 1} squadra ${teamNumber}`}
+              >
                 <div className="meld__meta">
-                  <span>{meld.type === 'group' ? 'Combinazione' : 'Sequenza'}</span>
+                  <span className="meld__label">
+                    <span className="meld__index">Calata {meldIndex + 1}</span>
+                    <span>{meld.type === 'group' ? 'Combinazione' : 'Sequenza'}</span>
+                  </span>
                   {classification !== 'none' && (
                     <strong className={`burraco-badge burraco-badge--${classification}`}>
                       {burracoLabels[classification]}
@@ -70,6 +80,7 @@ export function MeldArea({ team, activeTeam, canExtend, onExtend }: MeldAreaProp
                     className="button button--small button--ghost"
                     onClick={() => onExtend(meldIndex)}
                     disabled={!canExtend}
+                    aria-label={`Aggiungi alla calata ${meldIndex + 1} della squadra ${teamNumber}`}
                   >
                     Aggiungi alla calata
                   </button>

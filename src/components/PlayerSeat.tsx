@@ -14,6 +14,7 @@ export function PlayerSeat({ player, position, bot = false, active = false }: Pl
       aria-label={`Giocatore ${player.name}`}
       aria-current={active ? 'true' : undefined}
     >
+      {active && <span className="turn-badge player-seat__turn">Di turno</span>}
       <span className="player-seat__avatar" aria-hidden="true">{player.name.charAt(0)}</span>
       <span className="player-seat__details">
         <strong>{player.name}{bot ? ' · Bot' : ''}</strong>

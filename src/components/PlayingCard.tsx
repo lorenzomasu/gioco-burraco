@@ -29,6 +29,7 @@ export function PlayingCard({ card, selected = false, onToggle, compact = false,
     card.rank === 'joker' ? 'playing-card--joker' : '',
     selected ? 'playing-card--selected' : '',
     compact ? 'playing-card--compact' : '',
+    annotation ? 'playing-card--annotated' : '',
   ].filter(Boolean).join(' ')
 
   if (onToggle) {
@@ -41,6 +42,7 @@ export function PlayingCard({ card, selected = false, onToggle, compact = false,
         onClick={() => onToggle(card.id)}
       >
         <CardFace card={card} annotation={annotation} />
+        {selected && <span className="playing-card__check" aria-hidden="true">✓</span>}
       </button>
     )
   }

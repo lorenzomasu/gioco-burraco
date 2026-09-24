@@ -46,6 +46,11 @@ type GameTableProps = Readonly<{
    * playback speed never trigger it.
    */
   onMatchChange?: (match: MatchState) => void
+  /**
+   * Moves keyboard focus to the table's context (turn status) once mounted, used when the
+   * match replaces onboarding. Later round/result replacements always move focus.
+   */
+  focusContextOnMount?: boolean
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -128,6 +133,42 @@ const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
   return { right: byOffset(1), top: byOffset(2), left: byOffset(3) }
 }
 
+type TurnGuidanceContext = Readonly<{
+  isBotPlaying: boolean
+  phase: 'mustDraw' | 'action'
+  canDrawStock: boolean
+  canTakeDiscardPile: boolean
+  hasTeamMelds: boolean
+}>
+
+/**
+ * Concise help for operating the current phase of the digital table. It only restates
+ * which rendered controls are enabled; legality stays with the engine.
+ */
+const turnGuidance = ({
+  isBotPlaying,
+  phase,
+  canDrawStock,
+  canTakeDiscardPile,
+  hasTeamMelds,
+}: TurnGuidanceContext): string => {
+  if (isBotPlaying) {
+    return 'I bot giocano automaticamente. Attendi il tuo turno oppure usa «Completa subito» per concludere le loro mosse.'
+  }
+  if (phase === 'mustDraw') {
+    if (canDrawStock && canTakeDiscardPile) {
+      return 'Tocca a te: pesca una carta dal tallone oppure raccogli il monte degli scarti.'
+    }
+    if (canDrawStock) return 'Tocca a te: pesca una carta dal tallone. Il monte degli scarti è vuoto.'
+    if (canTakeDiscardPile) return 'Tocca a te: il tallone è vuoto, raccogli il monte degli scarti.'
+    return 'Nessuna pesca è disponibile.'
+  }
+  const meldHelp = hasTeamMelds
+    ? 'Seleziona le carte per aprire una nuova calata con «Cala» o per aggiungerle a una calata della tua squadra.'
+    : 'Seleziona le carte per aprire una nuova calata con «Cala».'
+  return `${meldHelp} Per finire il turno seleziona una sola carta e premi «Scarta e passa».`
+}
+
 const italianErrorMessages: Readonly<Record<string, string>> = {
   NOT_CURRENT_PLAYER: 'Può agire soltanto il giocatore di turno.',
   INVALID_TURN_PHASE: 'Questa azione non è disponibile nella fase attuale.',
@@ -153,6 +194,7 @@ export function GameTable({
   playbackSpeed: controlledPlaybackSpeed,
   onPlaybackSpeedChange,
   onMatchChange,
+  focusContextOnMount = false,
 }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
@@ -173,6 +215,19 @@ export function GameTable({
   const { match, botEvents } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
+
+  // Focus follows major replacements of the primary view (a fresh round or the
+  // completed-round result), never ordinary card actions or bot timeline events.
+  const turnStatusRef = useRef<HTMLDivElement>(null)
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null)
+  const viewKey = `${match.currentRoundNumber}:${game.round.status}`
+  const focusedViewRef = useRef<string | null>(focusContextOnMount ? null : viewKey)
+  useEffect(() => {
+    if (focusedViewRef.current === viewKey) return
+    focusedViewRef.current = viewKey
+    const target = game.round.status === 'completed' ? resultHeadingRef.current : turnStatusRef.current
+    target?.focus()
+  }, [viewKey, game.round.status])
 
   const onMatchChangeRef = useRef(onMatchChange)
   useEffect(() => {
@@ -256,8 +311,8 @@ export function GameTable({
           <strong>Burraco</strong>
         </div>
       </div>
+      <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
       <div className="game-header__actions">
-        <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
         <fieldset className="playback-controls">
           <legend>Velocità bot</legend>
           {(['normal', 'fast'] as const).map((speed) => (
@@ -294,7 +349,7 @@ export function GameTable({
     return (
       <main className="game-shell">
         {shellHeader}
-        <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} />
+        <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} headingRef={resultHeadingRef} />
         <BotActionTimeline events={botEvents} players={game.players} />
         <section className="match-summary" aria-labelledby="match-summary-title">
           <span className="round-complete__eyebrow">
@@ -355,6 +410,16 @@ export function GameTable({
   const sortedHand = sortCardsForDisplay(humanPlayer.hand)
   const untouchedPozzetti = game.pozzetti.filter((pozzetto) => pozzetto.length > 0).length
   const discardTop = game.discardPile.at(-1)
+  const isDrawPhase = isHumanTurn && round.turn.phase === 'mustDraw'
+  const canDrawStock = isDrawPhase && game.drawPile.length > 0
+  const canTakeDiscardPile = isDrawPhase && discardTop !== undefined
+  const guidance = turnGuidance({
+    isBotPlaying,
+    phase: round.turn.phase,
+    canDrawStock,
+    canTakeDiscardPile,
+    hasTeamMelds: activeTeam.melds.length > 0,
+  })
 
   return (
     <main className="game-shell">
@@ -365,22 +430,25 @@ export function GameTable({
         <PlayerSeat player={seats.right} position="right" bot active={seats.right.id === activePlayer.id} />
 
         <div className="table-center">
-          <div className="turn-banner" aria-live="polite">
-            <span className="turn-banner__pulse" aria-hidden="true" />
-            <div>
-              <span>Turno di</span>
-              <strong>{activePlayer.name}</strong>
-            </div>
-            <div className="turn-banner__phase">
-              <span>Fase</span>
-              <strong>{round.turn.phase === 'mustDraw' ? 'Pesca' : 'Gioco'}</strong>
-            </div>
-            {isBotPlaying && (
-              <div className="turn-banner__phase">
-                <span>Stato</span>
-                <strong>Bot in gioco…</strong>
+          <div className="turn-status" ref={turnStatusRef} tabIndex={-1}>
+            <div className="turn-banner" aria-live="polite" aria-atomic="true">
+              <span className="turn-banner__pulse" aria-hidden="true" />
+              <div>
+                <span>Turno di</span>
+                <strong>{activePlayer.name}</strong>
               </div>
-            )}
+              <div className="turn-banner__phase">
+                <span>Fase</span>
+                <strong>{round.turn.phase === 'mustDraw' ? 'Pesca' : 'Gioco'}</strong>
+              </div>
+              {isBotPlaying && (
+                <div className="turn-banner__phase">
+                  <span>Stato</span>
+                  <strong>Bot in gioco…</strong>
+                </div>
+              )}
+            </div>
+            <p className="turn-guidance">{guidance}</p>
           </div>
 
           <div className="pile-zone" aria-label="Tallone e monte degli scarti">
@@ -388,7 +456,7 @@ export function GameTable({
               type="button"
               className="pile-control"
               onClick={() => commitAction(() => drawCard(game, humanPlayerId))}
-              disabled={!isHumanTurn || round.turn.phase !== 'mustDraw' || game.drawPile.length === 0}
+              disabled={!canDrawStock}
               aria-label={`Pesca dal tallone, ${game.drawPile.length} carte rimaste`}
             >
               <span className="card-back" aria-hidden="true"><span>B</span></span>
@@ -406,7 +474,7 @@ export function GameTable({
               type="button"
               className="pile-control"
               onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId))}
-              disabled={!isHumanTurn || round.turn.phase !== 'mustDraw' || !discardTop}
+              disabled={!canTakeDiscardPile}
               aria-label={discardTop
                 ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
                 : 'Monte degli scarti vuoto'}
@@ -438,7 +506,10 @@ export function GameTable({
               <span className="section-kicker">Giocatore umano · Squadra {humanPlayer.teamId === 'team-1' ? '1' : '2'}</span>
               <h1>{humanPlayer.name}</h1>
             </div>
-            <span className="hand-count">{humanPlayer.hand.length} carte</span>
+            <span className="active-player__status">
+              {isHumanTurn && <span className="turn-badge">Di turno</span>}
+              <span className="hand-count">{humanPlayer.hand.length} carte</span>
+            </span>
           </header>
 
           <div className="hand" aria-label={`Carte di ${humanPlayer.name}`}>
@@ -479,7 +550,14 @@ export function GameTable({
             <div className="rule-error" role="alert">
               <span aria-hidden="true">!</span>
               <p><strong>Mossa non valida</strong>{ruleError}</p>
-              <button type="button" onClick={() => setRuleError(null)} aria-label="Chiudi messaggio di errore">×</button>
+              <button
+                type="button"
+                className="rule-error__dismiss"
+                onClick={() => setRuleError(null)}
+                aria-label="Chiudi messaggio di errore"
+              >
+                ×
+              </button>
             </div>
           )}
         </section>

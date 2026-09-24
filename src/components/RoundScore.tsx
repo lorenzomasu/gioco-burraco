@@ -1,14 +1,17 @@
+import type { Ref } from 'react'
 import type { RoundScore as RoundScoreValue } from '../game/scoring'
 import type { CompletedGameState, PlayerId } from '../game/state/types'
 
 type RoundScoreProps = Readonly<{
   game: CompletedGameState
   score: RoundScoreValue
+  /** Programmatic focus target announcing the completed smazzata (never in the tab order). */
+  headingRef?: Ref<HTMLHeadingElement>
 }>
 
 const signed = (value: number): string => value > 0 ? `+${value}` : `${value}`
 
-export function RoundScore({ game, score }: RoundScoreProps) {
+export function RoundScore({ game, score, headingRef }: RoundScoreProps) {
   const round = game.round
   const playerName = (playerId: PlayerId): string =>
     game.players.find((player) => player.id === playerId)?.name ?? playerId
@@ -18,12 +21,12 @@ export function RoundScore({ game, score }: RoundScoreProps) {
       <span className="round-complete__eyebrow">Smazzata conclusa</span>
       {round.ending === 'closure' ? (
         <>
-          <h1 id="round-complete-title">Ha chiuso {playerName(round.closedByPlayerId)}</h1>
+          <h1 id="round-complete-title" ref={headingRef} tabIndex={-1}>Ha chiuso {playerName(round.closedByPlayerId)}</h1>
           <p>La Squadra {round.closingTeamId === 'team-1' ? '1' : '2'} ottiene il bonus di chiusura.</p>
         </>
       ) : (
         <>
-          <h1 id="round-complete-title">Tallone esaurito</h1>
+          <h1 id="round-complete-title" ref={headingRef} tabIndex={-1}>Tallone esaurito</h1>
           <p>
             L’ultimo scarto è di {playerName(round.lastDiscardPlayerId)}. Nessuna squadra
             ottiene il bonus di chiusura.
@@ -33,7 +36,11 @@ export function RoundScore({ game, score }: RoundScoreProps) {
 
       <div className="score-grid">
         {score.teams.map((teamScore) => (
-          <article className="score-card" key={teamScore.teamId}>
+          <article
+            className="score-card"
+            key={teamScore.teamId}
+            aria-label={`Punteggio smazzata squadra ${teamScore.teamId === 'team-1' ? '1' : '2'}`}
+          >
             <header>
               <span>Squadra {teamScore.teamId === 'team-1' ? '1' : '2'}</span>
               <strong>{signed(teamScore.total)}</strong>

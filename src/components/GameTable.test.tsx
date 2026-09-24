@@ -265,7 +265,7 @@ describe('GameTable', () => {
     render(<GameTable initialState={actionState([extension, remainingCard], [existingMeld])} />)
 
     fireEvent.click(screen.getByRole('button', { name: cardLabel(extension) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' }))
 
     const teamArea = screen.getByRole('region', { name: 'Calate squadra 1' })
     expect(within(teamArea).getAllByRole('img')).toHaveLength(4)
@@ -287,7 +287,7 @@ describe('GameTable', () => {
 
     expect(screen.getByText('Matta → 4')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: cardLabel(replacement) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' }))
 
     expect(screen.queryByText('Matta → 4')).not.toBeInTheDocument()
     expect(screen.getByText('Matta → 2')).toBeInTheDocument()
@@ -613,4 +613,263 @@ describe('GameTable', () => {
       expect(createGame).not.toHaveBeenCalled()
     },
   )
+})
+
+const drawPhaseState = (discardPile?: readonly Card[]): InProgressGameState => {
+  const initial = dealInitialState(deck)
+  return {
+    ...initial,
+    discardPile: discardPile ?? initial.discardPile,
+    round: { status: 'in-progress', turn: { currentPlayerId: 'player-1', phase: 'mustDraw' } },
+  }
+}
+
+const turnStatus = () => screen.getByText('Turno di').closest('[tabindex="-1"]')
+
+describe('GameTable accessibility and interaction semantics', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('exposes playable cards as named toggle buttons with a non-colour selected marker', () => {
+    const selectable = card('seven', 'clubs')
+    render(<GameTable initialState={actionState([selectable, card('king', 'spades')])} />)
+    const button = screen.getByRole('button', { name: cardLabel(selectable) })
+
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(within(button).queryByText('✓')).not.toBeInTheDocument()
+
+    fireEvent.click(button)
+
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(within(button).getByText('✓')).toHaveAttribute('aria-hidden', 'true')
+    expect(button).toHaveAccessibleName(cardLabel(selectable))
+
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(within(button).queryByText('✓')).not.toBeInTheDocument()
+  })
+
+  it('keeps unavailable actions as genuinely disabled native controls', () => {
+    const existingMeld = validatedMeld([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')])
+    render(<GameTable initialState={actionState([card('seven', 'spades'), card('king', 'spades')], [existingMeld])} />)
+
+    expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' })).toBeDisabled()
+  })
+
+  it('gives every meld-extension control a unique name identifying team and meld', () => {
+    const firstMeld = validatedMeld([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')])
+    const secondMeld = validatedMeld([card('three', 'hearts'), card('four', 'hearts'), card('five', 'hearts')])
+    const extension = card('six', 'hearts')
+    render(<GameTable initialState={actionState([extension, card('king', 'spades')], [firstMeld, secondMeld])} />)
+
+    const extendButtons = screen.getAllByRole('button', { name: /^Aggiungi alla calata/ })
+    const names = extendButtons.map((button) => button.getAttribute('aria-label'))
+    expect(names).toEqual([
+      'Aggiungi alla calata 1 della squadra 1',
+      'Aggiungi alla calata 2 della squadra 1',
+    ])
+    expect(extendButtons.map((button) => button.textContent)).toEqual(['Aggiungi alla calata', 'Aggiungi alla calata'])
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(extension) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 2 della squadra 1' }))
+
+    expect(within(screen.getByRole('article', { name: 'Calata 1 squadra 1' })).getAllByRole('img')).toHaveLength(3)
+    expect(within(screen.getByRole('article', { name: 'Calata 2 squadra 1' })).getAllByRole('img')).toHaveLength(4)
+  })
+
+  it('marks the current player and active team with text, not colour alone', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+
+    const hand = screen.getByRole('region', { name: 'Mano di You' })
+    expect(within(hand).getByText('Di turno')).toBeInTheDocument()
+    for (const name of ['North', 'Partner', 'South']) {
+      const seat = screen.getByRole('region', { name: `Giocatore ${name}` })
+      expect(seat).not.toHaveAttribute('aria-current')
+      expect(within(seat).queryByText('Di turno')).not.toBeInTheDocument()
+    }
+    expect(within(screen.getByRole('region', { name: 'Calate squadra 1' })).getByText('Di turno')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Calate squadra 2' })).queryByText('Di turno')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+
+    const north = screen.getByRole('region', { name: 'Giocatore North' })
+    expect(north).toHaveAttribute('aria-current', 'true')
+    expect(within(north).getByText('Di turno')).toBeInTheDocument()
+    expect(within(hand).queryByText('Di turno')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Calate squadra 2' })).getByText('Di turno')).toBeInTheDocument()
+    expect(screen.getAllByText('Di turno')).toHaveLength(2)
+  })
+
+  it('exposes the bot timeline as a polite log that appends events without re-rendering history', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+
+    const log = screen.getByRole('log', { name: 'Cronologia bot' })
+    expect(log).toHaveAttribute('aria-live', 'polite')
+    expect(log).toHaveAttribute('aria-relevant', 'additions')
+    expect(within(log).queryAllByRole('listitem')).toHaveLength(0)
+    expect(log).not.toHaveTextContent('Nessuna azione automatica')
+    expect(screen.getByText('Nessuna azione automatica in questa smazzata.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+
+    const firstItems = within(log).getAllByRole('listitem')
+    expect(firstItems.length).toBeGreaterThan(0)
+
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+
+    expect(screen.getByRole('log', { name: 'Cronologia bot' })).toBe(log)
+    const nextItems = within(log).getAllByRole('listitem')
+    expect(nextItems.length).toBeGreaterThan(firstItems.length)
+    // Existing entries are the same DOM nodes: only the appended entries are additions.
+    firstItems.forEach((item, index) => expect(nextItems[index]).toBe(item))
+    expect(screen.queryByText('Nessuna azione automatica in questa smazzata.')).not.toBeInTheDocument()
+  })
+
+  it('keeps one polite atomic turn status, an alert for rule errors, and non-live guidance', () => {
+    const invalid = [card('three', 'clubs'), card('five', 'hearts'), card('seven', 'spades')]
+    render(<GameTable initialState={actionState([...invalid, card('king', 'spades')])} />)
+
+    const banner = screen.getByText('Turno di').closest('[aria-live]')
+    expect(banner).toHaveAttribute('aria-live', 'polite')
+    expect(banner).toHaveAttribute('aria-atomic', 'true')
+    expect(banner).toHaveTextContent('You')
+    expect(banner).toHaveTextContent('Gioco')
+    expect(screen.getByText(/^Seleziona le carte/).closest('[aria-live], [role="status"], [role="alert"]')).toBeNull()
+
+    for (const selected of invalid) fireEvent.click(screen.getByRole('button', { name: cardLabel(selected) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
+
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('Le carte selezionate non formano una calata valida.')
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi messaggio di errore' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('adapts the contextual guidance to the draw, action and bot phases without claiming disabled actions', () => {
+    const { unmount } = render(<GameTable initialState={drawPhaseState()} />)
+    expect(screen.getByText('Tocca a te: pesca una carta dal tallone oppure raccogli il monte degli scarti.'))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeEnabled()
+    unmount()
+
+    render(<GameTable initialState={drawPhaseState([])} />)
+    expect(screen.getByText('Tocca a te: pesca una carta dal tallone. Il monte degli scarti è vuoto.'))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Monte degli scarti vuoto' })).toBeDisabled()
+    expect(screen.queryByText(/raccogli il monte/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Pesca dal tallone/ }))
+    expect(screen.getByText(
+      'Seleziona le carte per aprire una nuova calata con «Cala». Per finire il turno seleziona una sola carta e premi «Scarta e passa».',
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/Tocca a te/)).not.toBeInTheDocument()
+  })
+
+  it('mentions meld extension only when the team has melds, and Completa subito only while it is rendered', () => {
+    const existingMeld = validatedMeld([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')])
+    const { unmount } = render(
+      <GameTable initialState={actionState([card('seven', 'spades'), card('king', 'spades')], [existingMeld])} />,
+    )
+    expect(screen.getByText(/per aggiungerle a una calata della tua squadra/)).toBeInTheDocument()
+    unmount()
+
+    render(<GameTable initialState={automaticSequenceState()} />)
+    expect(screen.queryByText(/Completa subito/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+
+    expect(screen.getByRole('button', { name: 'Completa subito' })).toBeInTheDocument()
+    expect(screen.getByText(
+      'I bot giocano automaticamente. Attendi il tuo turno oppure usa «Completa subito» per concludere le loro mosse.',
+    )).toBeInTheDocument()
+
+    playPendingBots()
+    expect(screen.queryByRole('button', { name: 'Completa subito' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/I bot giocano automaticamente/)).not.toBeInTheDocument()
+  })
+})
+
+describe('GameTable lifecycle focus', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('does not move focus on mount unless the owner asks for it', () => {
+    const { unmount } = render(<GameTable initialState={drawPhaseState()} />)
+    expect(document.activeElement).toBe(document.body)
+    unmount()
+
+    render(<GameTable initialState={drawPhaseState()} focusContextOnMount />)
+    expect(turnStatus()).toHaveFocus()
+  })
+
+  it('moves focus to the result heading when a bot completes the round', () => {
+    render(<GameTable initialState={botClosureState()} />)
+    const fast = screen.getByRole('radio', { name: 'Veloce' })
+    fast.focus()
+
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Ha chiuso North' })).toHaveFocus()
+  })
+
+  it('moves focus to the fresh round turn status when the next smazzata starts', () => {
+    render(<GameTable initialState={emptyCompletedRound()} createGame={() => dealInitialState(deck)} />)
+    expect(document.activeElement).toBe(document.body)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    expect(turnStatus()).toHaveFocus()
+    expect(turnStatus()).toHaveTextContent('You')
+  })
+
+  it('does not steal focus on card selection, committed actions or bot timeline events', () => {
+    const state = automaticSequenceState()
+    render(<GameTable initialState={state} />)
+    const keep = screen.getByRole('button', { name: cardLabel(card('ace', 'spades')) })
+    keep.focus()
+    fireEvent.click(keep)
+    expect(keep).toHaveFocus()
+    fireEvent.click(keep)
+
+    const speed = screen.getByRole('radio', { name: 'Normale' })
+    speed.focus()
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+
+    expect(within(screen.getByRole('log', { name: 'Cronologia bot' })).getAllByRole('listitem').length)
+      .toBeGreaterThan(0)
+    expect(speed).toHaveFocus()
+  })
 })

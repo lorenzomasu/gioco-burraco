@@ -239,6 +239,27 @@ UI responsibilities are limited primarily to:
 
 Domain decisions belong under `src/game`.
 
+### Interaction and accessibility invariants
+
+These presentation contracts are transient React concerns; none of them is stored in
+`GameState`, `MatchState` or the local save.
+
+- Keyboard focus moves only on major view replacements, to a non-tab-stop context
+  target (`tabIndex={-1}`): onboarding → match and a fresh round focus the table's turn
+  status; a completed round focuses its result heading; returning to onboarding focuses
+  its heading. The first page load, including a restored save, never moves focus, and
+  ordinary card actions or bot events never do.
+- The bot timeline is a mounted `role="log"` polite region announcing additions only;
+  existing entries are never re-rendered as new nodes, so history is not re-announced.
+- The turn banner is the single polite status for turn and phase; rule errors are
+  `role="alert"`, storage notices `role="status"` in normal document flow. Contextual
+  guidance is plain text derived from the same enabled/disabled values as the controls,
+  never an independent legality check.
+- Critical states (selected card, current player, active team, pozzetto) carry a text or
+  shape cue in addition to colour, and unavailable actions stay native `disabled`.
+- Responsive behaviour lives in CSS breakpoints (1000 px, 760 px, 440 px), not in
+  JavaScript viewport branching.
+
 ## Source-of-truth relationship
 
 `docs/RULES.md` is authoritative for implemented Burraco behaviour.

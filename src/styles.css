@@ -17,10 +17,15 @@ body {
 
 button { font: inherit; }
 
-button:focus-visible {
+/* One visible keyboard-focus treatment for every focusable control. */
+:where(button, input, [tabindex]):focus-visible {
   outline: 3px solid #f6c760;
   outline-offset: 3px;
 }
+
+/* Programmatic context targets (headings, turn status) are never in the tab order. */
+[tabindex='-1']:focus:not(:focus-visible) { outline: none; }
+[tabindex='-1']:focus-visible { outline: 2px dashed #f6c760; outline-offset: 4px; border-radius: .4rem; }
 
 .game-shell {
   min-height: 100vh;
@@ -31,22 +36,29 @@ button:focus-visible {
   width: min(1480px, 100%);
   margin: 0 auto 1rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: .75rem 1rem;
 }
 
-.game-header__actions { display: flex; align-items: center; gap: .75rem; }
+.game-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem .75rem;
+}
 
 .playback-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: .5rem;
+  gap: .4rem;
   margin: 0;
   padding: 0;
   border: 0;
-  color: #b9cfc5;
-  font-size: .73rem;
+  color: #cfe0d8;
+  font-size: .78rem;
 }
 
 .playback-controls legend {
@@ -57,13 +69,38 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-.playback-controls__option { display: inline-flex; align-items: center; gap: .25rem; cursor: pointer; }
+/* The whole label is the touch target; the checked option also shows the native radio dot. */
+.playback-controls__option {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: .35rem .7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: .7rem;
+  background: rgba(255, 255, 255, .05);
+  cursor: pointer;
+}
+
+.playback-controls__option input { margin: 0; accent-color: #f6c760; }
+.playback-controls__option input:focus-visible { outline: none; }
+.playback-controls__option:has(input:focus-visible) { outline: 3px solid #f6c760; outline-offset: 2px; }
+
+.playback-controls__option:has(input:checked) {
+  border-color: #f6c760;
+  color: #f8f4e9;
+  background: rgba(246, 199, 96, .14);
+  font-weight: 700;
+}
 
 .round-indicator {
+  margin-left: auto;
   color: #f6c760;
-  font-size: .78rem;
+  font-size: .8rem;
   letter-spacing: .06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .brand { display: flex; align-items: center; gap: .75rem; }
@@ -99,7 +136,7 @@ button:focus-visible {
 }
 
 .button {
-  min-height: 2.65rem;
+  min-height: 2.75rem;
   padding: .65rem 1.05rem;
   border: 0;
   border-radius: .7rem;
@@ -109,7 +146,15 @@ button:focus-visible {
 }
 
 .button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
-.button:disabled { cursor: not-allowed; opacity: .42; }
+/* Disabled actions lose their fill (not only opacity) and stay native disabled controls. */
+.button:disabled {
+  border: 1px dashed rgba(185, 207, 197, .6);
+  color: #b9cfc5;
+  background: transparent;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .75;
+}
 
 .button--new,
 .button--ghost {
@@ -131,7 +176,7 @@ button:focus-visible {
 }
 
 .button--small {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: .4rem .65rem;
   border-radius: .5rem;
   font-size: .73rem;
@@ -139,6 +184,7 @@ button:focus-visible {
 
 .table-surface {
   width: min(1480px, 100%);
+  min-width: 0;
   min-height: calc(100vh - 6rem);
   margin: 0 auto;
   padding: 1.2rem;
@@ -147,7 +193,6 @@ button:focus-visible {
   grid-template-rows: auto minmax(25rem, 1fr) auto;
   grid-template-areas: '. top .' 'left center right' 'active active active';
   gap: 1rem;
-  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, .12);
   border-radius: 2rem;
   background:
@@ -159,6 +204,7 @@ button:focus-visible {
 }
 
 .player-seat {
+  position: relative;
   width: min(100%, 15rem);
   min-height: 4rem;
   padding: .65rem .8rem;
@@ -175,9 +221,27 @@ button:focus-visible {
 }
 
 .player-seat--active {
-  border-color: rgba(246, 199, 96, .6);
+  border-color: #f6c760;
   box-shadow: 0 0 0 3px rgba(246, 199, 96, .16), 0 10px 25px rgba(0, 0, 0, .16);
 }
+
+/* Current-turn marker in text, so the active seat is not signalled by colour alone. */
+.turn-badge {
+  display: inline-block;
+  padding: .14rem .5rem;
+  border-radius: 999px;
+  color: #102019;
+  background: #f6c760;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Overlaps the seat border so the marker never changes the seat's size. */
+.player-seat__turn { position: absolute; top: 0; left: 50%; transform: translate(-50%, -60%); }
 
 .player-seat--top { grid-area: top; }
 .player-seat--left { grid-area: left; }
@@ -198,7 +262,7 @@ button:focus-visible {
 
 .player-seat__details { min-width: 0; display: flex; flex: 1; flex-direction: column; }
 .player-seat__details strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-seat__details span { color: #b9cfc5; font-size: .72rem; }
+.player-seat__details span { color: #cfe0d8; font-size: .72rem; }
 
 .player-seat__cards {
   display: flex;
@@ -228,11 +292,21 @@ button:focus-visible {
   gap: 1rem;
 }
 
-.turn-banner {
-  width: fit-content;
+.turn-status {
+  max-width: 100%;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .45rem;
+}
+
+.turn-banner {
+  max-width: 100%;
   padding: .55rem .75rem;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: .6rem;
   border: 1px solid rgba(246, 199, 96, .34);
@@ -248,13 +322,26 @@ button:focus-visible {
   box-shadow: 0 0 0 5px rgba(246, 199, 96, .12);
 }
 
-.turn-banner div { display: flex; flex-direction: column; font-size: .78rem; }
-.turn-banner div span { color: #b9cfc5; font-size: .62rem; text-transform: uppercase; }
+.turn-banner div { min-width: 0; display: flex; flex-direction: column; font-size: .8rem; }
+.turn-banner div span { color: #cfe0d8; font-size: .64rem; text-transform: uppercase; }
+.turn-banner strong { overflow-wrap: anywhere; }
 
 .turn-banner__phase {
   margin-left: .3rem;
   padding-left: .8rem;
   border-left: 1px solid rgba(255, 255, 255, .16);
+}
+
+.turn-guidance {
+  max-width: 40rem;
+  margin: 0;
+  padding: .45rem .75rem;
+  border-radius: .7rem;
+  color: #e3eee8;
+  background: rgba(4, 27, 21, .72);
+  font-size: .8rem;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .pile-zone {
@@ -266,6 +353,7 @@ button:focus-visible {
 
 .pile-control {
   min-width: 7.3rem;
+  min-height: 2.75rem;
   padding: .3rem;
   display: flex;
   flex-direction: column;
@@ -279,8 +367,10 @@ button:focus-visible {
 }
 
 .pile-control:hover:not(:disabled) { background: rgba(255, 255, 255, .07); }
-.pile-control:disabled { cursor: not-allowed; opacity: .54; }
-.pile-control > span:last-child { color: #b9cfc5; font-size: .72rem; }
+/* Only the pile artwork dims: the pile name and card count stay readable information. */
+.pile-control:disabled { cursor: not-allowed; }
+.pile-control:disabled > :first-child { opacity: .55; filter: grayscale(.7); }
+.pile-control > span:last-child { color: #eef5f1; font-size: .75rem; }
 
 .pile-control__card,
 .card-back,
@@ -317,19 +407,20 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #b9cfc5;
-  font-size: .67rem;
+  color: #eef5f1;
+  font-size: .68rem;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
 
 .pozzetti-counter strong { color: #fff; font-family: 'Playfair Display', Georgia, serif; font-size: 1.6rem; }
-.pozzetti-counter small { font-size: .55rem; letter-spacing: 0; }
+.pozzetti-counter small { font-size: .62rem; letter-spacing: 0; text-align: center; }
 
 .team-areas {
   min-height: 10.7rem;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Two columns when both fit comfortably, otherwise one (intrinsic, no extra breakpoint). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   gap: .8rem;
 }
 
@@ -341,22 +432,24 @@ button:focus-visible {
   background: rgba(5, 37, 28, .48);
 }
 
-.meld-area--active { border-color: rgba(246, 199, 96, .42); box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .08); }
-.meld-area__header { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.meld-area--active { border-color: #f6c760; box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .2); }
+.meld-area__header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.meld-area__header .section-kicker { white-space: nowrap; }
+.meld-area__states { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .35rem; }
 .meld-area h2 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.05rem; }
 
 .pozzetto-status {
   padding: .3rem .45rem;
   border-radius: 999px;
-  color: #d9b0a9;
-  background: rgba(129, 48, 41, .28);
-  font-size: .63rem;
+  color: #f1c4bd;
+  background: rgba(129, 48, 41, .38);
+  font-size: .68rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .pozzetto-status--taken { color: #bee4ce; background: rgba(90, 174, 124, .2); }
-.meld-area__empty { margin: 2rem 0 1rem; color: rgba(220, 235, 227, .54); font-size: .78rem; text-align: center; }
+.meld-area__empty { margin: 2rem 0 1rem; color: #b9cfc5; font-size: .8rem; text-align: center; }
 
 .meld-list {
   max-height: 18rem;
@@ -374,15 +467,21 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #b9cfc5;
-  font-size: .68rem;
+  gap: .5rem;
+  color: #cfe0d8;
+  font-size: .72rem;
 }
+
+.meld__label { display: flex; flex-wrap: wrap; gap: .4rem; }
+.meld__index { color: #f8f4e9; font-weight: 700; }
 
 .burraco-badge { padding: .18rem .4rem; border-radius: 999px; color: #173327; background: #e6d8ad; }
 .burraco-badge--semi-clean { background: #c8d8dd; }
 .burraco-badge--dirty { color: #f7eee3; background: #9b5a48; }
 .meld__cards { padding: .25rem .2rem .55rem; display: flex; overflow-x: auto; }
 .meld__cards .playing-card + .playing-card { margin-left: -1.25rem; }
+/* A wildcard/pinella annotation stays fully readable instead of being covered. */
+.meld__cards .playing-card--annotated + .playing-card { margin-left: .2rem; }
 
 .playing-card {
   position: relative;
@@ -403,12 +502,13 @@ button.playing-card:hover { transform: translateY(-.35rem); box-shadow: 0 9px 18
 
 .playing-card--selected {
   border-color: #f6c760;
+  border-width: 3px;
   transform: translateY(-.65rem);
   box-shadow: 0 0 0 3px rgba(246, 199, 96, .24), 0 10px 20px rgba(0, 0, 0, .35);
 }
 
 button.playing-card--selected:hover { transform: translateY(-.65rem); }
-.playing-card--red { color: #bd3f37; }
+.playing-card--red { color: #b0362f; }
 .playing-card--joker { color: #6f348b; background: linear-gradient(145deg, #fffdf7, #e6d8ec); }
 
 .playing-card__corner {
@@ -433,6 +533,23 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   font-weight: 700;
 }
 
+/* Non-colour selection cue in addition to the lift, border and aria-pressed. */
+.playing-card__check {
+  position: absolute;
+  top: .25rem;
+  right: .25rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #15513f;
+  font-size: .8rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .playing-card--joker .playing-card__pip { font-family: inherit; font-size: .72rem; letter-spacing: .05em; transform: rotate(-45deg); }
 
 .playing-card__annotation {
@@ -444,7 +561,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   border-radius: .2rem;
   color: #fff;
   background: rgba(23, 32, 28, .82);
-  font-size: .48rem;
+  font-size: .56rem;
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
@@ -464,13 +581,17 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   box-shadow: 0 -6px 30px rgba(0, 0, 0, .15);
 }
 
-.active-player__header { margin-bottom: .8rem; display: flex; align-items: flex-end; justify-content: space-between; }
-.active-player h1 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.45rem; }
-.hand-count { color: #b9cfc5; font-size: .76rem; }
+.active-player__header { margin-bottom: .4rem; display: flex; align-items: flex-end; justify-content: space-between; gap: .5rem; }
+.active-player__header > div { min-width: 0; }
+.active-player h1 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.45rem; overflow-wrap: anywhere; }
+.active-player__status { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .5rem; }
+.hand-count { color: #cfe0d8; font-size: .78rem; white-space: nowrap; }
 
+/* Local horizontal scroll; the padding keeps lifted, selected and focused cards unclipped. */
 .hand {
   min-height: 7.75rem;
-  padding: .75rem .55rem 0;
+  padding: 1.35rem .6rem .7rem;
+  scroll-padding-inline: .6rem;
   display: flex;
   gap: clamp(.28rem, .8vw, .75rem);
   overflow-x: auto;
@@ -488,7 +609,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   border-top: 1px solid rgba(255, 255, 255, .09);
 }
 
-.selection-summary { margin-right: auto; display: flex; align-items: baseline; gap: .4rem; color: #b9cfc5; font-size: .72rem; }
+.selection-summary { margin-right: auto; display: flex; align-items: baseline; gap: .4rem; color: #cfe0d8; font-size: .78rem; }
 .selection-summary strong { color: #f6c760; font-family: 'Playfair Display', Georgia, serif; font-size: 1.4rem; }
 
 .rule-error {
@@ -504,8 +625,22 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 }
 
 .rule-error > span { display: grid; width: 1.5rem; aspect-ratio: 1; place-items: center; border-radius: 50%; background: #ce594e; font-weight: 800; }
-.rule-error p { margin: 0; display: flex; flex: 1; flex-direction: column; font-size: .78rem; }
-.rule-error button { border: 0; color: inherit; background: transparent; cursor: pointer; font-size: 1.2rem; }
+.rule-error > span { flex: 0 0 auto; }
+.rule-error p { min-width: 0; margin: 0; display: flex; flex: 1; flex-direction: column; font-size: .8rem; overflow-wrap: anywhere; }
+
+.rule-error__dismiss {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: .6rem;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.3rem;
+}
+
+.rule-error__dismiss:hover { background: rgba(255, 255, 255, .08); }
 
 .bot-timeline {
   width: min(1480px, 100%);
@@ -516,7 +651,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   background: rgba(3, 24, 18, .72);
 }
 
-.bot-timeline__header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.bot-timeline__header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem 1rem; }
 .bot-timeline__header h2 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.15rem; }
 .bot-timeline__list {
   margin: .8rem 0 0;
@@ -525,6 +660,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   gap: .38rem;
   color: #dbe8e1;
   font-size: .82rem;
+  overflow-wrap: anywhere;
 }
 .bot-timeline__list li::marker { color: #f6c760; font-variant-numeric: tabular-nums; }
 .bot-timeline__empty { margin: .65rem 0 0; color: #b9cfc5; font-size: .8rem; }
@@ -586,12 +722,12 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 
 .match-summary__action { margin-top: 1.25rem; }
 .final-result { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid rgba(255, 255, 255, .1); }
-.final-result > p { color: #b9cfc5; }
+.final-result > p { color: #dbe8e1; }
 .final-result > p strong { color: #f6c760; font-size: 1.2rem; }
 
 .round-complete__eyebrow { color: #f6c760; font-size: .7rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.round-complete h1 { margin: .5rem 0; font-family: 'Playfair Display', Georgia, serif; font-size: clamp(2rem, 5vw, 3.4rem); }
-.round-complete > p { margin: 0; color: #b9cfc5; }
+.round-complete h1 { margin: .5rem 0; font-family: 'Playfair Display', Georgia, serif; font-size: clamp(2rem, 5vw, 3.4rem); overflow-wrap: anywhere; }
+.round-complete > p { margin: 0; color: #dbe8e1; }
 
 .score-grid { margin-top: 2rem; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; text-align: left; }
 
@@ -611,7 +747,7 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 .score-card .score-row--penalty dd { color: #f2a197; }
 
 @media (max-width: 1000px) {
-  .table-surface { grid-template-columns: 9rem minmax(28rem, 1fr) 9rem; }
+  .table-surface { grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr) minmax(7.5rem, 9rem); }
   .player-seat { padding: .55rem; }
   .player-seat__avatar { display: none; }
 }
@@ -630,19 +766,18 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   .player-seat__details span, .mini-card { display: none; }
   .player-seat__details strong { font-size: .76rem; }
   .player-seat__cards { font-size: .72rem; }
+  .game-header__actions { flex: 1 1 100%; justify-content: flex-start; }
   .team-areas { grid-template-columns: 1fr; }
-  .meld-list { max-height: 12rem; }
+  /* No nested vertical scroll on mobile: the page scrolls, meld rows still scroll sideways. */
+  .meld-list { max-height: none; overflow: visible; }
   .active-player { padding: .75rem; }
   .action-bar { flex-wrap: wrap; }
   .selection-summary { width: 100%; }
 }
 
 @media (max-width: 440px) {
-  .game-header { align-items: flex-end; }
-  .game-header__actions { align-items: flex-end; flex-direction: column-reverse; gap: .3rem; }
-  .playback-controls { flex-wrap: wrap; justify-content: flex-end; }
   .brand__mark { display: none; }
-  .button--new { min-height: 2.25rem; padding: .5rem .7rem; font-size: .76rem; }
+  .game-header__actions .button { flex: 1 1 auto; padding-inline: .7rem; }
   .pile-zone { gap: .25rem; }
   .pile-control { min-width: 6.4rem; }
   .pozzetti-counter { max-width: 4rem; }
@@ -651,10 +786,17 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   .action-bar .button { flex: 1; padding-inline: .55rem; }
   .score-grid { grid-template-columns: 1fr; }
   .cumulative-score, .victory-points { grid-template-columns: 1fr; }
+  .round-complete { margin-top: 1rem; }
+  .match-summary__action { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 .start-screen {
@@ -724,19 +866,20 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 .storage-notice {
   margin: 0;
   padding: .6rem .9rem;
+  border: 1px solid rgba(242, 131, 118, .6);
   border-radius: .7rem;
-  color: #f8f4e9;
-  background: rgba(206, 89, 78, .85);
+  color: #fff4ef;
+  background: #7a2e27;
   font-size: .85rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.storage-notice:not(.storage-notice--inline) {
-  position: fixed;
-  bottom: 1rem;
-  left: 50%;
-  z-index: 10;
-  width: min(36rem, calc(100% - 2rem));
-  transform: translateX(-50%);
+/* In normal document flow above the table, so it never covers match controls. */
+.storage-notice--match { width: min(1480px, calc(100% - 2 * clamp(.75rem, 2.2vw, 2rem))); margin: .75rem auto 0; }
+
+@media (max-width: 760px) {
+  .storage-notice--match { width: calc(100% - 1rem); margin-top: .5rem; }
 }
 
 .storage-notice--inline { margin-bottom: 1rem; }

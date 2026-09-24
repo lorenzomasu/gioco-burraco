@@ -108,6 +108,13 @@ const advance = (ms: number) => {
   })
 }
 
+/**
+ * Programmatic lifecycle focus (M23) makes jsdom queue an asynchronous 0 ms
+ * `selectionchange` timer. Flushing only 0 ms timers keeps every bot playback timer
+ * (150 ms or more) pending, so the following timer count still proves no step is left.
+ */
+const flushFocusSelectionChange = () => advance(0)
+
 const startWith = (name: string) => {
   fireEvent.change(nameInput(), { target: { value: name } })
   fireEvent.click(startButton())
@@ -235,6 +242,7 @@ describe('App shell onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
     expectOnboarding()
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(0)
     advance(BOT_STEP_DELAY_MS * 3)
     expectOnboarding()
@@ -269,6 +277,7 @@ describe('App shell onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
     expectOnboarding()
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(0)
     advance(BOT_PLAYBACK_DELAYS_MS.normal)
     expectOnboarding()
@@ -730,5 +739,97 @@ describe('App local save and resume', () => {
     expect(screen.getByRole('status')).toHaveTextContent(STORAGE_UNAVAILABLE_NOTICE)
     startWith('Lorenzo')
     expect(table()).toBeInTheDocument()
+  })
+})
+
+/** The focused element is the table's turn status (current player and phase). */
+const expectFocusOnTurnStatus = () => {
+  expect(document.activeElement).not.toBe(document.body)
+  expect(document.activeElement).toContainElement(screen.getByText('Turno di'))
+  expect(document.activeElement).toHaveAttribute('tabindex', '-1')
+}
+
+describe('App lifecycle focus', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('does not move focus on the first page load, for onboarding or a restored match', () => {
+    const { unmount } = render(<App />)
+    expect(document.activeElement).toBe(document.body)
+    startWith('Lorenzo')
+    unmount()
+
+    render(<App />)
+    expect(table()).toBeInTheDocument()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('moves focus to the turn status when onboarding starts a match', () => {
+    render(<App />)
+    startWith('Lorenzo')
+
+    expectFocusOnTurnStatus()
+    expect(turnBanner()).toHaveTextContent('Lorenzo')
+  })
+
+  it('moves focus to the result heading, then to the fresh round when the next smazzata starts', () => {
+    const { createRoundFactory } = shortNamedFactories()
+    render(<App createRoundFactory={createRoundFactory} />)
+    startWith('Lorenzo')
+
+    playToRoundSummary('Lorenzo')
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Tallone esaurito' })).toHaveFocus()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    expect(screen.getByText('Smazzata 2/4')).toBeInTheDocument()
+    expectFocusOnTurnStatus()
+  })
+
+  it('moves focus to the onboarding heading after a confirmed Nuova partita, not after a cancelled one', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<App />)
+    startWith('Lorenzo')
+    const newMatch = screen.getByRole('button', { name: 'Nuova partita' })
+    newMatch.focus()
+
+    fireEvent.click(newMatch)
+    expect(newMatch).toHaveFocus()
+
+    confirm.mockReturnValue(true)
+    fireEvent.click(newMatch)
+
+    expectOnboarding()
+    expect(screen.getByRole('heading', { level: 1, name: 'Burraco' })).toHaveFocus()
+  })
+
+  it('moves focus to the onboarding heading after Gioca ancora', () => {
+    const { createRoundFactory } = shortNamedFactories()
+    render(<App createRoundFactory={createRoundFactory} />)
+    startWith('Lorenzo')
+    playToFinalResult('Lorenzo')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gioca ancora' }))
+
+    expectOnboarding()
+    expect(screen.getByRole('heading', { level: 1, name: 'Burraco' })).toHaveFocus()
+  })
+
+  it('shows the save-failure notice as the only status region, in the document flow before the table', () => {
+    render(<App storage={failingStorage(['setItem'])} />)
+    startWith('Lorenzo')
+
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent(SAVE_FAILED_NOTICE)
+    expect(notice.compareDocumentPosition(table()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Nuova partita' })).toBeEnabled()
   })
 })

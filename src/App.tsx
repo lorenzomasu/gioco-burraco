@@ -22,10 +22,18 @@ type AppProps = Readonly<{
  * Transient application screen. A match screen owns exactly one mounted `GameTable`;
  * leaving it unmounts the table and cancels its pending playback through cleanup. A
  * restored match carries its saved `MatchState`; its factory is recreated from the setup.
+ * The focus flags mark screen replacements triggered by the user, so keyboard focus moves
+ * to the new context; the first page load (including a restored match) never moves it.
  */
 type AppScreen =
-  | Readonly<{ kind: 'onboarding' }>
-  | Readonly<{ kind: 'match'; setup: MatchSetup; createGame: RoundFactory; initialMatch?: MatchState }>
+  | Readonly<{ kind: 'onboarding'; returnedFromMatch?: boolean }>
+  | Readonly<{
+      kind: 'match'
+      setup: MatchSetup
+      createGame: RoundFactory
+      initialMatch?: MatchState
+      startedFromOnboarding?: boolean
+    }>
 
 export const RESTORE_DISCARDED_NOTICE = 'La partita salvata non era più valida e non è stata ripristinata.'
 export const STORAGE_UNAVAILABLE_NOTICE =
@@ -62,10 +70,11 @@ export default function App({
       <StartScreen
         initialName={lastPlayerName}
         notice={notice}
+        focusOnMount={screen.returnedFromMatch}
         onStart={(setup) => {
           setLastPlayerName(setup.humanPlayerName)
           setNotice(null)
-          setScreen({ kind: 'match', setup, createGame: createRoundFactory(setup) })
+          setScreen({ kind: 'match', setup, createGame: createRoundFactory(setup), startedFromOnboarding: true })
         }}
       />
     )
@@ -83,16 +92,17 @@ export default function App({
 
   return (
     <>
-      {notice && <p className="storage-notice" role="status">{notice}</p>}
+      {notice && <p className="storage-notice storage-notice--match" role="status">{notice}</p>}
       <GameTable
         initialMatch={screen.initialMatch}
         createGame={screen.createGame}
+        focusContextOnMount={screen.startedFromOnboarding}
         onMatchChange={persistMatch}
         onLeaveMatch={() => {
           // Reached only after any required confirmation: the abandoned match is not resumable.
           clearMatchSave(storage)
           setNotice(null)
-          setScreen({ kind: 'onboarding' })
+          setScreen({ kind: 'onboarding', returnedFromMatch: true })
         }}
         playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}

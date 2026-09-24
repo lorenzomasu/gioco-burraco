@@ -139,6 +139,17 @@ const advanceOneStep = () => {
   })
 }
 
+/**
+ * Programmatic lifecycle focus (M23) makes jsdom queue an asynchronous 0 ms
+ * `selectionchange` timer. Flushing only 0 ms timers keeps every bot playback timer
+ * (150 ms or more) pending, so the following timer count still proves no step is left.
+ */
+const flushFocusSelectionChange = () => {
+  act(() => {
+    vi.advanceTimersByTime(0)
+  })
+}
+
 const timelineItems = () =>
   within(screen.getByRole('region', { name: 'Cronologia bot' })).queryAllByRole('listitem')
 
@@ -250,7 +261,7 @@ describe('GameTable bot turn playback', () => {
       expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
-      for (const extend of screen.queryAllByRole('button', { name: 'Aggiungi alla calata' })) {
+      for (const extend of screen.queryAllByRole('button', { name: /^Aggiungi alla calata/ })) {
         expect(extend).toBeDisabled()
       }
 
@@ -355,6 +366,7 @@ describe('GameTable bot turn playback', () => {
     expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
     expect(timelineItems()).toHaveLength(1)
     expect(timelineItems()[0]).toHaveTextContent(`North scarta ${cardLabel(discarded)}.`)
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -467,7 +479,7 @@ const expectHumanGameplayLocked = () => {
   expect(discardPileButton()).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
-  for (const extend of screen.queryAllByRole('button', { name: 'Aggiungi alla calata' })) {
+  for (const extend of screen.queryAllByRole('button', { name: /^Aggiungi alla calata/ })) {
     expect(extend).toBeDisabled()
   }
 }
@@ -490,6 +502,7 @@ describe('GameTable round starter rotation', () => {
     render(<GameTable initialState={botClosureState()} createGame={createGame} />)
     advanceOneStep()
     expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(0)
 
     fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
@@ -502,6 +515,7 @@ describe('GameTable round starter rotation', () => {
     expect(timelineItems()).toHaveLength(0)
     expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 41 carte rimaste')
     expect(seatCardCount('North')).toHaveAccessibleName('11 carte in mano')
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(1)
 
     act(() => {
@@ -1006,6 +1020,7 @@ describe('GameTable immediate bot completion', () => {
     expect(timelineTypes()).toEqual(['discard'])
     expect(timelineItems()[0]).toHaveTextContent(`North scarta ${cardLabel(discarded)}.`)
     expect(completeNowButton()).not.toBeInTheDocument()
+    flushFocusSelectionChange()
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -1166,6 +1181,7 @@ describe('GameTable playback safety, reset and hidden information', () => {
         }
       }
 
+      flushFocusSelectionChange()
       expect(vi.getTimerCount()).toBe(0)
       expectHiddenNotRendered(expected.state)
       for (const event of expected.events) {
