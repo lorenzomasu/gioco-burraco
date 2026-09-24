@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  BotAutomationError,
   INITIAL_BOT_CHAIN_PROGRESS,
   playNextBotChainStep,
   type BotChainProgress,
@@ -83,9 +84,13 @@ const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
   fast: 'Veloce',
 }
 
+/** User-facing message shown when automatic bot play stops on a `BotAutomationError`. */
+export const BOT_AUTOMATION_FAILURE_MESSAGE =
+  'Il gioco automatico dei bot non può proseguire in questa partita. Puoi iniziarne una nuova con «Nuova partita».'
+
 /**
- * Transient UI session. Bot events, playback safety counters and the visual feedback cue
- * live here, never in `GameState` or `MatchState`.
+ * Transient UI session. Bot events, playback safety counters, the visual feedback cue and
+ * any bot automation failure live here, never in `GameState`, `MatchState` or the save.
  */
 type GameTableSession = Readonly<{
   match: MatchState
@@ -93,6 +98,8 @@ type GameTableSession = Readonly<{
   botProgress: BotChainProgress
   /** Presentation-only cue for the latest committed change; replaced with the session. */
   feedback: TableFeedback | null
+  /** Set once bot automation failed; stops playback until the session is replaced. */
+  automationFailed: boolean
 }>
 
 /** Starts a fresh session without resolving any pending bot; playback steps it later. */
@@ -101,12 +108,17 @@ const freshSession = (match: MatchState): GameTableSession => ({
   botEvents: [],
   botProgress: INITIAL_BOT_CHAIN_PROGRESS,
   feedback: null,
+  automationFailed: false,
 })
 
 const hasPendingBot = (match: MatchState): boolean =>
   match.status === 'in-progress'
   && match.currentRound.round.status === 'in-progress'
   && match.currentRound.round.turn.currentPlayerId !== humanPlayerId
+
+/** Whether the session may still commit bot steps: a bot is pending and automation has not failed. */
+const canPlayBots = (session: GameTableSession): boolean =>
+  !session.automationFailed && hasPendingBot(session.match)
 
 /** Commits exactly one pending bot action and appends only that action's public events. */
 const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
@@ -117,6 +129,24 @@ const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
     botEvents: [...session.botEvents, ...step.events],
     botProgress: step.progress,
     feedback: botStepFeedback(session.match.currentRound, step.state, step.events, session.feedback),
+    automationFailed: false,
+  }
+}
+
+/**
+ * The bot-automation presentation boundary. A `BotAutomationError` commits nothing: the
+ * given session (its last committed match and public timeline) is kept and only marked
+ * as failed. Any other error is a defect and propagates unchanged.
+ */
+const guardBotAutomation = (
+  session: GameTableSession,
+  play: (session: GameTableSession) => GameTableSession,
+): GameTableSession => {
+  try {
+    return play(session)
+  } catch (error) {
+    if (!(error instanceof BotAutomationError)) throw error
+    return { ...session, automationFailed: true }
   }
 }
 
@@ -128,11 +158,13 @@ const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
  */
 const completeBotPlayback = (session: GameTableSession): GameTableSession => {
   let current = session
-  let next = advanceBotPlayback(current)
-  while (next !== current) {
+  let next = guardBotAutomation(current, advanceBotPlayback)
+  while (next !== current && !next.automationFailed) {
     current = next
-    next = advanceBotPlayback(current)
+    next = guardBotAutomation(current, advanceBotPlayback)
   }
+  // A failure keeps every step committed before it, exactly as delayed playback would.
+  if (next.automationFailed) current = next
   // Immediate completion skips every intermediate cue: nothing cosmetic is left pending.
   return current === session ? current : { ...current, feedback: null }
 }
@@ -147,6 +179,7 @@ const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
 
 type TurnGuidanceContext = Readonly<{
   isBotPlaying: boolean
+  automationFailed: boolean
   phase: 'mustDraw' | 'action'
   canDrawStock: boolean
   canTakeDiscardPile: boolean
@@ -159,11 +192,13 @@ type TurnGuidanceContext = Readonly<{
  */
 const turnGuidance = ({
   isBotPlaying,
+  automationFailed,
   phase,
   canDrawStock,
   canTakeDiscardPile,
   hasTeamMelds,
 }: TurnGuidanceContext): string => {
+  if (automationFailed) return 'Il gioco automatico dei bot si è interrotto.'
   if (isBotPlaying) {
     return 'I bot giocano automaticamente. Attendi il tuo turno oppure usa «Completa subito» per concludere le loro mosse.'
   }
@@ -227,6 +262,7 @@ export function GameTable({
   const { match, botEvents, feedback } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
+  const { automationFailed } = session
 
   // Focus follows major replacements of the primary view (a fresh round or the
   // completed-round result), never ordinary card actions or bot timeline events.
@@ -253,11 +289,14 @@ export function GameTable({
   }, [session.match])
 
   useEffect(() => {
-    if (!hasPendingBot(session.match)) return
+    // A failed session is never rescheduled, not even by a speed change.
+    if (!canPlayBots(session)) return
     const scheduledSession = session
     const timer = setTimeout(() => {
       // A callback scheduled for a replaced session must never mutate the new one.
-      setSession((current) => current === scheduledSession ? advanceBotPlayback(current) : current)
+      setSession((current) => current === scheduledSession
+        ? guardBotAutomation(current, advanceBotPlayback)
+        : current)
     }, BOT_PLAYBACK_DELAYS_MS[playbackSpeed])
     // A speed change cancels the pending step and reschedules it with the new delay.
     return () => clearTimeout(timer)
@@ -265,7 +304,7 @@ export function GameTable({
 
   const completeBotsNow = () => {
     // Replacing the session cancels any pending delayed step.
-    setSession((current) => hasPendingBot(current.match) ? completeBotPlayback(current) : current)
+    setSession((current) => canPlayBots(current) ? completeBotPlayback(current) : current)
   }
 
   const resetTransientState = () => {
@@ -299,6 +338,7 @@ export function GameTable({
         botEvents,
         botProgress: INITIAL_BOT_CHAIN_PROGRESS,
         feedback: humanActionFeedback(game, next, cue, session.feedback),
+        automationFailed: false,
       })
       resetTransientState()
     } catch (error) {
@@ -343,7 +383,7 @@ export function GameTable({
             </label>
           ))}
         </fieldset>
-        {isBotPlaying && (
+        {isBotPlaying && !automationFailed && (
           <button type="button" className="button button--ghost" onClick={completeBotsNow}>Completa subito</button>
         )}
         {onLeaveMatch && (
@@ -448,6 +488,7 @@ export function GameTable({
   const canTakeDiscardPile = isDrawPhase && discardTop !== undefined
   const guidance = turnGuidance({
     isBotPlaying,
+    automationFailed,
     phase: round.turn.phase,
     canDrawStock,
     canTakeDiscardPile,
@@ -492,12 +533,19 @@ export function GameTable({
               {isBotPlaying && (
                 <div className="turn-banner__phase">
                   <span>Stato</span>
-                  <strong>Bot in gioco…</strong>
+                  <strong>{automationFailed ? 'Bot fermi' : 'Bot in gioco…'}</strong>
                 </div>
               )}
             </div>
             <p className="turn-guidance">{guidance}</p>
           </div>
+
+          {automationFailed && (
+            <div className="rule-error" role="alert">
+              <span aria-hidden="true">!</span>
+              <p><strong>Gioco automatico interrotto</strong>{BOT_AUTOMATION_FAILURE_MESSAGE}</p>
+            </div>
+          )}
 
           <div className="pile-zone" aria-label="Tallone e monte degli scarti">
             <button

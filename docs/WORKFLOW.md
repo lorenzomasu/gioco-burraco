@@ -128,6 +128,8 @@ For a new milestone:
 
 `npm run verify`
 
+   It runs, in one command, the Vitest suite, the production build, the Playwright Chromium E2E suite against that build (`npm run test:e2e`) and `git diff --check`. The browser suite needs the local Playwright Chromium runtime, installed once per machine with `npx playwright install chromium`.
+
 10. fix failures caused by the milestone and rerun the necessary verification;
 11. create or update `docs/milestones/reports/MXX-implementation.md` using `docs/milestones/reports/TEMPLATE.md`;
 12. record the final `npm run verify` result, material deviations, known risks/ambiguities, and incidental changes;
@@ -225,7 +227,7 @@ Do not switch implementers during the fix loop unless there is a concrete reason
 
 Milestone branches are verified through pull requests to `main`.
 
-GitHub CI runs the canonical `npm run verify` for pull requests to `main`.
+GitHub CI runs the canonical `npm run verify` for pull requests to `main` and pushes to `main`, after installing Playwright Chromium and its system dependencies. There is no separate browser-only gate.
 
 CI complements implementer-local verification and does not replace independent review.
 

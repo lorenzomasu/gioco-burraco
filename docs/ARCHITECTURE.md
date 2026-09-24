@@ -21,7 +21,8 @@ React components render state, collect player intent, and invoke the game engine
 - `src/components` — React UI for human and bot-controlled seats.
 - `src/shell` — application-shell helpers that turn onboarding choices into match configuration and persist the one active local match.
 
-Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`.
+Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`. Browser
+end-to-end tests of the built application live in `e2e/` as `*.spec.ts`.
 
 ## Game engine invariants
 
@@ -111,6 +112,26 @@ committed step's public events in order; the existing safety limits and
 `BotAutomationError` still apply, and replacing the session cancels any pending
 delayed step. No playback preference or timing state belongs in `GameState`,
 `MatchState`, or `src/game`.
+
+### Bot automation failure
+
+`GameTable` is the bot-automation presentation boundary. Both delayed one-step playback
+and "Completa subito" run chain steps through one guard that catches only
+`BotAutomationError`:
+
+- the failing step commits nothing; the last committed `MatchState` and the public
+  timeline stay as they were (steps committed earlier in the same "Completa subito"
+  are kept, exactly as delayed playback would have kept them);
+- the session is marked as failed: no further step is scheduled, a speed change does
+  not reschedule, and "Completa subito" is withdrawn;
+- a concise Italian `role="alert"` message tells the player that automatic play cannot
+  continue and that "Nuova partita" starts a new match; no exception text, hidden bot
+  state or card data is rendered.
+
+The failure flag is transient session state: it is never stored in `GameState`,
+`MatchState` or the local save, it does not notify `onMatchChange`, and it disappears
+when the session is replaced (new round, left/replaced match, unmount). The saved match is
+not discarded because of it. Any other exception is a defect and still propagates.
 
 ## Match lifecycle
 
@@ -278,6 +299,21 @@ in `GameState`, `MatchState` or the local save.
   immediate bot completion ("Completa subito") clears it.
 - Every state a cue decorates stays expressed in text or static styling, and the
   reduced-motion policy collapses all animation and transition timing.
+
+## Browser end-to-end release gate
+
+`e2e/` holds Playwright tests that run in Chromium against the production build served by
+`vite preview` (`playwright.config.ts`); `npm run verify` runs them after the Vitest suite
+and the build. They drive the built client only through its public browser surface:
+roles and accessible names, real controls, native dialogs and browser `localStorage`.
+
+Determinism is test-side only. Before the bundle loads, each test replaces `Math.random`
+with a fixed-seed Mulberry32 sequence and installs a paused Playwright fake clock, so bot
+playback advances only through the real "Completa subito" control or an explicit clock
+advance. Focused fixtures enter through the real M22 boundary: a save envelope produced by
+`serializeMatchSave` from real domain helpers. The shipped application exposes no test
+route, query parameter, global API, debug control or hidden-card instrumentation for E2E,
+and none may be added.
 
 ## Source-of-truth relationship
 

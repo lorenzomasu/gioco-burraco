@@ -1111,8 +1111,14 @@ describe('GameTable playback safety, reset and hidden information', () => {
     expect(turnBanner()).toHaveTextContent('Partner')
 
     // Restarting from fresh counters would let Partner and South finish within two turns.
-    expect(() => fireEvent.click(completeNowButton()!))
-      .toThrow(new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'))
+    // Since M25 the failure is shown to the player instead of escaping from React.
+    fireEvent.click(completeNowButton()!)
+    expect(chainStepSpy.mock.results.at(-1)).toEqual({
+      type: 'throw',
+      value: new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'),
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Gioco automatico interrotto')
+    expect(turnBanner()).not.toHaveTextContent('You')
   })
 
   it('enforces the same chain safety limit in delayed playback', () => {
@@ -1120,9 +1126,13 @@ describe('GameTable playback safety, reset and hidden information', () => {
     render(<GameTable initialState={chainState()} />)
     discardKingOfHearts()
 
-    expect(() => {
-      for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) advanceOneStep()
-    }).toThrow(new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'))
+    for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) advanceOneStep()
+    expect(chainStepSpy.mock.results.at(-1)).toEqual({
+      type: 'throw',
+      value: new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'),
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Gioco automatico interrotto')
+    expect(turnBanner()).not.toHaveTextContent('You')
   })
 
   it.each(['normal', 'fast', 'immediate'] as const)(
