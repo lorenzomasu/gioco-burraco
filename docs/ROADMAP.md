@@ -396,4 +396,8 @@ M27–M32 are product milestones; M33 is the release gate. Do not start motion o
 
 ## V1.1 governance
 
-Prepare each milestone from current main and this roadmap, inspect only directly relevant code and tests, and version a concrete specification on its own branch using docs/milestones/TEMPLATE.md. The specification is the contract for implementation and review. Update this roadmap explicitly for any material change to objectives, order, dependencies or the v1.1 boundary. Keep the established prepare → implement → review → PR/CI/merge workflow in docs/WORKFLOW.md; its references to the v1 path are historical, while its verification and release gates continue to apply.
+Prepare each milestone from current main and this roadmap, inspect only directly relevant code and tests, and version a concrete specification using docs/milestones/TEMPLATE.md. The specification remains the contract for that milestone even when several sequential milestones are delivered on one approved batch branch.
+
+Delivery grouping follows docs/WORKFLOW.md and is risk-proportional rather than automatically one PR per milestone. After M28, the default plan is M29 standalone, M30–M32 as one presentation-focused batch if M29 lands cleanly, and M33 standalone for hardening/release. This grouping may be changed explicitly when repository evidence shows a safer or faster boundary.
+
+Update this roadmap explicitly for any material change to product objectives, order, dependencies or the v1.1 boundary. Batching milestones for implementation/review does not by itself change their product scope or dependency order.
