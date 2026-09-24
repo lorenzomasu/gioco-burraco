@@ -79,6 +79,24 @@ current smazzata, but must not infer them by diffing game states. Public events 
 never expose stock identities, unrevealed pozzetto contents, rejected candidates,
 or other hidden strategy information.
 
+### Bot turn playback
+
+`playBotStep` commits exactly one bot action (one acquisition, meld, extension, or
+discard) synchronously and deterministically; a pozzetto taken by that action is
+reported as a side-effect event of the same step. `playNextBotChainStep` wraps it with
+the existing per-turn action and per-chain turn safety limits. The single-turn and
+full-chain traced and state-only APIs are loops over these same primitives, so the
+stepwise and full-chain paths must remain behaviourally equivalent: same final state,
+same ordered public events, same decisions, and the same `BotAutomationError` limits.
+
+Presentation timing is owned exclusively by React. The UI advances pending bots only
+through the chain-step API, one committed step per presentation delay, and appends only
+that step's public events. It never reconstructs bot actions from state diffs. No
+timers, promises, or wall-clock dependencies exist under `src/game`. Playback timers,
+the chain-step safety counters, and the event timeline are transient UI session state
+and are never stored in `GameState` or `MatchState`; replacing the session cancels any
+pending playback step.
+
 ## Match lifecycle
 
 `GameState` remains the complete state of exactly one smazzata. The match layer owns

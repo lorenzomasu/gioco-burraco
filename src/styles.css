@@ -153,6 +153,11 @@ button:focus-visible {
   backdrop-filter: blur(8px);
 }
 
+.player-seat--active {
+  border-color: rgba(246, 199, 96, .6);
+  box-shadow: 0 0 0 3px rgba(246, 199, 96, .16), 0 10px 25px rgba(0, 0, 0, .16);
+}
+
 .player-seat--top { grid-area: top; }
 .player-seat--left { grid-area: left; }
 .player-seat--right { grid-area: right; }

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
 import { drawCard } from '../game/engine/turn'
@@ -8,9 +8,19 @@ import type { MatchState, SettledRoundResult } from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { GameTable } from './GameTable'
+import { BOT_STEP_DELAY_MS, GameTable } from './GameTable'
 
 const deck = createBurracoDeck()
+
+/** Steps pending bot playback to completion through the UI presentation delay. */
+const playPendingBots = () => {
+  for (let step = 0; step < 500 && vi.getTimerCount() > 0; step += 1) {
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+  }
+  expect(vi.getTimerCount()).toBe(0)
+}
 
 const card = (rank: Rank, suit: Suit, deckNumber: 1 | 2 = 1): Card => {
   const match = deck.find((candidate) =>
@@ -154,6 +164,15 @@ const emptyCompletedRound = (): CompletedGameState => {
 }
 
 describe('GameTable', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
   it('renders the initial table, all four players, piles, and draw phase', () => {
     const state = dealInitialState(deck)
     const hiddenBotCard = state.players[1]!.hand[0]!
@@ -200,6 +219,7 @@ describe('GameTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: cardLabel(selected) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    playPendingBots()
 
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
     expect(screen.getByText('Pesca')).toBeInTheDocument()
@@ -327,6 +347,7 @@ describe('GameTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: cardLabel(humanDiscard) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    playPendingBots()
 
     const botTeamArea = screen.getByRole('region', { name: 'Calate squadra 2' })
     expect(within(botTeamArea).getByText('Combinazione')).toBeInTheDocument()
@@ -346,6 +367,7 @@ describe('GameTable', () => {
     const state = botClosureState()
     const discarded = state.players.find(({ id }) => id === 'player-2')!.hand[0]!
     render(<GameTable initialState={state} />)
+    playPendingBots()
 
     expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Cala' })).not.toBeInTheDocument()
@@ -382,6 +404,7 @@ describe('GameTable', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    playPendingBots()
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
@@ -412,6 +435,7 @@ describe('GameTable', () => {
     }
 
     render(<GameTable initialState={state} />)
+    playPendingBots()
 
     const pozzettoItem = screen.getByText('North prende il pozzetto al volo.')
     expect(pozzettoItem).not.toHaveTextContent('mazzo')
@@ -432,11 +456,13 @@ describe('GameTable', () => {
       },
     }))
     render(<GameTable initialState={completedByBot} createGame={createGame} />)
+    playPendingBots()
 
     expect(within(screen.getByRole('region', { name: 'Cronologia bot' })).getAllByRole('listitem'))
       .toHaveLength(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+    playPendingBots()
 
     const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
     expect(within(timeline).getAllByRole('listitem').length).toBeGreaterThan(0)
@@ -451,6 +477,7 @@ describe('GameTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: cardLabel(state.players[0]!.hand[0]!) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    playPendingBots()
     expect(within(screen.getByRole('region', { name: 'Cronologia bot' })).getAllByRole('listitem').length)
       .toBeGreaterThan(0)
 

@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  playBotsUntilHumanTurnWithTrace,
+  INITIAL_BOT_CHAIN_PROGRESS,
+  playNextBotChainStep,
+  type BotChainProgress,
   type BotPublicActionEvent,
 } from '../game/bot'
 import { GameRuleError } from '../game/engine/errors'
@@ -35,18 +37,39 @@ type GameTableProps = Readonly<{
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 const humanPlayerId: PlayerId = 'player-1'
 
+/** The single presentation delay between committed bot steps. */
+export const BOT_STEP_DELAY_MS = 550
+
+/**
+ * Transient UI session. Bot events and playback safety counters live here, never in
+ * `GameState` or `MatchState`.
+ */
 type GameTableSession = Readonly<{
   match: MatchState
   botEvents: readonly BotPublicActionEvent[]
+  botProgress: BotChainProgress
 }>
 
-const prepareMatchForUi = (match: MatchState): GameTableSession => {
-  const synchronized = synchronizeMatch(match)
-  if (synchronized.status === 'completed') return { match: synchronized, botEvents: [] }
-  const automatedRound = playBotsUntilHumanTurnWithTrace(synchronized.currentRound, humanPlayerId)
+/** Starts a fresh session without resolving any pending bot; playback steps it later. */
+const freshSession = (match: MatchState): GameTableSession => ({
+  match: synchronizeMatch(match),
+  botEvents: [],
+  botProgress: INITIAL_BOT_CHAIN_PROGRESS,
+})
+
+const hasPendingBot = (match: MatchState): boolean =>
+  match.status === 'in-progress'
+  && match.currentRound.round.status === 'in-progress'
+  && match.currentRound.round.turn.currentPlayerId !== humanPlayerId
+
+/** Commits exactly one pending bot action and appends only that action's public events. */
+const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
+  const step = playNextBotChainStep(session.match.currentRound, humanPlayerId, session.botProgress)
+  if (!step) return session
   return {
-    match: updateCurrentRound(synchronized, automatedRound.state),
-    botEvents: automatedRound.events,
+    match: updateCurrentRound(session.match, step.state),
+    botEvents: [...session.botEvents, ...step.events],
+    botProgress: step.progress,
   }
 }
 
@@ -85,12 +108,23 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
           roundResults: [],
         }
       : startMatch(createGame))
-    return prepareMatchForUi(startingMatch)
+    return freshSession(startingMatch)
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
   const { match, botEvents } = session
   const game = match.currentRound
+  const isBotPlaying = hasPendingBot(match)
+
+  useEffect(() => {
+    if (!hasPendingBot(session.match)) return
+    const scheduledSession = session
+    const timer = setTimeout(() => {
+      // A callback scheduled for a replaced session must never mutate the new one.
+      setSession((current) => current === scheduledSession ? advanceBotPlayback(current) : current)
+    }, BOT_STEP_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [session])
 
   const resetTransientState = () => {
     setSelectedCardIds(new Set())
@@ -98,21 +132,22 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
   }
 
   const beginNewMatch = () => {
-    setSession(prepareMatchForUi(startMatch(createGame)))
+    setSession(freshSession(startMatch(createGame)))
     resetTransientState()
   }
 
   const beginNextRound = () => {
-    setSession(prepareMatchForUi(advanceMatch(match, createGame)))
+    setSession(freshSession(advanceMatch(match, createGame)))
     resetTransientState()
   }
 
   const commitAction = (action: () => GameState) => {
+    if (isBotPlaying) return
     try {
-      const automated = playBotsUntilHumanTurnWithTrace(action(), humanPlayerId)
       setSession({
-        match: updateCurrentRound(match, automated.state),
-        botEvents: [...botEvents, ...automated.events],
+        match: updateCurrentRound(match, action()),
+        botEvents,
+        botProgress: INITIAL_BOT_CHAIN_PROGRESS,
       })
       resetTransientState()
     } catch (error) {
@@ -122,6 +157,7 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
   }
 
   const toggleCard = (cardId: string) => {
+    if (isBotPlaying) return
     setSelectedCardIds((current) => {
       const next = new Set(current)
       if (next.has(cardId)) next.delete(cardId)
@@ -218,9 +254,9 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
     <main className="game-shell">
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
-        <PlayerSeat player={seats.top} position="top" bot />
-        <PlayerSeat player={seats.left} position="left" bot />
-        <PlayerSeat player={seats.right} position="right" bot />
+        <PlayerSeat player={seats.top} position="top" bot active={seats.top.id === activePlayer.id} />
+        <PlayerSeat player={seats.left} position="left" bot active={seats.left.id === activePlayer.id} />
+        <PlayerSeat player={seats.right} position="right" bot active={seats.right.id === activePlayer.id} />
 
         <div className="table-center">
           <div className="turn-banner" aria-live="polite">
@@ -233,6 +269,12 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
               <span>Fase</span>
               <strong>{round.turn.phase === 'mustDraw' ? 'Pesca' : 'Gioco'}</strong>
             </div>
+            {isBotPlaying && (
+              <div className="turn-banner__phase">
+                <span>Stato</span>
+                <strong>Bot in gioco…</strong>
+              </div>
+            )}
           </div>
 
           <div className="pile-zone" aria-label="Tallone e monte degli scarti">
