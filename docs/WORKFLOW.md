@@ -4,103 +4,110 @@
 
 This document defines the standard milestone workflow for this repository.
 
-It separates specification, implementation, independent review, and merge so that each role has a clear responsibility and stable project instructions are not duplicated in large prompts.
+The workflow separates specification, implementation, independent review, and merge while minimizing repeated manual work. Stable project context belongs in the repository; prompts should carry only the task-specific instructions needed to act on that context.
+
+The default v1 workflow is intentionally lean:
+
+`prepare → implement → review → automatic PR/CI/merge when green`
+
+The user should normally need only two project-level commands for a milestone:
+
+- `Prepara MXX`
+- `Review MXX`
+
+If the independent review is green, ChatGPT should complete the PR/CI/merge gate directly when repository access permits, without requiring a separate `procedi` message.
 
 ## Roles
 
-### ChatGPT — architect and independent reviewer
+### ChatGPT — architect, independent reviewer, and merge-gate operator
 
 ChatGPT is responsible for:
 
 - analysing the current repository before a milestone is implemented;
-- defining the milestone scope and acceptance criteria;
-- producing the milestone specification;
+- defining milestone scope and acceptance criteria;
+- producing and versioning the milestone specification;
+- recommending one implementation agent/model and the most efficient task/workspace strategy for that milestone;
 - reviewing the completed implementation independently from the implementer;
-- producing focused fix instructions when review findings require changes.
+- producing focused fix instructions when review findings require changes;
+- opening the pull request, checking GitHub CI, and completing the merge gate after a green review when repository access is available.
 
-ChatGPT should review repository branches and pull requests directly through GitHub when repository access is available. The user should not need to paste large diffs or completion reports when the repository already contains that information.
+ChatGPT should inspect repository branches, reports, diffs, tests, pull requests, and CI directly through GitHub when access is available. The user should not need to paste information that can already be retrieved from the repository.
 
-### Codex — primary implementer
+### Implementation agent — one primary implementer per milestone
 
-Codex is the default implementation agent for milestones.
+Use one primary implementation agent per milestone. The normal choices are Codex or Claude Code.
 
-For each new milestone:
+ChatGPT should recommend the better fit during milestone preparation based on the concrete task, current tooling, and risk. The user may override that recommendation.
 
-- use a new Codex task;
-- use the existing repository/workspace;
+Do not routinely run Codex and Claude Code in series on the same milestone. A second implementation/audit agent is optional and should be introduced only when:
+
+- the user explicitly requests it;
+- a blocker or unusually complex investigation benefits from another independent opinion;
+- the primary implementation path is materially stuck.
+
+For each new milestone, the selected implementation agent should:
+
+- use a new task when practical so milestone context is isolated;
+- reuse the existing repository/workspace;
 - fetch and switch to the dedicated milestone branch that already contains the versioned specification;
 - implement the already-versioned milestone specification;
-- run repository verification;
+- use targeted tests during implementation as useful;
+- run the repository's full verification before declaring the milestone complete;
+- create/update the implementation report;
 - commit and push only the milestone branch;
 - stop before merging into `main`.
 
-Codex must not be asked to invent or author the milestone specification that it is implementing.
-
-### Claude Code — optional additional audit
-
-Claude Code is not a mandatory milestone step and is not the default implementer.
-
-Use it only when:
-
-- the user explicitly requests it;
-- an unusually complex problem benefits from a third independent opinion;
-- a focused audit or investigation is useful.
-
-Do not insert Claude Code routinely between Codex implementation and ChatGPT review.
+The implementation agent must not invent or author the milestone specification it is implementing.
 
 ## Preparing a milestone
 
 When the user asks to prepare a milestone, for example:
 
-`Preparami M14`
+`Prepara M21`
 
 the standard workflow is:
 
 1. inspect the current `main`, `docs/ROADMAP.md`, relevant rules, architecture, implementation, tests, and prior milestone reports;
-2. use the roadmap objective, dependencies, sequence, and v1 boundary as the planning baseline, then define the milestone scope, required behaviour, acceptance criteria, required tests, documentation impact, and out-of-scope items;
-3. create the dedicated milestone branch from updated `main`;
-4. create the milestone specification under `docs/milestones/`;
-5. commit and push the specification on the milestone branch before implementation begins;
-6. only after the versioned specification exists on that branch, produce the implementation prompt for Codex.
-
-The milestone specification is an artifact produced and versioned before implementation. It is not generated by the implementation agent.
-
-When repository write access is available, ChatGPT should create the milestone branch and version the specification directly in the repository. If write access is unavailable, the specification must still be committed and pushed before Codex implementation starts.
+2. use the roadmap objective, dependencies, sequence, and v1 boundary as the planning baseline;
+3. inspect only the additional repository areas needed to define the milestone correctly;
+4. define scope, required behaviour, acceptance criteria, tests, documentation impact, and out-of-scope items;
+5. create the dedicated milestone branch from updated `main`;
+6. create the milestone specification under `docs/milestones/`;
+7. commit and push the specification before implementation begins;
+8. provide a short implementation prompt for one recommended implementation agent.
 
 Use `docs/milestones/TEMPLATE.md` as the structural starting point.
 
-The milestone specification is the authoritative contract for that milestone's scope and acceptance criteria.
+The milestone specification is the authoritative contract for that milestone's concrete scope and acceptance criteria.
 
-`docs/ROADMAP.md` is the authoritative planning source for the broader v1 sequence and product boundary. A milestone specification may refine implementation details from the roadmap, but a material change to the milestone objective, ordering, dependency, release-critical status, or v1 boundary should update the roadmap explicitly rather than drifting silently.
+`docs/ROADMAP.md` is the authoritative planning source for the broader v1 sequence and product boundary. A milestone specification may refine implementation details from the roadmap, but a material change to objective, ordering, dependency, release-critical status, or v1 boundary should update the roadmap explicitly rather than drifting silently.
 
-## Codex implementation prompt
+## Implementation prompt
 
-The Codex prompt should be short.
+The implementation prompt should be short and should reference repository sources of truth rather than reproducing them.
 
-It should point Codex to the repository sources of truth rather than reproducing them.
-
-A normal milestone prompt should tell Codex to read:
+A normal milestone prompt should tell the selected implementation agent to read:
 
 - `AGENTS.md`;
 - `docs/WORKFLOW.md`;
 - `docs/ROADMAP.md`;
-- `docs/RULES.md`;
+- `docs/RULES.md` when relevant to the milestone;
 - `docs/ARCHITECTURE.md`;
 - the relevant `docs/milestones/MXX-....md`;
-- the relevant implementation and tests.
+- the directly relevant implementation and tests.
 
-Do not copy the full milestone specification into the Codex prompt.
+Do not copy the full milestone specification into the prompt.
 
-Do not restate large sections of `AGENTS.md`, `docs/RULES.md`, `docs/ARCHITECTURE.md`, or this workflow when a reference is sufficient.
+Do not restate large sections of repository documentation when a reference is sufficient.
 
-The implementation prompt should normally contain only:
+The prompt should normally contain only:
 
 - repository/workspace instruction;
 - required existing milestone branch containing the versioned specification;
-- files that are authoritative;
+- authoritative files;
 - instruction to implement exactly the milestone specification;
 - verification command;
-- commit/push instruction;
+- report/commit/push instruction;
 - explicit instruction not to merge into `main`.
 
 Stable rules belong in the repository, not in repeated prompts.
@@ -111,28 +118,26 @@ For a new milestone:
 
 1. start from updated `main`;
 2. work on the dedicated milestone branch;
-3. read all required sources of truth;
+3. read the required sources of truth;
 4. inspect the directly relevant code and tests;
 5. implement only the milestone specification;
 6. add or update required deterministic regression tests;
-7. review the complete implementation diff;
-8. run:
+7. use focused tests/typechecks during development when they accelerate iteration;
+8. review the complete implementation diff;
+9. run the full repository gate:
 
 `npm run verify`
 
-9. fix any failures caused by the milestone;
-10. create or update `docs/milestones/reports/MXX-implementation.md` using `docs/milestones/reports/TEMPLATE.md`;
-11. record the `npm run verify` result, material deviations, known risks or ambiguities, and incidental changes in that report;
-12. review the complete implementation diff, including the report;
+10. fix failures caused by the milestone and rerun the necessary verification;
+11. create or update `docs/milestones/reports/MXX-implementation.md` using `docs/milestones/reports/TEMPLATE.md`;
+12. record the final `npm run verify` result, material deviations, known risks/ambiguities, and incidental changes;
 13. commit the completed implementation and report;
 14. push only the milestone branch;
 15. stop before merging.
 
-The implementer must not start the next milestone.
+The intent is to run the expensive full verification at the end of a normal implementation cycle rather than repeatedly after every small edit. Targeted tests are preferred during active implementation. A known failing full verification is always blocking.
 
-Running `npm run verify` locally remains a required implementer responsibility. A known local verification failure is always blocking and must be fixed before merge.
-
-The implementation report is review context, not an authoritative specification. It must not redefine scope or make deviations acceptable by declaration. The milestone specification remains authoritative, and the independent reviewer must verify report claims against the repository.
+The implementation report is review context, not an authoritative specification. It must not redefine scope or make deviations acceptable by declaration.
 
 ## Independent review
 
@@ -142,30 +147,36 @@ When the user asks:
 
 ChatGPT performs an independent review directly from the milestone branch or pull request.
 
-The review should compare:
+Every review must verify:
 
-- milestone specification;
-- versioned implementation report under `docs/milestones/reports/`, when present;
-- implementation diff;
-- automated tests;
-- `docs/RULES.md`;
-- `docs/ARCHITECTURE.md`;
-- relevant existing behaviour;
-- CI result.
+- the milestone specification and acceptance criteria;
+- the implementation report, when present;
+- the complete milestone diff;
+- tests added or changed;
+- directly relevant existing behaviour;
+- unrelated or future-scope changes;
+- verification evidence;
+- exact reviewed HEAD.
 
-The review should check at least:
+### Risk-proportional depth
 
-- acceptance-criteria coverage;
-- regressions;
-- game-rule correctness;
-- architectural boundaries;
-- deterministic behaviour;
-- physical card identity where relevant;
-- hidden-information guarantees for bots;
-- edge and boundary cases;
-- duplicated rule or scoring logic;
-- documentation consistency;
-- unrelated or future-scope changes.
+Review depth should match the milestone's actual risk. Do not reread or re-audit unrelated project areas merely because they exist.
+
+For all milestones:
+
+- verify every acceptance criterion;
+- inspect every changed file;
+- inspect directly coupled code/tests where regressions are plausible;
+- verify architectural boundaries affected by the change.
+
+Expand the review when relevant:
+
+- game engine/rules/scoring/closure/meld legality → inspect `docs/RULES.md`, relevant engine paths, edge cases, deterministic behaviour, physical card identity;
+- bots → additionally inspect hidden-information guarantees, shared legality rules, deterministic strategy behaviour;
+- persistence/state migration → inspect schema/versioning, corruption/incompatibility handling, round-trip integrity, transient-vs-domain boundaries;
+- UI/product shell → focus on state transitions, user flows, relevant responsive/accessibility behaviour, and preservation of engine boundaries;
+- documentation-only work → validate correctness, consistency, stale references, and workflow/source-of-truth effects without re-reviewing unrelated game code;
+- release/CI/deployment → inspect reproducibility, exact-SHA guarantees, failure behaviour, and release gates.
 
 Review findings should be grouped by severity:
 
@@ -173,68 +184,102 @@ Review findings should be grouped by severity:
 - important;
 - optional.
 
-Each actionable finding should identify the affected file or area, the failing scenario or risk, the required correction, and the regression test that should protect it when appropriate.
+Each actionable finding should identify the affected file or area, failing scenario or risk, required correction, and regression test when appropriate.
 
 A self-review by the implementation agent does not replace this independent review.
 
+## Automatic green path
+
+If the independent review has no unresolved blocker or important finding, ChatGPT should continue directly when repository access is available unless the user explicitly asked to stop after review.
+
+The normal green path is:
+
+1. confirm the milestone branch HEAD is still exactly the reviewed HEAD;
+2. open the pull request to `main` if one is not already open;
+3. wait for GitHub CI on the exact reviewed HEAD;
+4. if CI succeeds and the HEAD has not changed, complete the merge gate;
+5. prefer a linear fast-forward of that exact reviewed/verified SHA into `main`;
+6. report the milestone closed.
+
+A separate user message such as `procedi` is not required on the normal green path.
+
+User intervention is required only when an operation cannot be performed with available repository permissions/tools, an explicit product decision is needed, or the user asked to retain manual control.
+
 ## Fix loop
 
-If the review finds problems:
+If the review finds a blocker or important issue:
 
-1. ChatGPT produces one focused Codex fix prompt containing only the review findings that require action;
-2. continue in the same Codex milestone task when practical, because the implementation context is already loaded;
-3. Codex changes only what is required by the findings;
-4. Codex reruns `npm run verify`, updates the implementation report when the fix changes verification evidence, deviations, risks, ambiguities, or incidental changes, then commits and pushes the same milestone branch;
-5. ChatGPT re-reviews the previous findings, the updated report, and plausible regressions caused by the fixes.
+1. ChatGPT produces one focused fix prompt containing only the actionable findings;
+2. continue in the same implementation-agent milestone task when practical because its implementation context is already loaded;
+3. the same implementation agent changes only what the findings require;
+4. it reruns targeted tests as useful and the full `npm run verify` before completion;
+5. it updates the implementation report when verification evidence, deviations, risks, ambiguities, or incidental changes changed;
+6. it commits and pushes the same milestone branch;
+7. ChatGPT re-reviews the previous findings plus plausible regressions caused by the fixes.
 
-Do not repeat the entire milestone specification in a fix prompt.
+Do not repeat the full milestone specification in a fix prompt.
+
+Do not switch implementers during the fix loop unless there is a concrete reason.
 
 ## Pull requests and CI
 
-A milestone branch should be reviewed through a pull request to `main`.
+Milestone branches are verified through pull requests to `main`.
 
-GitHub CI is expected to run `npm run verify` for pull requests to `main`.
+GitHub CI runs the canonical `npm run verify` for pull requests to `main`.
 
-CI complements implementer-local verification and does not replace independent code review.
+CI complements implementer-local verification and does not replace independent review.
 
-If evidence of the implementer's local `npm run verify` is unavailable or cannot be independently verified, that missing evidence alone does not block merge when all of the following are true:
+If evidence of the implementation agent's local `npm run verify` is unavailable or cannot be independently verified, that missing evidence alone does not block merge when all of the following are true:
 
 - independent review is green with no unresolved blocker or important finding;
 - the reviewed HEAD is exactly the same commit SHA verified by GitHub CI;
 - GitHub CI successfully ran the repository's canonical `npm run verify`;
-- no code or documentation changes were pushed after that successful CI run;
+- no changes were pushed after that successful CI run;
 - there is no known local verification failure.
 
-Under those conditions, successful CI on the exact reviewed HEAD satisfies the final executable-verification gate. The missing local evidence should be noted as a non-blocking procedural deviation.
+Under those conditions, successful CI on the exact reviewed HEAD satisfies the executable-verification gate. Missing local evidence should be noted as a non-blocking procedural deviation.
 
-This fallback applies only to missing or unverifiable evidence. It must never be used to override a known failing local verification result.
+This fallback never overrides a known failing local verification result.
 
-## Merge
+CI should cancel obsolete in-progress runs for the same branch/PR when a newer commit supersedes them.
+
+## Merge and completion
 
 Merge only after:
 
 - the milestone specification is satisfied;
 - independent review has no unresolved blocker or important finding;
-- implementer-local verification passed, or the exact reviewed HEAD satisfies the CI fallback conditions defined above;
-- GitHub CI passed on the exact HEAD being merged.
+- implementer-local verification passed, or the exact reviewed HEAD satisfies the CI fallback;
+- pull-request CI passed on the exact HEAD being merged.
 
-The preferred repository workflow preserves linear history by fast-forwarding the reviewed milestone branch into `main` when possible.
+Prefer linear history by fast-forwarding the exact reviewed milestone HEAD into `main` when possible.
 
-After the merge, the CI run on `main` should also pass.
+When the merge is an exact fast-forward:
+
+`reviewed HEAD = PR CI HEAD = main HEAD`
+
+the milestone is considered closed immediately after the fast-forward and confirmation that `main` points to that SHA.
+
+A push CI run on `main` may still execute as an additional repository health signal, but it is not a second merge gate and ChatGPT should not wait for it before declaring the milestone closed. If a later main-branch CI run reports a failure, investigate that failure before starting or merging subsequent work.
 
 ## Efficiency rules
 
-The workflow is intentionally designed to minimize repeated manual work.
+The workflow is intentionally optimized for a single human owner working with AI implementation agents.
 
 Therefore:
 
-- do not ask the user to paste repository diffs that can be read directly from GitHub;
-- do not ask the user to paste test output when CI or repository tooling already provides the required evidence, unless diagnosing a local-only failure;
-- do not ask the user to relay implementation-agent risk, deviation, or ambiguity notes when they can be versioned in the milestone implementation report;
-- do not generate large implementation prompts that duplicate versioned repository documentation;
-- do not make the implementation agent write its own contract;
-- do not add mandatory review agents without a concrete reason;
-- keep each milestone isolated in its own branch and Codex task;
-- keep fix prompts narrow and review-driven.
+- the user should normally need only `Prepara MXX` and `Review MXX` for each milestone;
+- after a green review, ChatGPT should handle PR/CI/merge directly when access permits;
+- use one primary implementation agent per milestone;
+- do not ask the user to paste repository diffs, reports, test output, CI results, or risk notes that can be retrieved directly;
+- do not run a second implementation/audit agent without a concrete reason;
+- do not generate large prompts that duplicate versioned documentation;
+- do not make the implementation agent author its own milestone contract;
+- use targeted tests during implementation and the full repository gate at milestone completion;
+- review proportionally to risk rather than rereading every source of truth for every kind of change;
+- keep each milestone isolated in its own branch and implementation task;
+- keep fix prompts narrow and review-driven;
+- do not add process artifacts, tools, or gates unless they solve an observed problem;
+- treat this workflow as stable through the v1 path unless a concrete failure demonstrates that it needs adjustment.
 
 The repository should carry stable context. Prompts should carry only the task-specific instruction needed to act on that context.
