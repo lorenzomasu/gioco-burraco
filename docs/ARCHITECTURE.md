@@ -19,7 +19,7 @@ React components render state, collect player intent, and invoke the game engine
 - `src/game/match` — four-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
 - `src/game/bot` — deterministic bot candidate generation, ranking, and turn execution.
 - `src/components` — React UI for human and bot-controlled seats.
-- `src/shell` — application-shell helpers that turn onboarding choices into match configuration.
+- `src/shell` — application-shell helpers that turn onboarding choices into match configuration and persist the one active local match.
 
 Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`.
 
@@ -167,6 +167,50 @@ explicit native confirmation, a completed match does not. Leaving unmounts the t
 whose effect cleanup cancels any pending bot playback step; the shell returns to
 onboarding and never starts another match on its own. Confirmation primitives, screen
 state and timers never enter `src/game`.
+
+### Local save and resume
+
+The application shell keeps one active local match in browser-local storage so a
+refresh or closed tab can resume it. Storage access lives only in
+`src/shell/matchPersistence.ts`; nothing under `src/game` knows about storage, schema
+versions, `window` or React.
+
+The wire format is an explicit versioned JSON envelope stored under the single key
+`MATCH_SAVE_STORAGE_KEY` (`gioco-burraco:active-match`):
+
+- `version` — `MATCH_SAVE_SCHEMA_VERSION`, currently `1`;
+- `setup` — the M21 `MatchSetup` (`humanPlayerName` only);
+- `match` — the authoritative committed `MatchState`, stored as-is.
+
+Nothing derived (cumulative totals, Match/Victory Points, Burraco classification) is
+stored. Transient machinery is never serialized: the round factory and its random
+source, bot public events, bot chain-progress counters, pending playback timers,
+selected cards, rule errors, callbacks and the playback-speed preference. Future
+rounds are not pre-generated, so their shuffle is not part of the save.
+
+`GameTable` reports every committed `MatchState` (the initial one included) through
+`onMatchChange`, from an effect keyed on the match object, so selection, rule errors,
+timeline-only updates and speed changes never write, and a scheduled bot step that has
+not fired has not produced a save. The shell writes the envelope for an active match
+and removes it once the match is completed; a confirmed `Nuova partita` also removes it
+(a cancelled one changes nothing).
+
+Stored content is `unknown` until validated. `loadMatchSave` accepts only a version-1
+envelope with a trimmed non-empty setup name, an `in-progress` match whose round number,
+fixed seats and teams, turn/round state, melds, piles and pozzetti are structurally
+valid, whose cards are canonical physical cards each present at most once, whose
+settled history has exactly one result per finished round, and whose `player-1` name
+matches the setup. Anything else (invalid JSON, another version, a completed or stale
+match, an inconsistent setup) is discarded: removal is attempted and the shell opens
+onboarding with a minimal notice. Read, write and remove failures are contained at this
+boundary; a failed write keeps the live match playable and shows a minimal notice.
+
+On load, a valid save mounts `GameTable` directly with the saved `MatchState` as
+`initialMatch` (never calling `startMatch`), and the shell recreates the round factory
+from the saved setup with the same `createSetupRoundFactory` path used by onboarding.
+Later rounds therefore keep the name and the match-layer starter schedule. The restored
+table starts with fresh transient state; a pending bot turn is resumed by the ordinary
+stepwise playback from the committed state, with fresh safety counters.
 
 ## UI
 

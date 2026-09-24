@@ -3,12 +3,14 @@ import type { MatchSetup } from '../shell/matchSetup'
 
 type StartScreenProps = Readonly<{
   initialName?: string
+  /** Minimal non-blocking message, e.g. when a previous local save could not be restored. */
+  notice?: string | null
   onStart: (setup: MatchSetup) => void
 }>
 
 const MAX_NAME_LENGTH = 24
 
-export function StartScreen({ initialName = '', onStart }: StartScreenProps) {
+export function StartScreen({ initialName = '', notice = null, onStart }: StartScreenProps) {
   const [name, setName] = useState(initialName)
   const trimmedName = name.trim()
 
@@ -37,6 +39,8 @@ export function StartScreen({ initialName = '', onStart }: StartScreenProps) {
           <li><strong>3 bot</strong> — il tuo compagno e due avversari.</li>
           <li><strong>4 smazzate</strong> — vince la squadra con il punteggio cumulativo migliore.</li>
         </ul>
+
+        {notice && <p className="storage-notice storage-notice--inline" role="status">{notice}</p>}
 
         <form className="start-form" onSubmit={submit}>
           <label htmlFor="player-name">Il tuo nome</label>

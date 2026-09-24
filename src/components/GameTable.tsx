@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   INITIAL_BOT_CHAIN_PROGRESS,
   playNextBotChainStep,
@@ -40,6 +40,12 @@ type GameTableProps = Readonly<{
   /** Optional shell-owned speed preference; the table keeps its own when omitted. */
   playbackSpeed?: BotPlaybackSpeed
   onPlaybackSpeedChange?: (speed: BotPlaybackSpeed) => void
+  /**
+   * Notified after each committed `MatchState` (including the initial one) so the shell
+   * can persist it. Transient-only changes such as selection, errors, bot timeline or
+   * playback speed never trigger it.
+   */
+  onMatchChange?: (match: MatchState) => void
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -146,6 +152,7 @@ export function GameTable({
   onLeaveMatch,
   playbackSpeed: controlledPlaybackSpeed,
   onPlaybackSpeedChange,
+  onMatchChange,
 }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
@@ -166,6 +173,17 @@ export function GameTable({
   const { match, botEvents } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
+
+  const onMatchChangeRef = useRef(onMatchChange)
+  useEffect(() => {
+    onMatchChangeRef.current = onMatchChange
+  })
+
+  // Runs only once a new match object has committed; a scheduled bot step that has not
+  // fired yet has not produced one.
+  useEffect(() => {
+    onMatchChangeRef.current?.(session.match)
+  }, [session.match])
 
   useEffect(() => {
     if (!hasPendingBot(session.match)) return

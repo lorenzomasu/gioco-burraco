@@ -720,3 +720,23 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 }
 
 .start-form .button { margin-top: .4rem; }
+
+.storage-notice {
+  margin: 0;
+  padding: .6rem .9rem;
+  border-radius: .7rem;
+  color: #f8f4e9;
+  background: rgba(206, 89, 78, .85);
+  font-size: .85rem;
+}
+
+.storage-notice:not(.storage-notice--inline) {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  z-index: 10;
+  width: min(36rem, calc(100% - 2rem));
+  transform: translateX(-50%);
+}
+
+.storage-notice--inline { margin-bottom: 1rem; }
