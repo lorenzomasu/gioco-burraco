@@ -6,6 +6,27 @@ usate dall'implementazione e le assunzioni temporanee di prodotto. Le regole rel
 alle funzionalità non ancora implementate saranno aggiunte prima della relativa
 implementazione.
 
+## Baseline delle regole v1 — milestone 20
+
+- La baseline di gameplay della v1 resta il **Codice di Gara F.I.Bur. — Edizione
+  Gennaio 2026**, pubblicato nell'indice documenti ufficiale F.I.Bur.
+  (`https://www.fibur.it/documenti.aspx`). Il `REGOLAMENTO` Ed. Settembre 2026,
+  pubblicato separatamente, non sostituisce il Codice di Gara come fonte delle regole
+  di gioco.
+- La milestone 20 ha ricontrollato rispetto a questa edizione le famiglie di regole
+  già implementate: procedura e ordine di gioco (art. 7), pesca dal tallone (art. 8),
+  raccolta degli scarti (art. 9), jolly e pinelle (art. 10), sequenze (art. 11),
+  combinazioni (art. 12), Burraco (art. 13), scarto della matta (art. 14), chiusure
+  (art. 17), conteggio dei punti (art. 18), tabella dei Victory Points per quattro
+  smazzate e pozzetti (art. 23).
+- Il controllo non ha richiesto modifiche al codice di gioco. Il comportamento
+  implementato descritto in questo documento resta quello autorevole per la v1.
+- La baseline non implica che il gioco digitale applichi ogni norma del Codice. Le
+  astrazioni digitali documentate nelle sezioni seguenti restano invariate. Time out
+  (art. 15), stallo (art. 16), procedure arbitrali, carte esposte o penalizzate,
+  sanzioni del tavolo fisico e amministrazione dei tornei restano fuori dall'ambito
+  della v1 digitale, salvo una futura milestone che li introduca esplicitamente.
+
 ## Mazzo
 
 - Si usano due mazzi francesi completi: 108 carte in totale.
@@ -482,11 +503,10 @@ non introduce né modifica regole ufficiali FIBUR.
 
 ### Fonte
 
-- Codice di Gara, art. 16 "Chiusure", caso della chiusura senza bonus per tallone
-  esaurito; art. 17 "Punteggi" per i negativi. La regola compare con formulazione
-  equivalente nei Codici di Gara FIBUR e nel Codice di Gara Unico FGB (edizione
-  gennaio 2018). Il testo dell'edizione FIBUR aprile 2024 non è stato verificato
-  direttamente.
+- Codice di Gara F.I.Bur. — Edizione Gennaio 2026, art. 17 "Chiusure", caso della
+  chiusura senza bonus per tallone esaurito; art. 18 "Conteggio dei punti" per i
+  negativi e per il conteggio del pozzetto. Il testo ufficiale dell'edizione 2026 è
+  stato verificato direttamente nella milestone 20.
 
 ### Regole ufficiali applicate
 
@@ -514,13 +534,13 @@ non introduce né modifica regole ufficiali FIBUR.
   conclusivo si applicano prima della conclusione, compresa la presa del pozzetto con
   lo scarto. Un pozzetto preso in questo modo resta nella mano e le sue carte sono
   conteggiate negativamente, coerentemente con il "pozzetto preso e non giocato"
-  dell'art. 17.
+  dell'art. 18.
 - Dopo la conclusione per esaurimento tutti i comandi di gioco sono rifiutati con
   `ROUND_COMPLETED`, come dopo una chiusura.
 
 ### Fuori ambito
 
-- Stallo (art. 18), time out (art. 15) e conclusione per decisione arbitrale.
+- Time out (art. 15), stallo (art. 16) e conclusione per decisione arbitrale.
 
 ## Milestone 14 — Partita su quattro smazzate
 
