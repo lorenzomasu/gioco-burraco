@@ -118,11 +118,14 @@ For a new milestone:
 `npm run verify`
 
 9. fix any failures caused by the milestone;
-10. commit the implementation;
-11. push only the milestone branch;
-12. stop before merging.
+10. record the `npm run verify` result in the completion report;
+11. commit the implementation;
+12. push only the milestone branch;
+13. stop before merging.
 
 The implementer must not start the next milestone.
+
+Running `npm run verify` locally remains a required implementer responsibility. A known local verification failure is always blocking and must be fixed before merge.
 
 ## Independent review
 
@@ -184,7 +187,19 @@ A milestone branch should be reviewed through a pull request to `main`.
 
 GitHub CI is expected to run `npm run verify` for pull requests to `main`.
 
-CI complements local verification; it does not replace independent code review.
+CI complements implementer-local verification and does not replace independent code review.
+
+If evidence of the implementer's local `npm run verify` is unavailable or cannot be independently verified, that missing evidence alone does not block merge when all of the following are true:
+
+- independent review is green with no unresolved blocker or important finding;
+- the reviewed HEAD is exactly the same commit SHA verified by GitHub CI;
+- GitHub CI successfully ran the repository's canonical `npm run verify`;
+- no code or documentation changes were pushed after that successful CI run;
+- there is no known local verification failure.
+
+Under those conditions, successful CI on the exact reviewed HEAD satisfies the final executable-verification gate. The missing local evidence should be noted as a non-blocking procedural deviation.
+
+This fallback applies only to missing or unverifiable evidence. It must never be used to override a known failing local verification result.
 
 ## Merge
 
@@ -192,8 +207,8 @@ Merge only after:
 
 - the milestone specification is satisfied;
 - independent review has no unresolved blocker or important finding;
-- local verification passed;
-- GitHub CI passed.
+- implementer-local verification passed, or the exact reviewed HEAD satisfies the CI fallback conditions defined above;
+- GitHub CI passed on the exact HEAD being merged.
 
 The preferred repository workflow preserves linear history by fast-forwarding the reviewed milestone branch into `main` when possible.
 
