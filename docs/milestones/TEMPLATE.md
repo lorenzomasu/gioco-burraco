@@ -76,11 +76,13 @@ Do not change documentation for speculative future behaviour.
 
 ## Verification
 
-Before completion, run:
+If this milestone is delivered standalone, run before completion:
 
 `npm run verify`
 
-All existing and new tests must pass.
+If this milestone is an internal checkpoint of an approved delivery batch, run the targeted tests/checks required by this specification and defer the canonical `npm run verify` to batch completion as defined in `docs/WORKFLOW.md`.
+
+All relevant existing and new tests must pass.
 
 ## Completion conditions
 
@@ -88,7 +90,7 @@ The milestone is complete only when:
 
 - all acceptance criteria are satisfied;
 - required tests exist and pass;
-- `npm run verify` passes;
+- canonical verification passes at the standalone-milestone or batch delivery gate;
 - documentation is consistent with implemented behaviour;
 - no unrelated refactor or future-scope work was introduced;
 - any remaining ambiguity, risk, or deferred work is explicitly reported.
