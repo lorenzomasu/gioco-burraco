@@ -1,7 +1,7 @@
 {
   "name": "gioco-burraco",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "test:e2e": "npm run build && playwright test",
-    "verify": "npm test && npm run test:e2e && git diff --check"
+    "verify": "npm test && npm run test:e2e && git diff --check",
+    "smoke:deployed": "node scripts/deployed-smoke.mjs"
   },
   "engines": {
     "node": ">=22.23.2"

@@ -22,7 +22,8 @@ React components render state, collect player intent, and invoke the game engine
 - `src/shell` — application-shell helpers that turn onboarding choices into match configuration and persist the one active local match.
 
 Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`. Browser
-end-to-end tests of the built application live in `e2e/` as `*.spec.ts`.
+end-to-end tests of the built application live in `e2e/` as `*.spec.ts`. `scripts/`
+holds the deployed-site smoke command.
 
 ## Game engine invariants
 
@@ -314,6 +315,26 @@ advance. Focused fixtures enter through the real M22 boundary: a save envelope p
 `serializeMatchSave` from real domain helpers. The shipped application exposes no test
 route, query parameter, global API, debug control or hidden-card instrumentation for E2E,
 and none may be added.
+
+## Production build and deployment
+
+The application is a static client: `vite build` emits `dist/` (HTML, JS, CSS and the
+repository-owned `public/favicon.svg`) and nothing else runs at deploy or run time. There
+is no backend, runtime server, router or path detection; all state lives in the browser.
+
+- `vite.config.ts` sets `base: './'`, so every emitted asset URL is relative to the page.
+  The same `dist` runs from the local `vite preview` root and from the GitHub Pages
+  project path `/gioco-burraco/`; `e2e/deployment.spec.ts` guards both.
+- Production is the GitHub Pages project site `https://lorenzomasu.github.io/gioco-burraco/`.
+- Deployment is verified-artifact only: on a push to `main`, the `verify` job of
+  `.github/workflows/ci.yml` runs `npm run verify` and then uploads the very `dist` it
+  verified; the downstream `deploy` job publishes that artifact with the official Pages
+  actions. Pull requests never deploy, and a failed verify cannot deploy.
+- The downstream `deployed-smoke` job runs `scripts/deployed-smoke.mjs`
+  (`npm run smoke:deployed`) in real Chromium against the deployed URL. Like the E2E
+  suite, it uses only the public UI; no test hook ships in the application.
+
+The release procedure and tag gate are in `docs/RELEASE.md`.
 
 ## Source-of-truth relationship
 

@@ -264,6 +264,21 @@ the milestone is considered closed immediately after the fast-forward and confir
 
 A push CI run on `main` may still execute as an additional repository health signal, but it is not a second merge gate and ChatGPT should not wait for it before declaring the milestone closed. If a later main-branch CI run reports a failure, investigate that failure before starting or merging subsequent work.
 
+## Production release gate
+
+Normal milestones close as described above: after independent review, PR CI on the exact
+reviewed HEAD and the merge of that HEAD into `main`.
+
+A production release and its version tag (for example M26 and `v1.0.0`) additionally
+require the post-merge `main` workflow for the exact release SHA to be green: canonical
+verify, GitHub Pages deployment of that run's verified `dist`, and the deployed Chromium
+smoke against the real Pages URL. Only then is the version tag created on that same SHA.
+The implementation agent never merges or tags. The full checklist is in
+`docs/RELEASE.md`.
+
+GitHub CI on a push to `main` therefore also deploys. Obsolete pull-request runs are
+still cancelled; a running `main` workflow is not cancelled mid-deployment.
+
 ## Efficiency rules
 
 The workflow is intentionally optimized for a single human owner working with AI implementation agents.

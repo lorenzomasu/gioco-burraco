@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // Relative asset URLs keep the static build portable: it runs from the GitHub Pages
+  // project path (`/gioco-burraco/`) and from the root of the local `vite preview`.
+  base: './',
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/tests/setup.ts'],
