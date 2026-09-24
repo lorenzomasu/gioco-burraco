@@ -724,10 +724,19 @@ const expectTimelineMatches = (events: readonly BotPublicActionEvent[]) => {
 }
 
 /** Rendered table and timeline, excluding the header playback controls. */
+/**
+ * M24 visual-feedback attributes are transient presentation of the latest step (immediate
+ * completion deliberately clears them), so they are excluded from the committed-outcome
+ * comparison.
+ */
+const withoutFeedbackCues = (html: string) => html.replace(/ data-feedback(?:-cycle)?="[^"]*"/g, '')
+
 const renderedOutcome = () => {
   const table = screen.queryByRole('region', { name: 'Tavolo di Burraco' })
   return [
-    table?.innerHTML ?? document.querySelector('main')!.innerHTML.replace(/<header[\s\S]*?<\/header>/, ''),
+    withoutFeedbackCues(
+      table?.innerHTML ?? document.querySelector('main')!.innerHTML.replace(/<header[\s\S]*?<\/header>/, ''),
+    ),
     screen.getByRole('region', { name: 'Cronologia bot' }).innerHTML,
   ]
 }

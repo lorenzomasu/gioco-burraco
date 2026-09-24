@@ -27,6 +27,13 @@ import { MeldArea } from './MeldArea'
 import { PlayerSeat } from './PlayerSeat'
 import { PlayingCard } from './PlayingCard'
 import { RoundScore } from './RoundScore'
+import {
+  botStepFeedback,
+  cueAttributes,
+  humanActionFeedback,
+  type HumanAction,
+  type TableFeedback,
+} from './tableFeedback'
 
 type GameTableProps = Readonly<{
   initialMatch?: MatchState
@@ -77,13 +84,15 @@ const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
 }
 
 /**
- * Transient UI session. Bot events and playback safety counters live here, never in
- * `GameState` or `MatchState`.
+ * Transient UI session. Bot events, playback safety counters and the visual feedback cue
+ * live here, never in `GameState` or `MatchState`.
  */
 type GameTableSession = Readonly<{
   match: MatchState
   botEvents: readonly BotPublicActionEvent[]
   botProgress: BotChainProgress
+  /** Presentation-only cue for the latest committed change; replaced with the session. */
+  feedback: TableFeedback | null
 }>
 
 /** Starts a fresh session without resolving any pending bot; playback steps it later. */
@@ -91,6 +100,7 @@ const freshSession = (match: MatchState): GameTableSession => ({
   match: synchronizeMatch(match),
   botEvents: [],
   botProgress: INITIAL_BOT_CHAIN_PROGRESS,
+  feedback: null,
 })
 
 const hasPendingBot = (match: MatchState): boolean =>
@@ -106,6 +116,7 @@ const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
     match: updateCurrentRound(session.match, step.state),
     botEvents: [...session.botEvents, ...step.events],
     botProgress: step.progress,
+    feedback: botStepFeedback(session.match.currentRound, step.state, step.events, session.feedback),
   }
 }
 
@@ -122,7 +133,8 @@ const completeBotPlayback = (session: GameTableSession): GameTableSession => {
     current = next
     next = advanceBotPlayback(current)
   }
-  return current
+  // Immediate completion skips every intermediate cue: nothing cosmetic is left pending.
+  return current === session ? current : { ...current, feedback: null }
 }
 
 const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
@@ -212,7 +224,7 @@ export function GameTable({
   const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   const playbackSpeed = controlledPlaybackSpeed ?? localPlaybackSpeed
   const setPlaybackSpeed = onPlaybackSpeedChange ?? setLocalPlaybackSpeed
-  const { match, botEvents } = session
+  const { match, botEvents, feedback } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
 
@@ -277,13 +289,16 @@ export function GameTable({
     resetTransientState()
   }
 
-  const commitAction = (action: () => GameState) => {
+  const commitAction = (action: () => GameState, cue: HumanAction) => {
     if (isBotPlaying) return
     try {
+      const next = action()
+      // The cue is derived only once the engine has committed the action.
       setSession({
-        match: updateCurrentRound(match, action()),
+        match: updateCurrentRound(match, next),
         botEvents,
         botProgress: INITIAL_BOT_CHAIN_PROGRESS,
+        feedback: humanActionFeedback(game, next, cue, session.feedback),
       })
       resetTransientState()
     } catch (error) {
@@ -355,6 +370,15 @@ export function GameTable({
           <span className="round-complete__eyebrow">
             {outcome ? 'Partita conclusa' : `Dopo ${match.currentRoundNumber} smazzate`}
           </span>
+          {/* Decorative progress; the eyebrow and the header state the round in text. */}
+          <span className="round-track" aria-hidden="true">
+            {Array.from({ length: MATCH_ROUND_COUNT }, (_, index) => (
+              <span
+                key={index}
+                className={`round-track__step${index < match.currentRoundNumber ? ' round-track__step--done' : ''}`}
+              />
+            ))}
+          </span>
           <h2 id="match-summary-title">Punteggio cumulativo</h2>
           <div className="cumulative-score" aria-label="Punti cumulativi">
             {cumulativeScores.map((teamScore) => (
@@ -366,20 +390,29 @@ export function GameTable({
           </div>
 
           {outcome ? (
-            <div className="final-result">
+            <div
+              className={`final-result ${outcome.leadingTeamId ? 'final-result--leader' : 'final-result--tie'}`}
+            >
               <h3>Risultato finale</h3>
-              <p>Match Points <strong>{outcome.matchPoints}</strong></p>
+              {/* Emphasis follows only the domain outcome: one leading team or an exact tie. */}
+              <p className="final-result__outcome">
+                <span className="final-result__icon" aria-hidden="true">{outcome.leadingTeamId ? '♛' : '='}</span>
+                {outcome.leadingTeamId
+                  ? `Prima la Squadra ${outcome.leadingTeamId === 'team-1' ? '1' : '2'}.`
+                  : 'Parità esatta.'}
+              </p>
+              <p className="final-result__match-points">Match Points <strong>{outcome.matchPoints}</strong></p>
               <div className="victory-points" aria-label="Victory Points">
                 {outcome.victoryPoints.map((teamResult) => (
-                  <div key={teamResult.teamId}>
+                  <div
+                    key={teamResult.teamId}
+                    className={teamResult.teamId === outcome.leadingTeamId ? 'victory-points__team--leader' : undefined}
+                  >
                     <span>Squadra {teamResult.teamId === 'team-1' ? '1' : '2'}</span>
                     <strong>{teamResult.victoryPoints} VP</strong>
                   </div>
                 ))}
               </div>
-              <p>{outcome.leadingTeamId
-                ? `Prima la Squadra ${outcome.leadingTeamId === 'team-1' ? '1' : '2'}.`
-                : 'Parità esatta.'}</p>
               {onLeaveMatch && (
                 <button type="button" className="button button--primary match-summary__action" onClick={leaveMatch}>
                   Gioca ancora
@@ -420,18 +453,33 @@ export function GameTable({
     canTakeDiscardPile,
     hasTeamMelds: activeTeam.melds.length > 0,
   })
+  // Presentation-only cues for the latest committed change (see `tableFeedback.ts`).
+  const cuedAction = feedback?.action?.type
+  const isHumanCue = feedback !== null && feedback.actorId === null
+  const seatCue = (player: Player) => cueAttributes(
+    feedback,
+    (feedback?.turnChange === 'player' && player.id === activePlayer.id && 'turn')
+      || (feedback?.actorId === player.id && 'bot-step'),
+  )
+  const receivedCardIds = new Set(feedback?.receivedCardIds)
 
   return (
     <main className="game-shell">
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
-        <PlayerSeat player={seats.top} position="top" bot active={seats.top.id === activePlayer.id} />
-        <PlayerSeat player={seats.left} position="left" bot active={seats.left.id === activePlayer.id} />
-        <PlayerSeat player={seats.right} position="right" bot active={seats.right.id === activePlayer.id} />
+        <PlayerSeat player={seats.top} position="top" bot active={seats.top.id === activePlayer.id} cue={seatCue(seats.top)} />
+        <PlayerSeat player={seats.left} position="left" bot active={seats.left.id === activePlayer.id} cue={seatCue(seats.left)} />
+        <PlayerSeat player={seats.right} position="right" bot active={seats.right.id === activePlayer.id} cue={seatCue(seats.right)} />
 
         <div className="table-center">
           <div className="turn-status" ref={turnStatusRef} tabIndex={-1}>
-            <div className="turn-banner" aria-live="polite" aria-atomic="true">
+            {/* Only attributes change here, so the live region is never remounted to animate. */}
+            <div
+              className="turn-banner"
+              aria-live="polite"
+              aria-atomic="true"
+              {...cueAttributes(feedback, feedback?.turnChange)}
+            >
               <span className="turn-banner__pulse" aria-hidden="true" />
               <div>
                 <span>Turno di</span>
@@ -455,8 +503,9 @@ export function GameTable({
             <button
               type="button"
               className="pile-control"
-              onClick={() => commitAction(() => drawCard(game, humanPlayerId))}
+              onClick={() => commitAction(() => drawCard(game, humanPlayerId), { type: 'draw-stock' })}
               disabled={!canDrawStock}
+              {...cueAttributes(feedback, cuedAction === 'draw-stock' && 'draw')}
               aria-label={`Pesca dal tallone, ${game.drawPile.length} carte rimaste`}
             >
               <span className="card-back" aria-hidden="true"><span>B</span></span>
@@ -464,7 +513,10 @@ export function GameTable({
               <span>{game.drawPile.length} carte</span>
             </button>
 
-            <div className="pozzetti-counter">
+            <div
+              className="pozzetti-counter"
+              {...cueAttributes(feedback, (feedback?.pozzettoTeamIds.length ?? 0) > 0 && 'pozzetto')}
+            >
               <span>Pozzetti</span>
               <strong>{untouchedPozzetti}</strong>
               <small>ancora disponibili</small>
@@ -473,8 +525,9 @@ export function GameTable({
             <button
               type="button"
               className="pile-control"
-              onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId))}
+              onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
               disabled={!canTakeDiscardPile}
+              {...cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
               aria-label={discardTop
                 ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
                 : 'Monte degli scarti vuoto'}
@@ -494,13 +547,21 @@ export function GameTable({
                 team={team}
                 activeTeam={team.id === activeTeam.id}
                 canExtend={isActionPhase && selectedCardIds.size > 0}
-                onExtend={(meldIndex) => commitAction(() => extendMeld(game, humanPlayerId, meldIndex, selectedIds))}
+                onExtend={(meldIndex) => commitAction(
+                  () => extendMeld(game, humanPlayerId, meldIndex, selectedIds),
+                  { type: 'extend-meld', teamId: humanPlayer.teamId, meldIndex },
+                )}
+                feedback={feedback}
               />
             ))}
           </div>
         </div>
 
-        <section className="active-player" aria-label={`Mano di ${humanPlayer.name}`}>
+        <section
+          className="active-player"
+          aria-label={`Mano di ${humanPlayer.name}`}
+          {...cueAttributes(feedback, feedback?.turnChange === 'player' && isHumanTurn && 'turn')}
+        >
           <header className="active-player__header">
             <div>
               <span className="section-kicker">Giocatore umano · Squadra {humanPlayer.teamId === 'team-1' ? '1' : '2'}</span>
@@ -512,13 +573,18 @@ export function GameTable({
             </span>
           </header>
 
-          <div className="hand" aria-label={`Carte di ${humanPlayer.name}`}>
+          <div
+            className="hand"
+            aria-label={`Carte di ${humanPlayer.name}`}
+            {...cueAttributes(feedback, isHumanCue && cuedAction === 'collect-discard-pile' && 'collect')}
+          >
             {sortedHand.map((card) => (
               <PlayingCard
                 key={card.id}
                 card={card}
                 selected={selectedCardIds.has(card.id)}
                 onToggle={isHumanTurn ? toggleCard : undefined}
+                cue={cueAttributes(feedback, receivedCardIds.has(card.id) && 'received')}
               />
             ))}
           </div>
@@ -532,7 +598,10 @@ export function GameTable({
               type="button"
               className="button button--primary"
               disabled={!isActionPhase || selectedCardIds.size === 0}
-              onClick={() => commitAction(() => playMeld(game, humanPlayerId, selectedIds))}
+              onClick={() => commitAction(
+                () => playMeld(game, humanPlayerId, selectedIds),
+                { type: 'play-meld', teamId: humanPlayer.teamId },
+              )}
             >
               Cala
             </button>
@@ -540,7 +609,7 @@ export function GameTable({
               type="button"
               className="button button--secondary"
               disabled={!isActionPhase || selectedCardIds.size !== 1}
-              onClick={() => commitAction(() => discardCard(game, humanPlayerId, selectedIds[0]!))}
+              onClick={() => commitAction(() => discardCard(game, humanPlayerId, selectedIds[0]!), { type: 'discard' })}
             >
               Scarta e passa
             </button>

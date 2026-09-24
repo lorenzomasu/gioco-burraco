@@ -18,6 +18,7 @@ export function RoundScore({ game, score, headingRef }: RoundScoreProps) {
 
   return (
     <section className="round-complete" aria-labelledby="round-complete-title">
+      <span className="round-complete__emblem" aria-hidden="true">♠ ♥ ♦ ♣</span>
       <span className="round-complete__eyebrow">Smazzata conclusa</span>
       {round.ending === 'closure' ? (
         <>
@@ -35,25 +36,33 @@ export function RoundScore({ game, score, headingRef }: RoundScoreProps) {
       )}
 
       <div className="score-grid">
-        {score.teams.map((teamScore) => (
-          <article
-            className="score-card"
-            key={teamScore.teamId}
-            aria-label={`Punteggio smazzata squadra ${teamScore.teamId === 'team-1' ? '1' : '2'}`}
-          >
-            <header>
-              <span>Squadra {teamScore.teamId === 'team-1' ? '1' : '2'}</span>
-              <strong>{signed(teamScore.total)}</strong>
-            </header>
-            <dl>
-              <div><dt>Carte calate</dt><dd>{signed(teamScore.meldCardPoints)}</dd></div>
-              <div><dt>Bonus Burraco</dt><dd>{signed(teamScore.burracoBonus)}</dd></div>
-              <div><dt>Bonus chiusura</dt><dd>{signed(teamScore.closingBonus)}</dd></div>
-              <div className="score-row--penalty"><dt>Carte in mano</dt><dd>−{teamScore.handPenalty}</dd></div>
-              <div className="score-row--penalty"><dt>Pozzetto</dt><dd>−{teamScore.pozzettoPenalty}</dd></div>
-            </dl>
-          </article>
-        ))}
+        {score.teams.map((teamScore) => {
+          const closedRound = round.ending === 'closure' && round.closingTeamId === teamScore.teamId
+          return (
+            <article
+              className={`score-card${closedRound ? ' score-card--closing' : ''}`}
+              key={teamScore.teamId}
+              aria-label={`Punteggio smazzata squadra ${teamScore.teamId === 'team-1' ? '1' : '2'}`}
+            >
+              <header>
+                <span className="score-card__team">
+                  Squadra {teamScore.teamId === 'team-1' ? '1' : '2'}
+                  {closedRound && <span className="score-card__tag">Chiusura</span>}
+                </span>
+                <strong className={teamScore.total < 0 ? 'score-card__total--negative' : undefined}>
+                  {signed(teamScore.total)}
+                </strong>
+              </header>
+              <dl>
+                <div><dt>Carte calate</dt><dd>{signed(teamScore.meldCardPoints)}</dd></div>
+                <div><dt>Bonus Burraco</dt><dd>{signed(teamScore.burracoBonus)}</dd></div>
+                <div><dt>Bonus chiusura</dt><dd>{signed(teamScore.closingBonus)}</dd></div>
+                <div className="score-row--penalty"><dt>Carte in mano</dt><dd>−{teamScore.handPenalty}</dd></div>
+                <div className="score-row--penalty"><dt>Pozzetto</dt><dd>−{teamScore.pozzettoPenalty}</dd></div>
+              </dl>
+            </article>
+          )
+        })}
       </div>
     </section>
   )

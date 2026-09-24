@@ -260,6 +260,25 @@ These presentation contracts are transient React concerns; none of them is store
 - Responsive behaviour lives in CSS breakpoints (1000 px, 760 px, 440 px), not in
   JavaScript viewport branching.
 
+### Transient visual feedback
+
+Game-feel cues are presentation only (`src/components/tableFeedback.ts`). The game
+table session holds at most one cue for the latest committed change; it is never stored
+in `GameState`, `MatchState` or the local save.
+
+- A human cue is built only after the engine call has returned the new state, from the
+  control that was used; a rejected `GameRuleError` action produces none. A bot cue comes
+  only from that step's public events. Turn and pozzetto cues compare public, durable state
+  (current player/phase, `hasTakenPozzetto`); no cue re-decides legality.
+- Cues never delay or gate committed state, and no game logic waits for them. There are
+  no effect timers: a cue is rendered as `data-feedback` attributes and CSS animations
+  that end in the element's static state. An alternating `data-feedback-cycle` restarts an
+  animation without remounting the element, so focus and live regions are untouched.
+- A fresh session (new round, restored or replaced match) starts without a cue, and
+  immediate bot completion ("Completa subito") clears it.
+- Every state a cue decorates stays expressed in text or static styling, and the
+  reduced-motion policy collapses all animation and transition timing.
+
 ## Source-of-truth relationship
 
 `docs/RULES.md` is authoritative for implemented Burraco behaviour.

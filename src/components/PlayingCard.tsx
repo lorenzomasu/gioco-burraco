@@ -1,5 +1,6 @@
 import type { Card } from '../game/cards/types'
 import { cardLabel, isRedSuit, rankSymbols, suitSymbols } from './cardPresentation'
+import type { CueAttributes } from './tableFeedback'
 
 type PlayingCardProps = Readonly<{
   card: Card
@@ -7,6 +8,8 @@ type PlayingCardProps = Readonly<{
   onToggle?: (cardId: string) => void
   compact?: boolean
   annotation?: string
+  /** Transient presentation cue (for example a newly drawn card); purely visual. */
+  cue?: CueAttributes
 }>
 
 const CardFace = ({ card, annotation }: Pick<PlayingCardProps, 'card' | 'annotation'>) => (
@@ -22,7 +25,7 @@ const CardFace = ({ card, annotation }: Pick<PlayingCardProps, 'card' | 'annotat
   </>
 )
 
-export function PlayingCard({ card, selected = false, onToggle, compact = false, annotation }: PlayingCardProps) {
+export function PlayingCard({ card, selected = false, onToggle, compact = false, annotation, cue }: PlayingCardProps) {
   const className = [
     'playing-card',
     isRedSuit(card.suit) ? 'playing-card--red' : '',
@@ -40,6 +43,7 @@ export function PlayingCard({ card, selected = false, onToggle, compact = false,
         aria-label={cardLabel(card)}
         aria-pressed={selected}
         onClick={() => onToggle(card.id)}
+        {...cue}
       >
         <CardFace card={card} annotation={annotation} />
         {selected && <span className="playing-card__check" aria-hidden="true">✓</span>}
@@ -48,7 +52,7 @@ export function PlayingCard({ card, selected = false, onToggle, compact = false,
   }
 
   return (
-    <div className={className} role="img" aria-label={`${cardLabel(card)}${annotation ? `, ${annotation}` : ''}`}>
+    <div className={className} role="img" aria-label={`${cardLabel(card)}${annotation ? `, ${annotation}` : ''}`} {...cue}>
       <CardFace card={card} annotation={annotation} />
     </div>
   )
