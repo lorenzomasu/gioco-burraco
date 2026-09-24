@@ -1,8 +1,8 @@
-# V1 Roadmap
+# Product Roadmap
 
 ## Purpose
 
-This document records the agreed product roadmap from the completed gameplay core to the first production release.
+This document records the agreed product roadmap from the completed gameplay core through v1.0 and the planned v1.1 interaction/feel release.
 
 It exists so milestone preparation does not depend on chat memory. Future milestone specifications must use this roadmap as the planning baseline together with the current repository state.
 
@@ -14,6 +14,9 @@ This roadmap is intentionally higher-level than a milestone specification:
 - if repository evidence shows that the sequence or product scope should change, update this roadmap explicitly rather than silently drifting from it.
 
 ## Current baseline
+
+The v1.0 cycle M20–M26 is complete. The exact v1.0.0 tag and main HEAD are at 98b86e708ffd38fccb1e032447ba923de26975a7 when the v1.1 plan is opened. M20–M26 below remain the historical v1 plan; M27–M33 define the next cycle.
+
 
 ### Gameplay core complete through M20
 
@@ -315,7 +318,7 @@ The following are not part of the current v1 critical path:
 - music or a full audio system;
 - social features.
 
-This list prevents scope creep; it does not prohibit future milestones after v1.
+This list prevented v1 scope creep; it does not prohibit future milestones after v1. The v1.1 cycle below explicitly brings short sound effects into scope at M31. Music and a full audio system remain outside v1.1.
 
 ## Roadmap governance
 
@@ -330,4 +333,67 @@ When preparing `M21`–`M26`:
 7. do not silently move future-scope work into the current milestone;
 8. update this roadmap explicitly if the intended sequence, release-critical scope or v1 boundary changes.
 
-Once a milestone specification is versioned, that specification is authoritative for implementation and review. This roadmap remains authoritative for the broader v1 sequence and product boundary.
+Once a milestone specification is versioned, that specification is authoritative for implementation and review. This roadmap remains authoritative for the broader sequence and product boundary.
+
+
+---
+
+# V1.1 — Tabletop UX and game feel
+
+## Product outcome and boundary
+
+The rules-correct and deployed v1.0 game is playable, but its screen still reads as a control dashboard: large header and status blocks, separate meld panels and activity history, click-to-select followed by action buttons, and only the top discard shown. V1.1 aims to make play feel like a coherent, understandable card-game app across desktop, touch and keyboard.
+
+Keep the four-round local match, deterministic engine, bot legality, hidden-information boundary, save format and deployment model. UI collects intent and renders committed state; the engine remains the sole authority for legal moves. Make each milestone visibly useful, but keep rule changes, multiplayer, accounts and speculative bot features out of this cycle. The sequence defines dependencies, not a date guarantee. MXX.1 is for review-discovered corrections, not planned micro-features.
+
+## V1.1 sequence
+
+M27 UI Architecture & Visual Direction → M28 Tabletop & Discard Pile UX → M29 Hand Management & Direct Manipulation → M30 Motion & Bot Choreography → M31 Audio & Sensory Feedback → M32 App-wide UX Polish → M33 V1.1 Hardening & Release.
+
+M27–M32 are product milestones; M33 is the release gate. Do not start motion or audio by decorating an interaction model still due to change. Complete M27–M29 first; M30–M32 depend on the stable table and interaction structure.
+
+### M27 — UI Architecture & Visual Direction
+
+**Outcome:** Implement a new responsive composition with the table dominating the active game, the human hand at the bottom, a teammate to one side, and opponents above/on the other side. Keep stock, discard, pozzetti, melds, turn context and actions clear. Reduce the visual weight of global controls, status copy and bot history; make history available in a compact disclosure while preserving its accessible live log. This is real UI implementation, not a document or mockup milestone.
+
+**Dependency:** deployed v1.0 baseline. Preserve all current actions, save/resume, bot playback, completed-round screens and accessibility contracts. The complete face-up discard spread and reorganization of its detailed card layout belong to M28; direct manipulation belongs to M29. The M27 specification defines measurable layout and behaviour.
+
+### M28 — Tabletop & Discard Pile UX
+
+**Outcome:** Render every card in the face-up discard pile in chronological order within the live table, from oldest to newest, with each identity readable and the newest clearly distinguished. On desktop use an overlapping spread; on narrow screens allow local horizontal scrolling without hiding older cards behind a mandatory popup. Preserve the whole-pile collection action and empty-pile state. Place stock, available pozzetti and team melds as table elements, preserving correct public/hidden information and accessible card descriptions.
+
+**Dependency:** M27 table composition. The view must remain usable for large piles, mobile/touch and keyboard and must not alter game rules.
+
+### M29 — Hand Management & Direct Manipulation
+
+**Outcome:** Allow manual hand reorder with a clear optional auto-sort control, drag/touch intent for discarding, opening a meld and extending a specific existing meld, and immediate explanation for rejected drops. Preserve click/tap multi-selection and accessible keyboard/button paths for every action. Specify multi-card movement carefully before implementation; never let drag state decide legality or enter the saved domain state.
+
+**Dependency:** M28 stable table and drop destinations. Use existing engine commands for commits and rule errors.
+
+### M30 — Motion & Bot Choreography
+
+**Outcome:** Show intelligible source-to-destination card movement for human draw, whole-pile collection, discard, new meld and meld extension, and for public bot actions without revealing hidden cards. Give pozzetto and Burraco events suitable emphasis. Keep animation presentation-only, interruptible on new match/round or unmount and compatible with reduced motion. Prefer CSS, WAAPI or light FLIP techniques unless a concrete need justifies a dependency.
+
+**Dependency:** M29 interaction paths and stable geometry.
+
+### M31 — Audio & Sensory Feedback
+
+**Outcome:** Add short, coherent sound effects for selection, drawing, collecting discards, playing/extending/discarding, invalid action, turn, pozzetto, Burraco and round/match completion. Provide mute and volume controls, locally persisted preferences, and safe browser audio activation. Playback must never gate game commits, block automation or expose hidden bot information.
+
+**Dependency:** M30 motion and event presentation. No background music in v1.1.
+
+### M32 — App-wide UX Polish
+
+**Outcome:** Bring onboarding/new match, resume, settings, contextual help, scores, between-round progression and final result to the table's product standard. Resolve the remaining usability, responsive and accessibility rough edges at approximately 320–390 px, tablet and desktop. Work from observed flows; do not duplicate game logic or add unrelated product features.
+
+**Dependency:** M27–M31.
+
+### M33 — V1.1 Hardening & Release
+
+**Outcome:** Update browser-level critical paths for the new controls and fallbacks, the full discard display, long/empty piles, save/resume, interrupted animation, audio off, reduced motion, keyboard/touch, mobile layouts and a complete match. Complete independent review, canonical verification, deployment and deployed smoke on the exact release SHA; tag that SHA v1.1.0 following docs/RELEASE.md. M33 has no new creative feature scope.
+
+**Dependency:** M27–M32 complete and integrated. A release requires the post-merge deployment gate, not merely a green PR.
+
+## V1.1 governance
+
+Prepare each milestone from current main and this roadmap, inspect only directly relevant code and tests, and version a concrete specification on its own branch using docs/milestones/TEMPLATE.md. The specification is the contract for implementation and review. Update this roadmap explicitly for any material change to objectives, order, dependencies or the v1.1 boundary. Keep the established prepare → implement → review → PR/CI/merge workflow in docs/WORKFLOW.md; its references to the v1 path are historical, while its verification and release gates continue to apply.
