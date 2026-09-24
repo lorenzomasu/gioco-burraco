@@ -56,8 +56,8 @@ When the user asks to prepare a milestone, for example:
 
 the standard workflow is:
 
-1. inspect the current `main`, relevant rules, architecture, implementation, and tests;
-2. define the milestone scope, required behaviour, acceptance criteria, required tests, documentation impact, and out-of-scope items;
+1. inspect the current `main`, `docs/ROADMAP.md`, relevant rules, architecture, implementation, tests, and prior milestone reports;
+2. use the roadmap objective, dependencies, sequence, and v1 boundary as the planning baseline, then define the milestone scope, required behaviour, acceptance criteria, required tests, documentation impact, and out-of-scope items;
 3. create the dedicated milestone branch from updated `main`;
 4. create the milestone specification under `docs/milestones/`;
 5. commit and push the specification on the milestone branch before implementation begins;
@@ -71,6 +71,8 @@ Use `docs/milestones/TEMPLATE.md` as the structural starting point.
 
 The milestone specification is the authoritative contract for that milestone's scope and acceptance criteria.
 
+`docs/ROADMAP.md` is the authoritative planning source for the broader v1 sequence and product boundary. A milestone specification may refine implementation details from the roadmap, but a material change to the milestone objective, ordering, dependency, release-critical status, or v1 boundary should update the roadmap explicitly rather than drifting silently.
+
 ## Codex implementation prompt
 
 The Codex prompt should be short.
@@ -81,6 +83,7 @@ A normal milestone prompt should tell Codex to read:
 
 - `AGENTS.md`;
 - `docs/WORKFLOW.md`;
+- `docs/ROADMAP.md`;
 - `docs/RULES.md`;
 - `docs/ARCHITECTURE.md`;
 - the relevant `docs/milestones/MXX-....md`;
