@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
-import { drawCard } from '../game/engine/turn'
+import { discardCard, drawCard, takeDiscardPile } from '../game/engine/turn'
 import { dealInitialState } from '../game/engine/startGame'
 import type { MatchState, SettledRoundResult } from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
-import { cardLabel } from './cardPresentation'
+import { cardLabel, sortCardsForDisplay } from './cardPresentation'
 import { BOT_STEP_DELAY_MS, GameTable, LEAVE_MATCH_CONFIRMATION } from './GameTable'
 
 const deck = createBurracoDeck()
@@ -185,7 +185,7 @@ describe('GameTable', () => {
     expect(screen.getByRole('region', { name: 'Giocatore Partner' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Giocatore South' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pesca dal tallone, 41 carte rimaste' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Raccogli il monte degli scarti, 1 carta' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Raccogli tutto il monte degli scarti, 1 carta' })).toBeEnabled()
     expect(screen.getByText('Pesca')).toBeInTheDocument()
     expect(screen.getByText('North · Bot')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: cardLabel(hiddenBotCard) })).not.toBeInTheDocument()
@@ -206,11 +206,12 @@ describe('GameTable', () => {
   it('takes the discard pile through the engine and empties the visible pile', () => {
     render(<GameTable initialState={dealInitialState(deck)} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Raccogli il monte degli scarti, 1 carta' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Raccogli tutto il monte degli scarti, 1 carta' }))
 
     expect(screen.getByText('Gioco')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Mano di You' })).getByText('12 carte')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Monte degli scarti vuoto' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Raccogli tutto il monte degli scarti, 0 carte' })).toBeDisabled()
+    expect(screen.getByText('Monte degli scarti vuoto')).toBeInTheDocument()
   })
 
   it('automatically resolves all three bot turns and returns control to the human', () => {
@@ -661,7 +662,7 @@ describe('GameTable accessibility and interaction semantics', () => {
     render(<GameTable initialState={actionState([card('seven', 'spades'), card('king', 'spades')], [existingMeld])} />)
 
     expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Raccogli tutto il monte degli scarti/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' })).toBeDisabled()
@@ -769,13 +770,13 @@ describe('GameTable accessibility and interaction semantics', () => {
     expect(screen.getByText('Tocca a te: pesca una carta dal tallone oppure raccogli il monte degli scarti.'))
       .toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Raccogli tutto il monte degli scarti/ })).toBeEnabled()
     unmount()
 
     render(<GameTable initialState={drawPhaseState([])} />)
     expect(screen.getByText('Tocca a te: pesca una carta dal tallone. Il monte degli scarti è vuoto.'))
       .toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Monte degli scarti vuoto' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Raccogli tutto il monte degli scarti, 0 carte' })).toBeDisabled()
     expect(screen.queryByText(/raccogli il monte/)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /^Pesca dal tallone/ }))
@@ -1018,5 +1019,280 @@ describe('GameTable tabletop composition (M27)', () => {
     expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
     expect(historyToggle()).toHaveAttribute('aria-expanded', 'true')
     expect(within(historyLog()).getAllByRole('listitem').length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * A human-turn state whose face-up pile is exactly `pile` (engine order, oldest first).
+ * The pile's physical cards are removed from every other zone so each card exists once.
+ */
+const pileState = (
+  pile: readonly Card[],
+  phase: 'mustDraw' | 'action' = 'mustDraw',
+  teamOneMelds: readonly ValidatedMeld[] = [],
+): InProgressGameState => {
+  const initial = dealInitialState(deck)
+  const pileIds = new Set(pile.map(({ id }) => id))
+  const meldIds = new Set(teamOneMelds.flatMap(({ cards }) => cards.map(({ card }) => card.id)))
+  const keep = (cards: readonly Card[]) => cards.filter(({ id }) => !pileIds.has(id) && !meldIds.has(id))
+  return {
+    ...initial,
+    players: initial.players.map((player) => ({ ...player, hand: keep(player.hand) })),
+    teams: initial.teams.map((team) => team.id === 'team-1' ? { ...team, melds: teamOneMelds } : team),
+    drawPile: keep(initial.drawPile),
+    pozzetti: [keep(initial.pozzetti[0]), keep(initial.pozzetti[1])],
+    discardPile: pile,
+    round: {
+      status: 'in-progress',
+      turn: phase === 'mustDraw'
+        ? { currentPlayerId: 'player-1', phase: 'mustDraw' }
+        : { currentPlayerId: 'player-1', phase: 'action', acquisition: { source: 'drawPile', cardIds: [] } },
+    },
+  }
+}
+
+/** Distinguishable faces, including the same face from both physical decks and a joker. */
+const mixedPile = (): readonly Card[] => [
+  card('king', 'hearts', 1),
+  card('three', 'clubs', 2),
+  card('king', 'hearts', 2),
+  joker(),
+  card('seven', 'spades', 1),
+]
+
+const discardGroup = () => screen.getByRole('group', { name: 'Monte degli scarti' })
+const discardList = () => within(discardGroup()).getByRole('list', { name: /^Carte scartate/ })
+const collectButton = () => screen.getByRole('button', { name: /^Raccogli tutto il monte degli scarti/ })
+const renderedPile = () => within(discardList()).getAllByRole('img').map((image) => image.getAttribute('aria-label'))
+
+describe('GameTable discard pile (M28)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('renders every discard exactly once in engine order, oldest to newest', () => {
+    const pile = mixedPile()
+    render(<GameTable initialState={pileState(pile)} />)
+
+    expect(renderedPile()).toEqual(pile.map(cardLabel))
+    expect(within(discardList()).getAllByRole('listitem')).toHaveLength(pile.length)
+    for (const discarded of pile) {
+      expect(screen.getAllByRole('img', { name: cardLabel(discarded) })).toHaveLength(1)
+    }
+    // The individual discards are informative only: no per-card control inside the pile.
+    expect(within(discardGroup()).getAllByRole('button')).toEqual([collectButton()])
+  })
+
+  it('marks only the newest card in text and states the pile count', () => {
+    const pile = mixedPile()
+    render(<GameTable initialState={pileState(pile)} />)
+
+    const items = within(discardList()).getAllByRole('listitem')
+    expect(within(discardGroup()).getAllByText('In cima')).toHaveLength(1)
+    expect(within(items.at(-1)!).getByText('In cima')).toBeInTheDocument()
+    expect(within(items.at(-1)!).getByRole('img')).toHaveAccessibleName(cardLabel(pile.at(-1)!))
+    expect(items.at(-1)).toHaveClass('discard-spread__item--top')
+    expect(within(discardGroup()).getByText('5 carte')).toBeInTheDocument()
+    expect(collectButton()).toHaveAccessibleName('Raccogli tutto il monte degli scarti, 5 carte')
+  })
+
+  it('shows an explicit empty pile with a zero count, no stale card and no collection', () => {
+    render(<GameTable initialState={pileState([])} />)
+
+    expect(within(discardGroup()).getByText('Monte degli scarti vuoto')).toBeInTheDocument()
+    expect(within(discardGroup()).getByText('0 carte')).toBeInTheDocument()
+    expect(within(discardGroup()).queryByRole('list')).not.toBeInTheDocument()
+    expect(within(discardGroup()).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(discardGroup()).queryByText('In cima')).not.toBeInTheDocument()
+    expect(collectButton()).toBeDisabled()
+    expect(collectButton()).toHaveAccessibleName('Raccogli tutto il monte degli scarti, 0 carte')
+  })
+
+  it('enables collection only in the human draw phase and keeps the pile visible otherwise', () => {
+    const pile = mixedPile()
+    const { unmount } = render(<GameTable initialState={pileState(pile, 'mustDraw')} />)
+    expect(collectButton()).toBeEnabled()
+    unmount()
+
+    render(<GameTable initialState={pileState(pile, 'action')} />)
+    expect(collectButton()).toBeDisabled()
+    expect(renderedPile()).toEqual(pile.map(cardLabel))
+    expect(within(discardGroup()).getByText('In cima')).toBeInTheDocument()
+  })
+
+  it('keeps the pile visible and uncollectable while a bot is to play', () => {
+    const pile = mixedPile()
+    const state = pileState(pile)
+    render(<GameTable initialState={{ ...state, round: { status: 'in-progress', turn: { currentPlayerId: 'player-2', phase: 'mustDraw' } } }} />)
+
+    expect(collectButton()).toBeDisabled()
+    expect(renderedPile()).toEqual(pile.map(cardLabel))
+  })
+
+  it('collects the whole pile through the engine command and empties the spread', () => {
+    const pile = mixedPile()
+    const state = pileState(pile)
+    const onMatchChange = vi.fn()
+    render(<GameTable initialState={state} onMatchChange={onMatchChange} />)
+
+    fireEvent.click(collectButton())
+
+    const committed = onMatchChange.mock.calls.at(-1)![0] as MatchState
+    expect(committed.currentRound).toEqual(takeDiscardPile(state, 'player-1'))
+    expect(within(discardGroup()).getByText('Monte degli scarti vuoto')).toBeInTheDocument()
+    expect(within(discardGroup()).getByText('0 carte')).toBeInTheDocument()
+    expect(collectButton()).toBeDisabled()
+    const hand = screen.getByRole('region', { name: 'Mano di You' })
+    for (const collected of pile) {
+      expect(within(hand).getByRole('button', { name: cardLabel(collected) })).toBeInTheDocument()
+    }
+    expect(screen.getByText('Gioco')).toBeInTheDocument()
+  })
+
+  it('renders a long pile in stored order without sorting or changing the state', () => {
+    // Forty physical cards in a deterministic order that is deliberately not display-sorted.
+    const source = deck.slice(0, 40)
+    const pile = source.map((_, index) => source[(index * 7) % source.length]!)
+    const state = pileState(pile)
+    const snapshot = structuredClone(state)
+    const onMatchChange = vi.fn()
+    render(<GameTable initialState={state} onMatchChange={onMatchChange} />)
+
+    expect(renderedPile()).toEqual(pile.map(cardLabel))
+    expect(renderedPile()).not.toEqual(sortCardsForDisplay(pile).map(cardLabel))
+    expect(within(discardGroup()).getByText('40 carte')).toBeInTheDocument()
+    expect(state).toEqual(snapshot)
+    expect((onMatchChange.mock.calls.at(-1)![0] as MatchState).currentRound.discardPile).toEqual(pile)
+  })
+
+  it('brings the newest card into view on mount and on a new discard, but not on unrelated renders', () => {
+    // jsdom has no layout: give only the spread an overflowing geometry.
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) { return this.classList.contains('discard-spread') ? 1200 : 0 })
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) { return this.classList.contains('discard-spread') ? 300 : 0 })
+    const discarded = card('queen', 'diamonds', 2)
+    const state = pileState(mixedPile(), 'action')
+    const players = state.players.map((player) => player.id === 'player-1'
+      ? { ...player, hand: [discarded, ...player.hand] }
+      : { ...player, hand: player.hand.filter(({ id }) => id !== discarded.id) })
+    render(<GameTable initialState={{
+      ...state,
+      players,
+      drawPile: state.drawPile.filter(({ id }) => id !== discarded.id),
+      pozzetti: [
+        state.pozzetti[0].filter(({ id }) => id !== discarded.id),
+        state.pozzetti[1].filter(({ id }) => id !== discarded.id),
+      ],
+    }} />)
+
+    // The overflowing spread starts on the newest card and is a keyboard scroll surface.
+    expect(discardList().scrollLeft).toBe(1200)
+    expect(discardList()).toHaveAttribute('tabindex', '0')
+    expect(within(discardGroup()).getByText(/scorri per i precedenti/)).toBeInTheDocument()
+
+    // A manual scroll back survives selection, speed and history changes.
+    discardList().scrollLeft = 0
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(discarded) }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Veloce' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Cronologia bot/ }))
+    expect(discardList().scrollLeft).toBe(0)
+
+    // A committed discard appends a new top card and brings it into view.
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    expect(renderedPile().at(-1)).toBe(cardLabel(discarded))
+    expect(discardList().scrollLeft).toBe(1200)
+  })
+
+  it('drops the scroll affordance once an overflowing pile is collected', () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) { return this.classList.contains('discard-spread') ? 1200 : 0 })
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) { return this.classList.contains('discard-spread') ? 300 : 0 })
+    render(<GameTable initialState={pileState(mixedPile())} />)
+    expect(within(discardGroup()).getByText(/scorri per i precedenti/)).toBeInTheDocument()
+
+    fireEvent.click(collectButton())
+
+    expect(within(discardGroup()).getByText('Monte degli scarti vuoto')).toBeInTheDocument()
+    expect(within(discardGroup()).queryByText(/scorri per i precedenti/)).not.toBeInTheDocument()
+  })
+
+  it('adds no tab stop to a pile that fits', () => {
+    render(<GameTable initialState={pileState(mixedPile())} />)
+
+    expect(discardList()).not.toHaveAttribute('tabindex')
+    expect(within(discardGroup()).queryByText(/scorri per i precedenti/)).not.toBeInTheDocument()
+  })
+
+  it('renders the stock face-down and the pozzetti only as availability', () => {
+    const state = pileState(mixedPile())
+    const withOnePozzetto: InProgressGameState = { ...state, pozzetti: [[], state.pozzetti[1]] }
+    const { container } = render(<GameTable initialState={withOnePozzetto} />)
+    // Two jokers of one deck share a label, so a label that is also public cannot identify a hidden card.
+    const publicLabels = new Set([...withOnePozzetto.discardPile, ...withOnePozzetto.players[0]!.hand].map(cardLabel))
+    const hidden = [...withOnePozzetto.drawPile, ...withOnePozzetto.pozzetti.flat()]
+    const html = container.innerHTML
+
+    expect(hidden.filter((hiddenCard) => html.includes(hiddenCard.id)
+      || (!publicLabels.has(cardLabel(hiddenCard)) && html.includes(cardLabel(hiddenCard))))).toEqual([])
+    const stock = screen.getByRole('button', { name: `Pesca dal tallone, ${state.drawPile.length} carte rimaste` })
+    expect(within(stock).queryByRole('img')).not.toBeInTheDocument()
+
+    const counter = screen.getByText('Pozzetti').closest('.pozzetti-counter')!
+    expect(counter).toHaveTextContent('Pozzetti1ancora disponibili')
+    expect(counter.querySelectorAll('.pozzetto-stack')).toHaveLength(2)
+    expect(counter.querySelectorAll('.pozzetto-stack--empty')).toHaveLength(1)
+    expect(counter.querySelector('.pozzetti-counter__stacks')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(counter as HTMLElement).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('keeps meld extension, card selection and bot playback working around a long pile', () => {
+    const existing = validatedMeld([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')])
+    const extension = card('seven', 'spades')
+    const pile = dealInitialState(deck).drawPile.slice(0, 20).filter(({ id }) => id !== extension.id)
+    const base = pileState(pile, 'action', [existing])
+    const state: InProgressGameState = {
+      ...base,
+      players: base.players.map((player) => ({
+        ...player,
+        hand: player.id === 'player-1'
+          ? [extension, ...player.hand.filter(({ id }) => id !== extension.id)]
+          : player.hand.filter(({ id }) => id !== extension.id),
+      })),
+      drawPile: base.drawPile.filter(({ id }) => id !== extension.id),
+      pozzetti: [
+        base.pozzetti[0].filter(({ id }) => id !== extension.id),
+        base.pozzetti[1].filter(({ id }) => id !== extension.id),
+      ],
+    }
+    const onMatchChange = vi.fn()
+    render(<GameTable initialState={state} onMatchChange={onMatchChange} />)
+
+    const extensionButton = screen.getByRole('button', { name: cardLabel(extension) })
+    fireEvent.click(extensionButton)
+    expect(extensionButton).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' }))
+    expect(within(screen.getByRole('article', { name: 'Calata 1 squadra 1' })).getAllByRole('img')).toHaveLength(4)
+    expect(renderedPile()).toEqual(pile.map(cardLabel))
+
+    const [toDiscard] = within(screen.getByRole('region', { name: 'Mano di You' })).getAllByRole('button', { pressed: false })
+    const discardedLabel = toDiscard!.getAttribute('aria-label')
+    fireEvent.click(toDiscard!)
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    expect(renderedPile()).toEqual([...pile.map(cardLabel), discardedLabel])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Completa subito' }))
+    const committed = (onMatchChange.mock.calls.at(-1)![0] as MatchState).currentRound
+    if (committed.round.status === 'in-progress') {
+      expect(renderedPile()).toEqual(committed.discardPile.map(cardLabel))
+    }
+    expect(within(screen.getByRole('log', { name: 'Cronologia bot' })).getAllByRole('listitem').length).toBeGreaterThan(0)
   })
 })

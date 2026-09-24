@@ -258,7 +258,7 @@ describe('GameTable bot turn playback', () => {
       expect(screen.queryByRole('button', { name: cardLabel(kept) })).not.toBeInTheDocument()
       expect(screen.getByRole('img', { name: cardLabel(kept) })).toBeInTheDocument()
       expect(drawPileButton()).toBeDisabled()
-      expect(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /Raccogli tutto il monte degli scarti/ })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
       for (const extend of screen.queryAllByRole('button', { name: /^Aggiungi alla calata/ })) {
@@ -268,7 +268,7 @@ describe('GameTable bot turn playback', () => {
       const itemsBefore = timelineItems().length
       const pileBefore = drawPileButton().getAttribute('aria-label')
       fireEvent.click(drawPileButton())
-      fireEvent.click(screen.getByRole('button', { name: /Raccogli il monte degli scarti/ }))
+      fireEvent.click(screen.getByRole('button', { name: /Raccogli tutto il monte degli scarti/ }))
       fireEvent.click(screen.getByRole('img', { name: cardLabel(kept) }))
       fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
       fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
@@ -470,7 +470,7 @@ const matchAwaiting = (nextRound: 2 | 3 | 4): MatchState => {
 
 /** The discard-pile control, whether the pile currently holds cards or is empty. */
 const discardPileButton = () =>
-  screen.getByRole('button', { name: /^(Raccogli il monte degli scarti|Monte degli scarti vuoto)/ })
+  screen.getByRole('button', { name: /^Raccogli tutto il monte degli scarti/ })
 
 const expectHumanGameplayLocked = () => {
   const humanHand = within(screen.getByLabelText('Carte di You'))

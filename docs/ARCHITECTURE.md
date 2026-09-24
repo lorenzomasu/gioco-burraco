@@ -304,6 +304,25 @@ history, opponents' melds, public area, own melds, hand). The application header
 slim bar for the round indicator, bot speed and «Nuova partita»; «Completa subito» sits
 with the turn status while bots are playing.
 
+### Public table cards
+
+The public zone renders only public state; overflow and scroll positions are transient
+React presentation state, never stored in `GameState`, `MatchState` or the local save.
+
+- The face-up discard pile (`src/components/DiscardPile.tsx`) renders `game.discardPile`
+  exactly in its stored order, oldest first: the final array element is the newest/top
+  card and is marked in text («In cima»). The array is never sorted, reversed or rebuilt
+  from bot events. The cards are static, individually described images in an ordered list;
+  collection is one separate native button for the whole pile (`takeDiscardPile`, enabled
+  by the same draw-phase condition as before). A long pile scrolls inside its own spread,
+  which becomes one keyboard tab stop only while it overflows; a new top card (first
+  render, resume or a committed discard) brings the newest card into view, other renders
+  leave a manual scroll position alone.
+- The stock is a face-down back with its remaining count, and the pozzetti are face-down
+  stacks derived only from how many pozzetti are still non-empty. Neither ever renders a
+  card face, identity, order or team assignment, including in accessible names or
+  attributes.
+
 ### Transient visual feedback
 
 Game-feel cues are presentation only (`src/components/tableFeedback.ts`). The game

@@ -66,6 +66,12 @@ export const NORMAL_BOT_DELAY_MS = 550
 export const PLAYER_NAME = 'Lorenzo'
 
 export const drawPileButton = (page: Page): Locator => page.getByRole('button', { name: /^Pesca dal tallone/ })
+/** The M28 face-up discard pile (every card, oldest → newest) and its whole-pile collection button. */
+export const discardPile = (page: Page): Locator => page.getByRole('group', { name: 'Monte degli scarti' })
+export const discardPileCards = (page: Page): Locator =>
+  discardPile(page).getByRole('list', { name: /^Carte scartate/ }).getByRole('img')
+export const collectDiscardPileButton = (page: Page): Locator =>
+  page.getByRole('button', { name: /^Raccogli tutto il monte degli scarti/ })
 export const completeNowButton = (page: Page): Locator => page.getByRole('button', { name: 'Completa subito' })
 export const discardButton = (page: Page): Locator => page.getByRole('button', { name: 'Scarta e passa' })
 export const newMatchButton = (page: Page): Locator => page.getByRole('button', { name: 'Nuova partita' })

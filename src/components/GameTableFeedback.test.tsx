@@ -119,7 +119,9 @@ const cued = () => [...document.querySelectorAll<HTMLElement>('[data-feedback]')
 const cueOf = (element: Element) => element.getAttribute('data-feedback')
 const cycleOf = (element: Element) => element.getAttribute('data-feedback-cycle')
 const stock = () => screen.getByRole('button', { name: /^Pesca dal tallone/ })
-const discardPile = () => screen.getByRole('button', { name: /[Mm]onte degli scarti/ })
+/** The discard-pile surface (the cue target) and its separate whole-pile collection button. */
+const discardPile = () => screen.getByRole('group', { name: 'Monte degli scarti' })
+const collectButton = () => screen.getByRole('button', { name: /^Raccogli tutto il monte degli scarti/ })
 const hand = () => screen.getByLabelText('Carte di You')
 const humanArea = () => screen.getByRole('region', { name: 'Mano di You' })
 const seat = (name: string) => screen.getByRole('region', { name: `Giocatore ${name}` })
@@ -167,9 +169,10 @@ describe('GameTable M24 visual feedback', () => {
   it('cues the discard source and the whole hand after collecting the pile, without per-card cues', () => {
     render(<GameTable initialState={drawPhaseState()} />)
 
-    fireEvent.click(discardPile())
+    fireEvent.click(collectButton())
 
-    expect(screen.getByRole('button', { name: 'Monte degli scarti vuoto' })).toBeDisabled()
+    expect(collectButton()).toBeDisabled()
+    expect(within(discardPile()).getByText('Monte degli scarti vuoto')).toBeInTheDocument()
     expect(cueOf(discardPile())).toBe('collect')
     expect(cueOf(hand())).toBe('collect')
     expect(cueOf(stock())).toBeNull()

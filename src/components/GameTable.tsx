@@ -24,6 +24,7 @@ import {
 import type { GameState, Player, PlayerId, Team } from '../game/state/types'
 import { BotActionTimeline } from './BotActionTimeline'
 import { sortCardsForDisplay } from './cardPresentation'
+import { DiscardPile } from './DiscardPile'
 import { MeldArea } from './MeldArea'
 import { PlayerSeat, seatRelationLabels, type SeatPosition, type SeatRelation } from './PlayerSeat'
 import { PlayingCard } from './PlayingCard'
@@ -504,11 +505,11 @@ export function GameTable({
   const isActionPhase = isHumanTurn && round.turn.phase === 'action'
   const selectedIds = [...selectedCardIds]
   const sortedHand = sortCardsForDisplay(humanPlayer.hand)
+  // Public availability only: the count of non-empty pozzetti, never their contents.
   const untouchedPozzetti = game.pozzetti.filter((pozzetto) => pozzetto.length > 0).length
-  const discardTop = game.discardPile.at(-1)
   const isDrawPhase = isHumanTurn && round.turn.phase === 'mustDraw'
   const canDrawStock = isDrawPhase && game.drawPile.length > 0
-  const canTakeDiscardPile = isDrawPhase && discardTop !== undefined
+  const canTakeDiscardPile = isDrawPhase && game.discardPile.length > 0
   const guidance = turnGuidance({
     isBotPlaying,
     automationFailed,
@@ -622,27 +623,26 @@ export function GameTable({
                 className="pozzetti-counter"
                 {...cueAttributes(feedback, (feedback?.pozzettoTeamIds.length ?? 0) > 0 && 'pozzetto')}
               >
+                {/* Face-down stacks derived only from the available count; no identity or owner. */}
+                <span className="pozzetti-counter__stacks" aria-hidden="true">
+                  {game.pozzetti.map((_, index) => (
+                    <span
+                      key={index}
+                      className={`pozzetto-stack${index < untouchedPozzetti ? '' : ' pozzetto-stack--empty'}`}
+                    />
+                  ))}
+                </span>
                 <span>Pozzetti</span>
                 <strong>{untouchedPozzetti}</strong>
                 <small>ancora disponibili</small>
               </div>
 
-              <button
-                type="button"
-                className="pile-control"
-                onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
-                disabled={!canTakeDiscardPile}
-                {...cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
-                aria-label={discardTop
-                  ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
-                  : 'Monte degli scarti vuoto'}
-              >
-                <span className="pile-control__card">
-                  {discardTop ? <PlayingCard card={discardTop} compact /> : <span className="empty-card" aria-hidden="true">—</span>}
-                </span>
-                <strong>Scarti</strong>
-                <span>{game.discardPile.length} {game.discardPile.length === 1 ? 'carta' : 'carte'}</span>
-              </button>
+              <DiscardPile
+                cards={game.discardPile}
+                canCollect={canTakeDiscardPile}
+                onCollect={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
+                cue={cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
+              />
             </div>
           </div>
 

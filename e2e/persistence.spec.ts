@@ -4,6 +4,7 @@ import {
   NORMAL_BOT_DELAY_MS,
   PLAYER_NAME,
   completeNowButton,
+  discardPileCards,
   drawAndDiscard,
   drawPileButton,
   expect,
@@ -18,7 +19,8 @@ import {
   timelineEntries,
 } from './fixtures'
 
-const discardPileButton = (page: Page) => page.getByRole('button', { name: /^Raccogli il monte degli scarti/ })
+const pileLabels = (page: Page) =>
+  discardPileCards(page).evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
 const handLabels = (page: Page) =>
   humanHandCards(page).evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
 const savedTurnOwner = async (page: Page) => {
@@ -37,7 +39,8 @@ test('committed progress survives a reload and play continues', async ({ page })
   expect(save).toMatchObject({ version: 1, setup: { humanPlayerName: PLAYER_NAME }, match: { status: 'in-progress' } })
   expect(await savedTurnOwner(page)).toBe('player-1')
   const tallone = await drawPileButton(page).getAttribute('aria-label')
-  const discards = await discardPileButton(page).textContent()
+  const discards = await pileLabels(page)
+  expect(discards.length).toBeGreaterThan(0)
   const hand = await handLabels(page)
   expect(tallone).not.toBe('Pesca dal tallone, 41 carte rimaste')
 
@@ -48,7 +51,8 @@ test('committed progress survives a reload and play continues', async ({ page })
   await expect(onboardingHeading(page)).toBeHidden()
   await expect(page.getByRole('heading', { level: 1, name: PLAYER_NAME })).toBeVisible()
   await expect(drawPileButton(page)).toHaveAttribute('aria-label', tallone!)
-  await expect(discardPileButton(page)).toHaveText(discards!)
+  await expect(discardPileCards(page)).toHaveCount(discards.length)
+  expect(await pileLabels(page)).toEqual(discards)
   expect(await handLabels(page)).toEqual(hand)
 
   // At least one more legal action is accepted after the reload.

@@ -1,5 +1,6 @@
 import {
   PLAYER_NAME,
+  collectDiscardPileButton,
   completeNowButton,
   drawAndDiscard,
   drawPileButton,
@@ -24,7 +25,7 @@ test('onboarding starts a named smazzata 1 on a playable table', async ({ page }
   await expect(turnBanner(page)).toContainText(PLAYER_NAME)
   await expect(humanHandCards(page)).toHaveCount(11)
   await expect(drawPileButton(page)).toBeEnabled()
-  await expect(page.getByRole('button', { name: /^Raccogli il monte degli scarti/ })).toBeEnabled()
+  await expect(collectDiscardPileButton(page)).toBeEnabled()
 })
 
 test('the seeded setup deals the same match on every fresh load', async ({ page }) => {

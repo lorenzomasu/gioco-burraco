@@ -11,6 +11,7 @@ import {
   E2E_SEED,
   NORMAL_BOT_DELAY_MS,
   PLAYER_NAME,
+  discardPileCards,
   drawAndDiscard,
   expect,
   humanHandCards,
@@ -67,8 +68,8 @@ test('opponent and partner hands stay hidden while the match is active', async (
   const afterHuman = discardCard(drawCard(initial, 'player-1'), 'player-1', discarded.id)
   const afterBotStep = playNextBotChainStep(afterHuman, 'player-1', INITIAL_BOT_CHAIN_PROGRESS)!.state
   await drawAndDiscard(page)
-  await expect(page.getByRole('button', { name: /^Raccogli il monte degli scarti/ })
-    .getByRole('img', { name: cardLabel(discarded) })).toBeVisible()
+  await expect(discardPileCards(page).last()).toHaveAccessibleName(cardLabel(discarded))
+  await expect(discardPileCards(page).last()).toBeVisible()
   await expectHiddenCardsNotRendered(page, afterHuman, everPublic)
 
   await page.clock.runFor(NORMAL_BOT_DELAY_MS)
