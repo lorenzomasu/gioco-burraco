@@ -10,7 +10,7 @@
 ## Verification
 
 - `npm run verify`: passed (final run after the report was written, before commit; exit code 0)
-- Tests: 494 passed across 28 test files (baseline before M22: 440 in 27 files; +39 persistence-module tests, +15 application tests; no existing test deleted or weakened)
+- Tests: 518 passed across 28 test files (baseline before M22: 440 in 27 files; +63 persistence-module tests, +15 application tests; no existing test deleted or weakened). The initial implementation had 494; the review fix added 24 persistence tests.
 - Build: passed (`tsc -b && vite build`)
 - `git diff --check`: passed (as part of `npm run verify`, and `git diff --cached --check` on the staged milestone diff including the new files)
 - Working tree at completion: clean after the milestone commit
@@ -39,15 +39,17 @@
   - `loadMatchSave`, `saveMatch` and `clearMatchSave`, which do the storage work. Each takes an injectable `Storage | null` and never throws.
 
   `loadMatchSave` returns one of four states: `none`, `restored`, `discarded` (the save was invalid and removal was attempted) or `unavailable` (storage could not be read).
-- **Runtime validation.** Validation uses explicit guards with no new dependency. A save is accepted only if all of the following hold:
+- **Runtime validation.** Validation uses explicit guards with no new dependency. Where it goes beyond shape, it reuses the engine's own deterministic primitives rather than a second rules implementation. A save is accepted only if all of the following hold:
   - it is version 1;
   - the setup name is trimmed and non-empty;
   - the match `status` is `in-progress`, and `currentRoundNumber` is 1–4;
   - the four seats are fixed and in order (`player-1`…`player-4`), with teams `team-1` = `player-1` + `player-3` and `team-2` = `player-2` + `player-4`;
-  - the player, team, meld, pile, pozzetti, turn/acquisition and round/ending shapes are valid;
-  - every card has a canonical physical identity, its `deckNumber`/`rank`/`suit` match that identity, and no identity appears twice;
-  - the settled history has exactly one result per finished round (`1..n` in order), and each score has finite numeric fields;
-  - the last result's ending matches a completed current round;
+  - the player, team, pile, pozzetti, turn/acquisition and round/ending shapes are valid;
+  - **complete card universe:** hands, meld placements, stock, discard pile and pozzetti together hold all 108 canonical cards, each exactly once and with its real `deckNumber`/`rank`/`suit`;
+  - **meld consistency:** every stored meld is exactly equal to `validateMeld` of its own cards, compared without regard to key order;
+  - **history:** there is exactly one result per finished round (`1..n` in order);
+  - **score consistency:** every team score has finite numeric fields, and `total = meldCardPoints + burracoBonus + closingBonus − handPenalty − pozzettoPenalty`; for a completed current round, the last result's ending matches and its score equals `calculateRoundScore` of that round;
+  - **acquisition:** during an action phase, `acquisition.cardIds` are distinct canonical card IDs, each still in the current player's hand or already played into their own team's melds;
   - the saved `player-1` name equals the setup name.
 
   A completed match is stale, and so is a completed round 4 whose match is still marked in progress. Both are rejected.
@@ -77,6 +79,16 @@
   - `null` storage;
   - clear touching only its own key;
   - no mutation of deep-frozen inputs.
+- `src/shell/matchPersistence.test.ts`, new `match save semantic invariants` suite (24 tests, added by the review fix):
+  - **card universe:** real saves hold all 108 cards; a card missing from the stock, a hand or the discard pile is rejected, and so is an emptied pozzetto; moving a card between zones is accepted;
+  - **melds:**
+    - a synthetic valid meld and a history-aware replacement produced by `validateMeldExtension` are accepted;
+    - rejected: a natural card stored as a wildcard, a joker stored as natural, a pinella stored as natural in a group, a wrong `representedRank`, an `activeWildcard` that differs from its placement (null, other rank, other card), reordered placements, and a changed ace position or suit;
+  - **scores:** rejected: a total that breaks the formula, a formula-consistent score that is not the completed round's actual score, and a formula break in an earlier round after advancing;
+  - **acquisitions:**
+    - accepted: the drawn card still in the hand, or already melded;
+    - rejected: a non-card ID, a non-string ID, a duplicate ID, a card still in the stock, and a card held by another player;
+  - `loadMatchSave` discards and removes a save corrupted in each category.
 - `src/App.test.tsx`: new `App local save and resume` suite (15 tests). It covers:
   - no save → onboarding, and nothing is written;
   - starting a match writes the exact envelope with no transient keys;
@@ -99,14 +111,37 @@
   - an inaccessible `window.localStorage` getter.
 - `src/tests/setup.ts`: each test now gets a fresh in-memory `Storage` (`src/tests/memoryStorage.ts`) installed as `window.localStorage`. Existing tests are otherwise unchanged.
 
+## Review fix (important finding: validator accepted impossible states)
+
+The independent review found that the validator checked shape and card uniqueness but still accepted some impossible or internally inconsistent saves (AC11). The fix changes only `src/shell/matchPersistence.ts`, its tests, the fixtures that relied on a partial deck, and the documentation:
+
+1. **Complete card universe.** `CardLedger` now also requires the complete canonical deck (`isComplete`), so a save missing any card is rejected.
+2. **Meld consistency.**
+   - A stored meld must equal `validateMeld` of its canonical cards. Both `playMeld` and `extendMeld` store exactly that result, including after a history-aware wildcard replacement, because `validateMeldExtension` only decides whether an extension is allowed and then returns the stateless validation. So the check adds no restriction on real engine states, and a test shows a replacement produced by `validateMeldExtension` is accepted.
+   - This rejects ordinary cards stored as wildcards, jokers or pinelle stored as natural cards, inconsistent `representedRank`, an `activeWildcard` that differs from its placement, reordered placements, and altered ace position or suit.
+   - The earlier primitive-only role and shape checks were replaced by this check.
+3. **Score consistency.** Every stored team total must follow the formula. For a completed current round, the stored result must equal `calculateRoundScore` of that round. Earlier rounds are checked against the formula only, because their `GameState` is no longer available.
+4. **Acquisition IDs.** Acquisition IDs must be distinct canonical card IDs, each in the current player's hand or their team's melds. There is no requirement that the card still be in the hand.
+
+**Fixtures:**
+- The persistence between-round fixture and the application between-round and terminal tests now use full-deck states: the stock cut to three cards moves into the pozzetti instead of leaving the table.
+- The existing M21 four-smazzate test still uses its original short fixture, now behind the default `keepFullDeck: false`.
+- The bot-resume fixture now puts every leftover card at the bottom of the stock, below the cards the test draws.
+
 ## Deviations from specification
 
 None.
 
 ## Known risks and ambiguities
 
-- **Structural, not rule-level, validation.** Stored melds are checked structurally (shape, roles, canonical cards, active wildcard belongs to the meld) but are not re-validated with `validateMeld`. The engine rules are not replayed, so a hand-edited save with a well-formed but illegal meld would be accepted. Accidental corruption and incompatible data are rejected.
-- **Card totals not enforced.** Validation requires each physical card to be canonical and unique, but not that all 108 are present. Existing test fixtures use partial decks, and an exact total is not required to render or continue. Real saves always hold 108, which the round-trip test checks.
+- **No replay or reachability proof.** Validation checks invariants that can be verified within the saved state, and nothing more. The following are not proven:
+  - that the state is reachable from a real deal;
+  - that an earlier round's formula-consistent score equals what that round actually produced (its `GameState` is not saved);
+  - that turn order or `hasTakenPozzetto` are consistent with the card placement.
+
+  A hand-crafted save that satisfies every invariant would still be accepted. Accidental corruption and incompatible data are rejected.
+- **Meld comparison is strict.** Stored melds must match `validateMeld` exactly, and no extra keys are allowed. If a future milestone changes the output of meld validation or the stored meld shape, existing saves would be discarded unless the schema version is bumped. This is the intended failure mode.
+- **Validation cost.** Every stored meld is re-validated on load. This is negligible for one save at application start.
 - **Fixed seat layout required.** The validator requires the engine's fixed seat order and team pairing. If a later milestone changes seating, it must bump the schema version.
 - **Removal failure after leaving or completion.** If `removeItem` throws, the old save stays. For a confirmed leave, it would be restored on the next load. For a completed match, the last active pre-completion state would be restored. Storage that refuses removal generally refuses writes too, so nothing better can be done at this boundary. This does not crash the app.
 - **StrictMode in development.** React's development StrictMode calls the `useState` initializer twice. That means the load, and any discard, can run twice, and the factory for a restored setup is built twice. React keeps the first result, so the notice and behaviour are correct. This does not happen in production builds.
@@ -119,11 +154,13 @@ None.
 - `StartScreen` gained an optional `notice` prop, rendered as a `role="status"` paragraph.
 - `src/styles.css` gained minimal `.storage-notice` styles: inline on onboarding, fixed at the bottom during a match.
 - `src/tests/setup.ts` and the new `src/tests/memoryStorage.ts` provide per-test isolated storage.
-- In the bot-resume test, a local `resumableChainState` fixture removes from the pozzetti the cards that `chainState` puts in hands and the stock. The shared `chainState` fixture is physically inconsistent (a card can appear twice), and the resume validator correctly rejects it. The shared fixture was not changed.
+- In the bot-resume test, a local `resumableChainState` fixture removes from the pozzetti the cards that `chainState` puts in hands and the stock, and puts every leftover card at the bottom of the stock. The shared `chainState` fixture is physically inconsistent (a card can appear twice, and the deck is partial), and the resume validator correctly rejects it. The shared fixture was not changed.
+- `shortNamedFactories` in `src/App.test.tsx` gained a `keepFullDeck` option, used by the M22 between-round and terminal tests. The default keeps the M21 behaviour unchanged.
 
 ## Notes for independent review
 
 - `src/shell/matchPersistence.ts`, specifically `isActiveMatchState`, `isGameState` and `CardLedger`: the history-count rule and the check that a completed round 4 is stale.
+- Review fix: `isMeld` (exact equality with `validateMeld`), `CardLedger.isComplete`, `isTeamRoundScore` / `matchesCompletedRoundScore`, and `hasConsistentAcquisition`. Also check the claim that every engine-stored meld equals `validateMeld` of its cards: see `playMeld.ts`, `extendMeld.ts` and `validateMeldExtension.ts`.
 - `GameTable`: the `onMatchChange` effect keyed on `session.match`. Check that `completeBotsNow` writes once, with the final state, and that the effect writes nothing when only the timeline changes.
 - `App`: the lazy initializer never calls `startMatch` for a restored save. `persistMatch` clears the save on completion, and `onLeaveMatch` clears it only after confirmation.
 - `App.test.tsx`, test "resumes a pending bot turn…": the comparison against `playNextBotChainStep` on the saved state.

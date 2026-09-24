@@ -1,6 +1,9 @@
 import { createBurracoDeck } from '../game/cards/deck'
-import { RANKS, SUITS, type Card } from '../game/cards/types'
+import type { Card } from '../game/cards/types'
 import type { MatchState } from '../game/match'
+import { validateMeld } from '../game/melds'
+import { calculateRoundScore, type TeamRoundScore } from '../game/scoring'
+import type { GameState } from '../game/state/types'
 import { HUMAN_PLAYER_ID, type MatchSetup } from './matchSetup'
 
 /** The single browser-storage key holding the one active local match. */
@@ -101,7 +104,10 @@ export const clearMatchSave = (storage: Storage | null = getBrowserStorage()): b
 
 // ---------------------------------------------------------------------------------------
 // Runtime validation. Stored data is `unknown` until every structure the application reads
-// has been checked; nothing is cast to `MatchState` on trust.
+// has been checked; nothing is cast to `MatchState` on trust. Beyond shape, the guards
+// enforce locally verifiable invariants by reusing the engine's own deterministic
+// primitives (meld validation, round scoring) instead of a second rules implementation.
+// They do not replay the match or prove that the state is reachable.
 // ---------------------------------------------------------------------------------------
 
 type UnknownRecord = Readonly<Record<string, unknown>>
@@ -118,7 +124,6 @@ const TEAM_SEATS = [
 ] as const
 const PLAYER_IDS: readonly unknown[] = PLAYER_SEATS.map(({ id }) => id)
 const TEAM_IDS: readonly unknown[] = TEAM_SEATS.map(({ id }) => id)
-const ACE_POSITIONS: readonly unknown[] = ['none', 'low', 'high']
 const SCORE_FIELDS = [
   'meldCardPoints', 'burracoBonus', 'closingBonus', 'handPenalty', 'pozzettoPenalty', 'total',
 ] as const
@@ -131,12 +136,26 @@ const isRecord = (value: unknown): value is UnknownRecord =>
 
 const isOneOf = (value: unknown, allowed: readonly unknown[]): boolean => allowed.includes(value)
 
-const isStringArray = (value: unknown): boolean =>
-  Array.isArray(value) && value.every((item) => typeof item === 'string')
-
 const isRoundNumber = (value: unknown): value is 1 | 2 | 3 | 4 => isOneOf(value, [1, 2, 3, 4])
 
-/** Collects every physical card seen in the state so identity uniqueness can be checked. */
+/** Structural equality of JSON-compatible values, independent of object key order. */
+const jsonEqual = (first: unknown, second: unknown): boolean => {
+  if (first === second) return true
+  if (Array.isArray(first)) {
+    return Array.isArray(second)
+      && first.length === second.length
+      && first.every((item, index) => jsonEqual(item, second[index]))
+  }
+  if (!isRecord(first) || !isRecord(second)) return false
+  const keys = Object.keys(first)
+  return keys.length === Object.keys(second).length
+    && keys.every((key) => Object.prototype.hasOwnProperty.call(second, key) && jsonEqual(first[key], second[key]))
+}
+
+/**
+ * Collects every physical card placed in the state: each must be canonical, appear once,
+ * and together they must form the complete two-deck universe.
+ */
 class CardLedger {
   private readonly ids = new Set<string>()
 
@@ -154,36 +173,28 @@ class CardLedger {
   acceptAll(value: unknown): boolean {
     return Array.isArray(value) && value.every((card) => this.accept(card))
   }
-}
 
-/** A card placement inside a meld; its card is recorded by the caller. */
-const isMeldPlacement = (value: unknown): value is UnknownRecord => {
-  if (!isRecord(value) || !isRecord(value.card)) return false
-  if (value.role === 'natural') return true
-  return value.role === 'wildcard' && (value.representedRank === null || isOneOf(value.representedRank, RANKS))
-}
-
-const isMeld = (value: unknown, ledger: CardLedger): boolean => {
-  if (!isRecord(value) || !Array.isArray(value.cards) || value.cards.length === 0) return false
-  if (value.type === 'group') {
-    if (!isOneOf(value.rank, RANKS) || value.rank === 'two') return false
-  } else if (value.type === 'sequence') {
-    if (!isOneOf(value.suit, SUITS) || !isOneOf(value.acePosition, ACE_POSITIONS)) return false
-  } else {
-    return false
+  isComplete(): boolean {
+    return this.ids.size === CANONICAL_CARDS.size
   }
-  if (!value.cards.every(isMeldPlacement)) return false
-  if (!value.cards.every((placement) => ledger.accept((placement as UnknownRecord).card))) return false
+}
 
-  const active = value.activeWildcard
-  if (active === null) return true
-  // The active wildcard is a copy of one of the meld's own wildcard placements.
-  if (!isMeldPlacement(active) || active.role !== 'wildcard') return false
-  const activeCard = active.card as UnknownRecord
-  return value.cards.some((placement) => {
-    const record = placement as UnknownRecord
-    return record.role === 'wildcard' && (record.card as UnknownRecord).id === activeCard.id
-  })
+/**
+ * A stored meld is always exactly the engine's stateless validation of its physical cards:
+ * `playMeld` stores `validateMeld`, and `validateMeldExtension` (the history-aware gate for
+ * extensions and wildcard replacement) also returns `validateMeld` of the combined cards.
+ * Re-validating therefore rejects impossible roles, represented ranks, ace positions and
+ * active wildcards without restricting any legitimate history-aware result.
+ */
+const isMeld = (value: unknown, ledger: CardLedger): boolean => {
+  if (!isRecord(value) || !Array.isArray(value.cards)) return false
+  const cards: Card[] = []
+  for (const placement of value.cards) {
+    if (!isRecord(placement) || !ledger.accept(placement.card)) return false
+    cards.push(CANONICAL_CARDS.get((placement.card as UnknownRecord).id as string)!)
+  }
+  const validation = validateMeld(cards)
+  return validation.valid && jsonEqual(validation.meld, value)
 }
 
 const isPlayers = (value: unknown, ledger: CardLedger): boolean =>
@@ -214,7 +225,7 @@ const isTurn = (value: unknown): boolean => {
   if (value.phase === 'mustDraw') return true
   if (value.phase !== 'action' || !isRecord(value.acquisition)) return false
   const { acquisition } = value
-  if (!isStringArray(acquisition.cardIds)) return false
+  if (!Array.isArray(acquisition.cardIds)) return false
   if (acquisition.source === 'drawPile') return true
   return acquisition.source === 'discardPile' && typeof acquisition.canRediscardSingleCollectedCard === 'boolean'
 }
@@ -229,7 +240,25 @@ const isRoundState = (value: unknown): value is UnknownRecord => {
   return value.ending === 'draw-pile-exhausted' && isOneOf(value.lastDiscardPlayerId, PLAYER_IDS)
 }
 
-const isGameState = (value: unknown): value is UnknownRecord => {
+/**
+ * Cards acquired this turn are distinct canonical cards that the current player still
+ * holds or has since played into their own team's melds (the turn ends at the discard).
+ */
+const hasConsistentAcquisition = (state: GameState): boolean => {
+  if (state.round.status !== 'in-progress' || state.round.turn.phase !== 'action') return true
+  const { currentPlayerId, acquisition } = state.round.turn
+  const player = state.players.find(({ id }) => id === currentPlayerId)!
+  const team = state.teams.find(({ id }) => id === player.teamId)!
+  const reachable = new Set([
+    ...player.hand.map(({ id }) => id),
+    ...team.melds.flatMap((meld) => meld.cards.map(({ card }) => card.id)),
+  ])
+  const cardIds: readonly unknown[] = acquisition.cardIds
+  return new Set(cardIds).size === cardIds.length
+    && cardIds.every((id) => typeof id === 'string' && CANONICAL_CARDS.has(id) && reachable.has(id))
+}
+
+const isGameState = (value: unknown): value is GameState => {
   if (!isRecord(value)) return false
   const ledger = new CardLedger()
   return isPlayers(value.players, ledger)
@@ -239,13 +268,19 @@ const isGameState = (value: unknown): value is UnknownRecord => {
     && Array.isArray(value.pozzetti)
     && value.pozzetti.length === 2
     && value.pozzetti.every((pozzetto) => ledger.acceptAll(pozzetto))
+    && ledger.isComplete()
     && isRoundState(value.round)
+    && hasConsistentAcquisition(value as unknown as GameState)
 }
 
-const isTeamRoundScore = (value: unknown, teamId: string): boolean =>
-  isRecord(value)
-  && value.teamId === teamId
-  && SCORE_FIELDS.every((field) => typeof value[field] === 'number' && Number.isFinite(value[field]))
+/** Every component is a finite number and the total follows the round-scoring formula. */
+const isTeamRoundScore = (value: unknown, teamId: string): boolean => {
+  if (!isRecord(value) || value.teamId !== teamId) return false
+  if (!SCORE_FIELDS.every((field) => typeof value[field] === 'number' && Number.isFinite(value[field]))) return false
+  const score = value as unknown as TeamRoundScore
+  return score.total === score.meldCardPoints + score.burracoBonus + score.closingBonus
+    - score.handPenalty - score.pozzettoPenalty
+}
 
 const isSettledRoundResult = (value: unknown, roundNumber: number): value is UnknownRecord =>
   isRecord(value)
@@ -256,16 +291,26 @@ const isSettledRoundResult = (value: unknown, roundNumber: number): value is Unk
   && value.score.teams.length === TEAM_SEATS.length
   && value.score.teams.every((teamScore, index) => isTeamRoundScore(teamScore, TEAM_SEATS[index]!.id))
 
+/** The settled result of the still-visible completed round must be its actual score. */
+const matchesCompletedRoundScore = (round: GameState, result: UnknownRecord): boolean => {
+  if (round.round.status !== 'completed') return true
+  try {
+    return result.ending === round.round.ending
+      && jsonEqual(calculateRoundScore({ ...round, round: round.round }), result.score)
+  } catch {
+    return false
+  }
+}
+
 /**
  * An active, resumable match: in progress, with exactly one settled result per finished
  * round (the current round included once it has completed). A completed match is stale.
  */
 const isActiveMatchState = (value: unknown): value is MatchState => {
   if (!isRecord(value) || value.status !== 'in-progress' || !isRoundNumber(value.currentRoundNumber)) return false
-  const { currentRoundNumber } = value
-  if (!isGameState(value.currentRound)) return false
-  const round = value.currentRound.round as UnknownRecord
-  const roundCompleted = round.status === 'completed'
+  const { currentRoundNumber, currentRound } = value
+  if (!isGameState(currentRound)) return false
+  const roundCompleted = currentRound.round.status === 'completed'
   // A completed fourth round always completes the match, so it can no longer be active.
   if (roundCompleted && currentRoundNumber === 4) return false
 
@@ -273,7 +318,7 @@ const isActiveMatchState = (value: unknown): value is MatchState => {
   const expectedResults = roundCompleted ? currentRoundNumber : currentRoundNumber - 1
   if (!Array.isArray(roundResults) || roundResults.length !== expectedResults) return false
   if (!roundResults.every((result, index) => isSettledRoundResult(result, index + 1))) return false
-  return !roundCompleted || (roundResults.at(-1) as UnknownRecord).ending === round.ending
+  return !roundCompleted || matchesCompletedRoundScore(currentRound, roundResults.at(-1) as UnknownRecord)
 }
 
 const isMatchSetup = (value: unknown): value is MatchSetup =>

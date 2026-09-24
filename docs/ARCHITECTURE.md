@@ -196,14 +196,28 @@ and removes it once the match is completed; a confirmed `Nuova partita` also rem
 (a cancelled one changes nothing).
 
 Stored content is `unknown` until validated. `loadMatchSave` accepts only a version-1
-envelope with a trimmed non-empty setup name, an `in-progress` match whose round number,
-fixed seats and teams, turn/round state, melds, piles and pozzetti are structurally
-valid, whose cards are canonical physical cards each present at most once, whose
-settled history has exactly one result per finished round, and whose `player-1` name
-matches the setup. Anything else (invalid JSON, another version, a completed or stale
-match, an inconsistent setup) is discarded: removal is attempted and the shell opens
-onboarding with a minimal notice. Read, write and remove failures are contained at this
-boundary; a failed write keeps the live match playable and shows a minimal notice.
+envelope with a trimmed non-empty setup name and an `in-progress` match whose round
+number, fixed seats and teams, and turn/round state are structurally valid, and whose
+`player-1` name matches the setup. It also enforces locally verifiable domain
+invariants by reusing the engine's deterministic primitives rather than a second rules
+implementation:
+
+- the hands, meld placements, stock, discard pile and pozzetti hold the complete
+  canonical 108-card universe, each physical card exactly once and with its real face;
+- every stored meld equals `validateMeld` of its own cards (the engine always stores that
+  result, including after history-aware extension or wildcard replacement), so impossible
+  roles, represented ranks, ace positions or active wildcards are rejected;
+- the settled history has exactly one result per finished round, every team total follows
+  the round-scoring formula, and the result of a completed current round equals
+  `calculateRoundScore` of that round;
+- the current turn's acquisition IDs are distinct canonical cards that the current player
+  still holds or has played into their own team's melds.
+
+The validator does not replay the match or prove reachability. Anything else (invalid
+JSON, another version, a completed or stale match, an inconsistent setup) is discarded:
+removal is attempted and the shell opens onboarding with a minimal notice. Read, write
+and remove failures are contained at this boundary; a failed write keeps the live match
+playable and shows a minimal notice.
 
 On load, a valid save mounts `GameTable` directly with the saved `MatchState` as
 `initialMatch` (never calling `startMatch`), and the shell recreates the round factory

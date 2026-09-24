@@ -295,14 +295,24 @@ describe('App shell onboarding', () => {
 /**
  * Seeded named rounds whose stock is cut to three cards, so each smazzata ends by
  * draw-pile exhaustion after a few turns while keeping names and starter rotation.
+ * With `keepFullDeck` the cut stock moves into the pozzetti instead of leaving the
+ * table, so every physical card stays placed and the state remains a resumable save.
  */
-const shortNamedFactories = () => {
+const shortNamedFactories = ({ keepFullDeck = false } = {}) => {
   const created: { context: RoundFactoryContext; state: InProgressGameState }[] = []
   const createRoundFactory = vi.fn((setup: MatchSetup): RoundFactory => {
     const factory = createSetupRoundFactory(setup, createSeededRandom(5))
     return (context) => {
       const full = factory(context)
-      const state = { ...full, drawPile: full.drawPile.slice(0, 3) }
+      const cut = full.drawPile.slice(3)
+      const half = Math.ceil(cut.length / 2)
+      const state: InProgressGameState = {
+        ...full,
+        drawPile: full.drawPile.slice(0, 3),
+        pozzetti: keepFullDeck
+          ? [[...full.pozzetti[0], ...cut.slice(0, half)], [...full.pozzetti[1], ...cut.slice(half)]]
+          : full.pozzetti,
+      }
       created.push({ context, state })
       return state
     }
@@ -506,15 +516,21 @@ describe('App local save and resume', () => {
   })
 
   it('resumes a pending bot turn from the committed state without replaying its committed step', () => {
-    // A resumable save must hold each physical card once, so the fixture pozzetti drop the
-    // cards `chainState` places in hands and in the stock.
+    // A resumable save holds every physical card exactly once: the fixture pozzetti drop the
+    // cards `chainState` places in hands and in the stock, and every card left over goes to
+    // the bottom of the stock, below the cards the test draws.
     const resumableChainState = (): InProgressGameState => {
       const state = chainState()
       const used = new Set([...state.players.flatMap(({ hand }) => hand), ...state.drawPile].map(({ id }) => id))
-      const [first, second] = state.pozzetti
+      const pozzetti = [
+        state.pozzetti[0].filter(({ id }) => !used.has(id)),
+        state.pozzetti[1].filter(({ id }) => !used.has(id)),
+      ] as const
+      pozzetti.flat().forEach(({ id }) => used.add(id))
       return {
         ...state,
-        pozzetti: [first.filter(({ id }) => !used.has(id)), second.filter(({ id }) => !used.has(id))],
+        drawPile: [...state.drawPile, ...deck.filter(({ id }) => !used.has(id))],
+        pozzetti,
       }
     }
     const createRoundFactory = vi.fn((_setup: MatchSetup): RoundFactory => resumableChainState)
@@ -563,7 +579,7 @@ describe('App local save and resume', () => {
   })
 
   it('restores a between-round summary without re-settling and starts the next round from the setup', () => {
-    const first = shortNamedFactories()
+    const first = shortNamedFactories({ keepFullDeck: true })
     const { unmount } = render(<App createRoundFactory={first.createRoundFactory} />)
     startWith('Lorenzo')
     playToRoundSummary('Lorenzo')
@@ -574,7 +590,7 @@ describe('App local save and resume', () => {
     const cumulative = screen.getByLabelText('Punti cumulativi').textContent
     unmount()
 
-    const second = shortNamedFactories()
+    const second = shortNamedFactories({ keepFullDeck: true })
     render(<App createRoundFactory={second.createRoundFactory} />)
 
     expect(second.created).toHaveLength(0)
@@ -620,7 +636,7 @@ describe('App local save and resume', () => {
   })
 
   it('clears the save when the match completes while the final result stays visible', () => {
-    const { createRoundFactory } = shortNamedFactories()
+    const { createRoundFactory } = shortNamedFactories({ keepFullDeck: true })
     const { unmount } = render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
 
@@ -632,6 +648,7 @@ describe('App local save and resume', () => {
     render(<App createRoundFactory={createRoundFactory} />)
     expectOnboarding()
     expect(nameInput()).toHaveValue('')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it.each([

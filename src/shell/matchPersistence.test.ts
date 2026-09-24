@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { playBotStep, playBotTurn } from '../game/bot'
+import { createBurracoDeck } from '../game/cards/deck'
 import { createSeededRandom } from '../game/cards/shuffle'
-import { startMatch, updateCurrentRound, type MatchState } from '../game/match'
-import type { GameState } from '../game/state/types'
+import type { Card, Rank, Suit } from '../game/cards/types'
+import { drawCard } from '../game/engine/turn'
+import { advanceMatch, startMatch, updateCurrentRound, type MatchState } from '../game/match'
+import { validateMeld, validateMeldExtension, type ValidatedMeld } from '../game/melds'
+import type { GameState, InProgressGameState } from '../game/state/types'
 import { createMemoryStorage } from '../tests/memoryStorage'
 import {
   clearMatchSave,
@@ -44,10 +48,24 @@ const activeMatch = (): MatchState => {
   return updateCurrentRound(match, round)
 }
 
+/**
+ * A full-deck stock of three cards: the rest of the stock moves into the pozzetti, so
+ * the round soon ends by draw-pile exhaustion while every physical card stays placed.
+ */
+const withShortStock = (state: InProgressGameState): InProgressGameState => {
+  const cut = state.drawPile.slice(3)
+  const half = Math.ceil(cut.length / 2)
+  return {
+    ...state,
+    drawPile: state.drawPile.slice(0, 3),
+    pozzetti: [[...state.pozzetti[0], ...cut.slice(0, half)], [...state.pozzetti[1], ...cut.slice(half)]],
+  }
+}
+
 /** Round 1 completed by draw-pile exhaustion and settled: the between-round state. */
 const betweenRoundMatch = (): MatchState => {
   const match = startMatch(createSetupRoundFactory(setup, createSeededRandom(5)))
-  const short = { ...match.currentRound, drawPile: match.currentRound.drawPile.slice(0, 3) }
+  const short = withShortStock(match.currentRound as InProgressGameState)
   const completed = playTurns(short, 20)
   if (completed.round.status !== 'completed') throw new Error('Fixture round did not end.')
   return updateCurrentRound(match, completed)
@@ -214,6 +232,246 @@ describe('match save validation', () => {
   it('is a real runtime guard, not a cast', () => {
     expect(isMatchSaveEnvelope({ version: 1, setup, match: {} })).toBe(false)
     expect(isMatchSaveEnvelope(wire())).toBe(true)
+  })
+})
+
+const deck = createBurracoDeck()
+
+const physical = (rank: Rank | 'joker', suit: Suit | null, deckNumber: 1 | 2 = 1): Card => {
+  const found = deck.find((card) => card.rank === rank && card.suit === suit && card.deckNumber === deckNumber)
+  if (!found) throw new Error(`Missing test card: ${rank} of ${suit}`)
+  return found
+}
+
+const validMeld = (cards: readonly Card[]): ValidatedMeld => {
+  const result = validateMeld(cards)
+  if (!result.valid) throw new Error(`Expected a valid test meld, received ${result.reason}`)
+  return result.meld
+}
+
+/**
+ * Moves the meld's physical cards from wherever they are into a new team-1 meld, so the
+ * card universe stays complete and the meld is the only thing under test.
+ */
+const withTeamMeld = (match: MatchState, meld: ValidatedMeld): MatchState => {
+  const ids = new Set(meld.cards.map(({ card }) => card.id))
+  const keep = (cards: readonly Card[]) => cards.filter(({ id }) => !ids.has(id))
+  const round = match.currentRound
+  const state: GameState = {
+    ...round,
+    players: round.players.map((player) => ({ ...player, hand: keep(player.hand) })),
+    teams: round.teams.map((team, index) => index === 0 ? { ...team, melds: [...team.melds, meld] } : team),
+    drawPile: keep(round.drawPile),
+    discardPile: keep(round.discardPile),
+    pozzetti: [keep(round.pozzetti[0]), keep(round.pozzetti[1])],
+  }
+  return { ...match, currentRound: state }
+}
+
+/** A fresh seeded round 1 (no melds yet), human to draw. */
+const freshMatch = (): MatchState => startMatch(createSetupRoundFactory(setup, createSeededRandom(22)))
+
+/** Hearts 5-6 with a joker: the joker is the single active wildcard of the sequence. */
+const jokerSequence = () => validMeld([physical('five', 'hearts'), physical('six', 'hearts'), physical('joker', null)])
+
+/** Parsed wire of a fresh match with one extra team-1 meld, and that meld's wire object. */
+const meldWire = (meld: ValidatedMeld) => {
+  const save = wire(withTeamMeld(freshMatch(), meld))
+  const stored = save.match.currentRound.teams[0].melds.at(-1)
+  return { save, stored }
+}
+
+describe('match save semantic invariants', () => {
+  describe('complete physical-card universe', () => {
+    it('accepts real saves, which place all 108 physical cards', () => {
+      expect(parseWire(wire())).not.toBeNull()
+      expect(parseWire(wire(betweenRoundMatch()))).not.toBeNull()
+    })
+
+    it.each<[string, (round: Record<string, any>) => void]>([
+      ['a card missing from the stock', (round) => round.drawPile.pop()],
+      ['a card missing from a hand', (round) => round.players[2].hand.pop()],
+      ['an emptied pozzetto', (round) => { round.pozzetti[1] = [] }],
+      ['a card missing from the discard pile', (round) => round.discardPile.pop()],
+    ])('rejects a state with %s', (_label, corrupt) => {
+      const save = wire()
+      corrupt(save.match.currentRound)
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('accepts a card moved between zones as long as each card appears exactly once', () => {
+      const save = wire()
+      const round = save.match.currentRound
+      round.pozzetti[0].push(round.drawPile.pop())
+      expect(parseWire(save)).not.toBeNull()
+    })
+  })
+
+  describe('validated meld consistency', () => {
+    it('accepts a synthetic meld equal to the engine validation of its cards', () => {
+      const { save, stored } = meldWire(jokerSequence())
+      expect(stored.activeWildcard).not.toBeNull()
+      expect(parseWire(save)).not.toBeNull()
+    })
+
+    it('accepts a history-aware wildcard replacement result produced by the engine', () => {
+      const existing = jokerSequence()
+      const replaced = existing.activeWildcard!.representedRank!
+      const extension = validateMeldExtension(existing, [physical(replaced, 'hearts')])
+      if (!extension.valid) throw new Error(`Expected a valid extension, received ${extension.reason}`)
+      expect(extension.meld.activeWildcard!.representedRank).not.toBe(replaced)
+
+      expect(parseWire(meldWire(extension.meld).save)).not.toBeNull()
+    })
+
+    it('rejects an ordinary physical card represented as a wildcard', () => {
+      const { save, stored } = meldWire(jokerSequence())
+      const natural = stored.cards.find((placement: any) => placement.role === 'natural')
+      natural.role = 'wildcard'
+      natural.representedRank = natural.card.rank
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('rejects a joker stored as a natural card', () => {
+      const { save, stored } = meldWire(jokerSequence())
+      const joker = stored.cards.find((placement: any) => placement.role === 'wildcard')
+      joker.role = 'natural'
+      delete joker.representedRank
+      stored.activeWildcard = null
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('rejects a pinella stored as a natural card in a group', () => {
+      const group = validMeld([physical('nine', 'clubs'), physical('nine', 'diamonds'), physical('two', 'spades')])
+      const { save, stored } = meldWire(group)
+      expect(parseWire(save)).not.toBeNull()
+      const pinella = stored.cards.find((placement: any) => placement.role === 'wildcard')
+      pinella.role = 'natural'
+      delete pinella.representedRank
+      stored.activeWildcard = null
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('rejects a represented rank inconsistent with the validated meld', () => {
+      const { save, stored } = meldWire(jokerSequence())
+      const joker = stored.cards.find((placement: any) => placement.role === 'wildcard')
+      const wrongRank = joker.representedRank === 'four' ? 'seven' : 'four'
+      joker.representedRank = wrongRank
+      stored.activeWildcard.representedRank = wrongRank
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('rejects an active wildcard that differs from the stored wildcard placement', () => {
+      const cases: ((stored: any) => void)[] = [
+        (stored) => { stored.activeWildcard = null },
+        (stored) => { stored.activeWildcard.representedRank = 'king' },
+        (stored) => {
+          stored.activeWildcard.card = stored.cards.find((placement: any) => placement.role === 'natural').card
+        },
+      ]
+      for (const corrupt of cases) {
+        const { save, stored } = meldWire(jokerSequence())
+        corrupt(stored)
+        expect(parseWire(save)).toBeNull()
+      }
+    })
+
+    it('rejects a meld whose placements are reordered or whose metadata is altered', () => {
+      const cases: ((stored: any) => void)[] = [
+        (stored) => stored.cards.reverse(),
+        (stored) => { stored.acePosition = 'high' },
+        (stored) => { stored.suit = 'spades' },
+      ]
+      for (const corrupt of cases) {
+        const { save, stored } = meldWire(jokerSequence())
+        corrupt(stored)
+        expect(parseWire(save)).toBeNull()
+      }
+    })
+  })
+
+  describe('score self-consistency', () => {
+    it('rejects a total that does not follow the scoring formula', () => {
+      const save = wire(betweenRoundMatch())
+      save.match.roundResults[0].score.teams[1].total += 10
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('rejects a formula-consistent score that is not the completed round\'s actual score', () => {
+      const save = wire(betweenRoundMatch())
+      const team = save.match.roundResults[0].score.teams[0]
+      team.meldCardPoints += 10
+      team.total += 10
+      expect(parseWire(save)).toBeNull()
+    })
+
+    it('checks the formula for earlier rounds once the next round has started', () => {
+      const match = advanceMatch(betweenRoundMatch(), createSetupRoundFactory(setup, createSeededRandom(9)))
+      const save = wire(match)
+      expect(parseWire(save)).not.toBeNull()
+      save.match.roundResults[0].score.teams[0].total -= 5
+      expect(parseWire(save)).toBeNull()
+    })
+  })
+
+  describe('acquisition card IDs', () => {
+    /** Human drew from the stock; the drawn card is the recorded acquisition. */
+    const afterHumanDraw = (): MatchState => {
+      const match = freshMatch()
+      return updateCurrentRound(match, drawCard(match.currentRound, 'player-1'))
+    }
+
+    it('accepts a drawn card still in hand and one already played into the team melds', () => {
+      const match = afterHumanDraw()
+      expect(parseWire(wire(match))).not.toBeNull()
+
+      const round = match.currentRound
+      if (round.round.status !== 'in-progress' || round.round.turn.phase !== 'action') throw new Error('Expected action phase.')
+      const drawnId = round.round.turn.acquisition.cardIds[0]!
+      const drawn = deck.find(({ id }) => id === drawnId)!
+      if (drawn.rank === 'joker' || drawn.rank === 'two') throw new Error('Fixture drew a wildcard.')
+      const partners = deck.filter((card) => card.rank === drawn.rank && card.id !== drawn.id).slice(0, 2)
+
+      expect(parseWire(wire(withTeamMeld(match, validMeld([drawn, ...partners]))))).not.toBeNull()
+    })
+
+    it.each<[string, (turn: Record<string, any>, round: Record<string, any>) => void]>([
+      ['a non-card ID', (turn) => { turn.acquisition.cardIds = ['not-a-card'] }],
+      ['a non-string ID', (turn) => { turn.acquisition.cardIds = [7] }],
+      ['a duplicated ID', (turn) => { turn.acquisition.cardIds = [turn.acquisition.cardIds[0], turn.acquisition.cardIds[0]] }],
+      ['a card that is still in the stock', (turn, round) => { turn.acquisition.cardIds = [round.drawPile[0].id] }],
+      ['a card held by another player', (turn, round) => { turn.acquisition.cardIds = [round.players[1].hand[0].id] }],
+    ])('rejects an acquisition with %s', (_label, corrupt) => {
+      const save = wire(afterHumanDraw())
+      const round = save.match.currentRound
+      corrupt(round.round.turn, round)
+      expect(parseWire(save)).toBeNull()
+    })
+  })
+
+  it('loadMatchSave discards a save violating any of these invariants', () => {
+    const corruptions: ((save: Record<string, any>) => void)[] = [
+      (save) => save.match.currentRound.drawPile.pop(),
+      (save) => {
+        const joker = save.match.currentRound.teams[0].melds.at(-1).cards.find((placement: any) => placement.role === 'wildcard')
+        joker.representedRank = 'king'
+      },
+      (save) => { save.match.currentRound.round = { status: 'in-progress', turn: { currentPlayerId: 'player-1', phase: 'action', acquisition: { source: 'drawPile', cardIds: ['nope'] } } } },
+    ]
+    for (const corrupt of corruptions) {
+      const save = meldWire(jokerSequence()).save
+      corrupt(save)
+      const storage = createMemoryStorage()
+      storage.setItem(MATCH_SAVE_STORAGE_KEY, JSON.stringify(save))
+      expect(loadMatchSave(storage)).toEqual({ status: 'discarded' })
+      expect(storage.getItem(MATCH_SAVE_STORAGE_KEY)).toBeNull()
+    }
+
+    const scoreSave = wire(betweenRoundMatch())
+    scoreSave.match.roundResults[0].score.teams[0].total += 1
+    const storage = createMemoryStorage()
+    storage.setItem(MATCH_SAVE_STORAGE_KEY, JSON.stringify(scoreSave))
+    expect(loadMatchSave(storage)).toEqual({ status: 'discarded' })
   })
 })
 
