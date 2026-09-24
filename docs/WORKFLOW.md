@@ -35,9 +35,9 @@ ChatGPT is responsible for:
 
 ChatGPT should inspect repository branches, reports, diffs, tests, pull requests, and CI directly through GitHub when access is available. The user should not need to paste information that can already be retrieved from the repository.
 
-### Implementation agent — one primary implementer per milestone
+### Implementation agent — one primary implementer per delivery unit
 
-Use one primary implementation agent per milestone. The normal choices are Codex or Claude Code.
+Use one primary implementation agent per standalone milestone or approved batch. The normal choices are Codex or Claude Code.
 
 ChatGPT should recommend the better fit during milestone preparation based on the concrete task, current tooling, and risk. The user may override that recommendation.
 
@@ -47,16 +47,16 @@ Do not routinely run Codex and Claude Code in series on the same milestone. A se
 - a blocker or unusually complex investigation benefits from another independent opinion;
 - the primary implementation path is materially stuck.
 
-For each new milestone, the selected implementation agent should:
+For each delivery unit, the selected implementation agent should:
 
-- use a new task when practical so milestone context is isolated;
+- use a new task when practical for a standalone milestone, or one shared task/session for an approved batch while the context remains useful;
 - reuse the existing repository/workspace;
-- fetch and switch to the dedicated milestone branch that already contains the versioned specification;
-- implement the already-versioned milestone specification;
-- use targeted tests during implementation as useful;
-- run the repository's full verification before declaring the milestone complete;
-- create/update the implementation report;
-- commit and push only the milestone branch;
+- fetch and switch to the delivery branch that already contains all versioned specifications for that delivery unit;
+- implement the specifications sequentially and without future-scope drift;
+- use targeted tests during implementation;
+- run the repository's full verification once before declaring the delivery unit complete;
+- create/update the appropriate standalone or batch implementation report;
+- commit/push only the delivery branch as defined by the delivery mode;
 - stop before merging into `main`.
 
 The implementation agent must not invent or author the milestone specification it is implementing.
@@ -118,6 +118,8 @@ the standard workflow is:
 7. commit and push the specification before implementation begins;
 8. provide a short implementation prompt for one recommended implementation agent.
 
+For an approved batch, prepare all included milestone specifications on the same batch branch before implementation begins. Commit the specifications in roadmap order, then provide one short batch implementation prompt that references all of them. Do not create intermediate PRs simply to version each specification.
+
 Use `docs/milestones/TEMPLATE.md` as the structural starting point.
 
 The milestone specification is the authoritative contract for that milestone's concrete scope and acceptance criteria.
@@ -145,7 +147,7 @@ Do not restate large sections of repository documentation when a reference is su
 The prompt should normally contain only:
 
 - repository/workspace instruction;
-- required existing milestone branch containing the versioned specification;
+- required existing delivery branch containing the versioned specification(s);
 - authoritative files;
 - instruction to implement exactly the milestone specification;
 - verification command;
@@ -240,7 +242,7 @@ If the independent review has no unresolved blocker or important finding, ChatGP
 
 The normal green path is:
 
-1. confirm the milestone branch HEAD is still exactly the reviewed HEAD;
+1. confirm the delivery branch HEAD is still exactly the reviewed HEAD;
 2. open the pull request to `main` if one is not already open;
 3. wait for GitHub CI on the exact reviewed HEAD;
 4. if CI succeeds and the HEAD has not changed, complete the merge gate;
@@ -256,11 +258,11 @@ User intervention is required only when an operation cannot be performed with av
 If the review finds a blocker or important issue:
 
 1. ChatGPT produces one focused fix prompt containing only the actionable findings;
-2. continue in the same implementation-agent milestone task when practical because its implementation context is already loaded;
+2. continue in the same implementation-agent delivery task when practical because its implementation context is already loaded;
 3. the same implementation agent changes only what the findings require;
 4. it reruns targeted tests as useful and the full `npm run verify` before completion;
 5. it updates the implementation report when verification evidence, deviations, risks, ambiguities, or incidental changes changed;
-6. it commits and pushes the same milestone branch;
+6. it commits and pushes the same delivery branch;
 7. ChatGPT re-reviews the previous findings plus plausible regressions caused by the fixes.
 
 Do not repeat the full milestone specification in a fix prompt.
@@ -269,7 +271,7 @@ Do not switch implementers during the fix loop unless there is a concrete reason
 
 ## Pull requests and CI
 
-Milestone branches are verified through pull requests to `main`.
+Delivery branches are verified through pull requests to `main`.
 
 GitHub CI runs the canonical `npm run verify` for pull requests to `main` and pushes to `main`, after installing Playwright Chromium and its system dependencies. There is no separate browser-only gate.
 
@@ -293,12 +295,12 @@ CI should cancel obsolete in-progress runs for the same branch/PR when a newer c
 
 Merge only after:
 
-- the milestone specification is satisfied;
+- every included milestone specification is satisfied;
 - independent review has no unresolved blocker or important finding;
 - implementer-local verification passed, or the exact reviewed HEAD satisfies the CI fallback;
 - pull-request CI passed on the exact HEAD being merged.
 
-Prefer linear history by fast-forwarding the exact reviewed milestone HEAD into `main` when possible.
+Prefer linear history by fast-forwarding the exact reviewed delivery HEAD into `main` when possible.
 
 When the merge is an exact fast-forward:
 
@@ -329,14 +331,14 @@ The workflow is intentionally optimized for a single human owner working with AI
 
 Therefore:
 
-- the user should normally need only `Prepara MXX` and `Review MXX` for each milestone;
+- the user should normally need only one prepare request and one review request per delivery unit;
 - after a green review, ChatGPT should handle PR/CI/merge directly when access permits;
-- use one primary implementation agent per milestone;
+- use one primary implementation agent per delivery unit;
 - do not ask the user to paste repository diffs, reports, test output, CI results, or risk notes that can be retrieved directly;
 - do not run a second implementation/audit agent without a concrete reason;
 - do not generate large prompts that duplicate versioned documentation;
 - do not make the implementation agent author its own milestone contract;
-- use targeted tests during implementation and the full repository gate at milestone completion;
+- use targeted tests during implementation and the full repository gate at delivery-unit completion;
 - review proportionally to risk rather than rereading every source of truth for every kind of change;
 - keep standalone milestones isolated; batch only coherent sequential milestones under the delivery-mode rules above;
 - keep fix prompts narrow and review-driven;
