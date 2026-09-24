@@ -6,7 +6,7 @@ This document defines the standard milestone workflow for this repository.
 
 The workflow separates specification, implementation, independent review, and merge while minimizing repeated manual work. Stable project context belongs in the repository; prompts should carry only the task-specific instructions needed to act on that context.
 
-The default v1 workflow is intentionally lean:
+The milestone workflow is intentionally lean:
 
 `prepare → implement → review → automatic PR/CI/merge when green`
 
@@ -68,7 +68,7 @@ When the user asks to prepare a milestone, for example:
 the standard workflow is:
 
 1. inspect the current `main`, `docs/ROADMAP.md`, relevant rules, architecture, implementation, tests, and prior milestone reports;
-2. use the roadmap objective, dependencies, sequence, and v1 boundary as the planning baseline;
+2. use the roadmap objective, dependencies, sequence, and current release boundary as the planning baseline;
 3. inspect only the additional repository areas needed to define the milestone correctly;
 4. define scope, required behaviour, acceptance criteria, tests, documentation impact, and out-of-scope items;
 5. create the dedicated milestone branch from updated `main`;
@@ -80,7 +80,7 @@ Use `docs/milestones/TEMPLATE.md` as the structural starting point.
 
 The milestone specification is the authoritative contract for that milestone's concrete scope and acceptance criteria.
 
-`docs/ROADMAP.md` is the authoritative planning source for the broader v1 sequence and product boundary. A milestone specification may refine implementation details from the roadmap, but a material change to objective, ordering, dependency, release-critical status, or v1 boundary should update the roadmap explicitly rather than drifting silently.
+`docs/ROADMAP.md` is the authoritative planning source for the broader release sequence and product boundary. A milestone specification may refine implementation details from the roadmap, but a material change to objective, ordering, dependency, release-critical status, or release boundary should update the roadmap explicitly rather than drifting silently.
 
 ## Implementation prompt
 
@@ -297,6 +297,6 @@ Therefore:
 - keep each milestone isolated in its own branch and implementation task;
 - keep fix prompts narrow and review-driven;
 - do not add process artifacts, tools, or gates unless they solve an observed problem;
-- treat this workflow as stable through the v1 path unless a concrete failure demonstrates that it needs adjustment.
+- treat this workflow as stable through the v1.1 path unless a concrete failure demonstrates that it needs adjustment.
 
 The repository should carry stable context. Prompts should carry only the task-specific instruction needed to act on that context.
