@@ -13,15 +13,17 @@ Before implementing any task, read:
 1. the task or milestone specification;
 2. `docs/WORKFLOW.md`;
 3. `docs/ROADMAP.md` when the task is a milestone or v1 planning work;
-4. `docs/RULES.md`;
+4. `docs/RULES.md` when the task can affect game behaviour, rule enforcement, scoring, bots, or rule-facing UI;
 5. `docs/ARCHITECTURE.md` when present;
-6. the relevant implementation and tests.
+6. the directly relevant implementation and tests.
 
 `docs/RULES.md` is authoritative for implemented game behaviour.
 
 `docs/ROADMAP.md` is authoritative for the agreed v1 milestone sequence and product boundary. A versioned milestone specification remains authoritative for the concrete implementation scope of that milestone and may refine the roadmap's higher-level details without silently changing its objective or dependencies.
 
 Do not invent Burraco rules, product behaviour, or technical requirements.
+
+Read proportionally to task risk: do not load unrelated game-rule or implementation context for documentation-only or isolated presentation work.
 
 If documentation, tests, and implementation materially conflict, report the conflict instead of silently choosing an interpretation.
 
