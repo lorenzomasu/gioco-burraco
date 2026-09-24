@@ -6,14 +6,16 @@ This document defines the standard milestone workflow for this repository.
 
 The workflow separates specification, implementation, independent review, and merge while minimizing repeated manual work. Stable project context belongs in the repository; prompts should carry only the task-specific instructions needed to act on that context.
 
-The milestone workflow is intentionally lean:
+The delivery workflow is intentionally lean and risk-proportional:
 
 `prepare → implement → review → automatic PR/CI/merge when green`
 
-The user should normally need only two project-level commands for a milestone:
+A delivery unit may be either one standalone milestone or an approved batch of sequential milestones. Milestones remain the product/specification units; batching changes only how implementation, verification, review, PR and CI are grouped.
 
-- `Prepara MXX`
-- `Review MXX`
+The user should normally need only one preparation request and one review request per delivery unit, for example:
+
+- `Prepara M29` / `Review M29`
+- `Prepara M30-M32` / `Review M30-M32`
 
 If the independent review is green, ChatGPT should complete the PR/CI/merge gate directly when repository access permits, without requiring a separate `procedi` message.
 
@@ -58,6 +60,46 @@ For each new milestone, the selected implementation agent should:
 - stop before merging into `main`.
 
 The implementation agent must not invent or author the milestone specification it is implementing.
+
+## Delivery modes
+
+### Standalone milestone
+
+Use the existing one-milestone branch/review/PR path when the work is high-risk or benefits from an isolated merge gate. This normally includes:
+
+- game-engine, rules, scoring, bot-legality or hidden-information changes;
+- persistence/schema changes;
+- CI/deployment/release work;
+- architectural boundary changes;
+- work whose acceptance criteria are difficult to review safely inside a larger diff.
+
+### Milestone batch
+
+Batch sequential milestones when they share the same implementation surface, the dependency order is clear, and the risk of reviewing them together is lower than the coordination overhead of separate PR/CI cycles.
+
+A batch uses:
+
+- one batch branch from current `main`;
+- separately versioned milestone specifications committed before implementation starts;
+- one primary implementation-agent task/session when the shared context remains useful;
+- sequential milestone implementation with a distinct commit per milestone;
+- targeted tests/checks after each milestone checkpoint;
+- one canonical `npm run verify` after the complete batch;
+- one compact batch implementation report;
+- one independent review of the complete batch diff against every included milestone specification;
+- one PR, one PR CI run and one merge gate.
+
+Do not run the full verification or push merely to mark every internal checkpoint green unless a concrete failure/risk justifies it.
+
+Split a batch before continuing if implementation unexpectedly crosses into game rules/engine semantics, persistence format, CI/deployment, release mechanics, or another boundary that materially increases review risk. Also split when the cumulative diff becomes too large to review confidently as one coherent change.
+
+For the current v1.1 roadmap, the default delivery plan is:
+
+- M29 standalone because direct manipulation changes the interaction contract and is the stable dependency for later presentation work;
+- M30–M32 as one presentation-focused batch if M29 lands cleanly;
+- M33 standalone as the v1.1 release/hardening gate.
+
+ChatGPT should reassess this grouping from repository evidence before preparation and proactively change it if risk or implementation coupling changes.
 
 ## Preparing a milestone
 
@@ -114,7 +156,7 @@ Stable rules belong in the repository, not in repeated prompts.
 
 ## Implementation workflow
 
-For a new milestone:
+For a standalone milestone:
 
 1. start from updated `main`;
 2. work on the dedicated milestone branch;
@@ -137,9 +179,11 @@ For a new milestone:
 14. push only the milestone branch;
 15. stop before merging.
 
-The intent is to run the expensive full verification at the end of a normal implementation cycle rather than repeatedly after every small edit. Targeted tests are preferred during active implementation. A known failing full verification is always blocking.
+The intent is to run the expensive full verification at the end of a delivery unit rather than repeatedly after every small edit. Targeted tests are preferred during active implementation. A known failing full verification is always blocking.
 
-The implementation report is review context, not an authoritative specification. It must not redefine scope or make deviations acceptable by declaration.
+For an approved batch, repeat the inspect/implement/targeted-test cycle sequentially for each included milestone and create a distinct commit for each milestone. Do not run canonical verification, create the final report, push for review, or open a PR until the batch is complete unless a concrete risk requires an early checkpoint. At batch completion run `npm run verify`, create one report from `docs/milestones/reports/BATCH-TEMPLATE.md`, commit the report, and push the batch branch.
+
+Implementation reports are review context, not authoritative specifications. They must not redefine scope or make deviations acceptable by declaration.
 
 ## Independent review
 
@@ -151,9 +195,9 @@ ChatGPT performs an independent review directly from the milestone branch or pul
 
 Every review must verify:
 
-- the milestone specification and acceptance criteria;
+- every included milestone specification and acceptance criterion;
 - the implementation report, when present;
-- the complete milestone diff;
+- the complete standalone-milestone or batch diff;
 - tests added or changed;
 - directly relevant existing behaviour;
 - unrelated or future-scope changes;
@@ -281,7 +325,7 @@ still cancelled; a running `main` workflow is not cancelled mid-deployment.
 
 ## Efficiency rules
 
-The workflow is intentionally optimized for a single human owner working with AI implementation agents.
+The workflow is intentionally optimized for a single human owner working with AI implementation agents. Optimize for four things together: delivery speed, correctness, human intervention and model/token cost.
 
 Therefore:
 
@@ -294,9 +338,17 @@ Therefore:
 - do not make the implementation agent author its own milestone contract;
 - use targeted tests during implementation and the full repository gate at milestone completion;
 - review proportionally to risk rather than rereading every source of truth for every kind of change;
-- keep each milestone isolated in its own branch and implementation task;
+- keep standalone milestones isolated; batch only coherent sequential milestones under the delivery-mode rules above;
 - keep fix prompts narrow and review-driven;
 - do not add process artifacts, tools, or gates unless they solve an observed problem;
-- treat this workflow as stable through the v1.1 path unless a concrete failure demonstrates that it needs adjustment.
+- prefer one warm implementation-agent session across an approved batch when shared context is useful; start a fresh session when the task surface changes materially or context has become noisy;
+- keep prompts small: reference versioned repository sources instead of pasting them, and request concise completion output rather than repeated narrative;
+- inspect only directly relevant files first; expand repository reading only when dependencies or review risk justify it;
+- prefer direct repository search/read operations over spawning a subagent for simple exploration;
+- by default use no more than one independent review subagent at the end of a batch; add more only for genuinely parallel or isolated workstreams;
+- do not route between models merely because routing is possible. Prefer one capable model when it preserves useful context/cache; use a cheaper model only when the task is clearly bounded and the expected savings outweigh coordination/context overhead;
+- avoid repeating full test logs in prompts/reports. Record pass/fail, relevant counts, SHA and actionable failures;
+- ChatGPT should proactively propose further workflow or token-efficiency changes when observed bottlenecks justify them instead of waiting for the user to ask;
+- treat this workflow as the current baseline, not a permanent ceremony: simplify it again when evidence shows another gate or artifact is redundant.
 
 The repository should carry stable context. Prompts should carry only the task-specific instruction needed to act on that context.
