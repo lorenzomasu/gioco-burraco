@@ -873,3 +873,150 @@ describe('GameTable lifecycle focus', () => {
     expect(speed).toHaveFocus()
   })
 })
+
+describe('GameTable tabletop composition (M27)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  const seat = (name: string) => screen.getByRole('region', { name: `Giocatore ${name}` })
+  const historyToggle = () => screen.getByRole('button', { name: /^Cronologia bot/ })
+  const historyLog = () => screen.getByRole('log', { name: 'Cronologia bot' })
+  const turnBanner = () => screen.getByText('Turno di').closest('[aria-live]')!
+
+  it('seats the teammate left and the opponents top/right from team membership without changing domain seating', () => {
+    const state = dealInitialState(deck)
+    render(<GameTable initialState={state} />)
+
+    expect(seat('Partner')).toHaveAttribute('data-seat', 'left')
+    expect(seat('Partner')).toHaveTextContent('Compagno · Squadra 1')
+    // The opponent who plays right after the human sits on the right, the other on top.
+    expect(seat('North')).toHaveAttribute('data-seat', 'right')
+    expect(seat('North')).toHaveTextContent('Avversario · Squadra 2')
+    expect(seat('South')).toHaveAttribute('data-seat', 'top')
+    expect(seat('South')).toHaveTextContent('Avversario · Squadra 2')
+    expect(screen.getByRole('region', { name: 'Mano di You' })).toHaveTextContent('Tu · Squadra 1')
+    expect(screen.getByRole('region', { name: 'Calate squadra 1' })).toHaveTextContent('La tua squadra')
+    expect(screen.getByRole('region', { name: 'Calate squadra 2' })).toHaveTextContent('Avversari')
+
+    // The visual mapping is presentation only: IDs, teams and turn order are untouched.
+    expect(state.players.map(({ id, name, teamId }) => [id, name, teamId])).toEqual([
+      ['player-1', 'You', 'team-1'],
+      ['player-2', 'North', 'team-2'],
+      ['player-3', 'Partner', 'team-1'],
+      ['player-4', 'South', 'team-2'],
+    ])
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(turnBanner()).toHaveTextContent('Tu · Squadra 1')
+  })
+
+  it('labels the active bot turn with its relation and the next domain player in order', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+
+    expect(turnBanner()).toHaveTextContent('North')
+    expect(turnBanner()).toHaveTextContent('Avversario · Squadra 2')
+    expect(seat('North')).toHaveAttribute('aria-current', 'true')
+    expect(seat('North')).toHaveAttribute('data-seat', 'right')
+  })
+
+  it('offers an operable history disclosure that keeps the mounted log in the accessibility tree', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+
+    const toggle = historyToggle()
+    const log = historyLog()
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(panel).toContainElement(log)
+    // Collapsed is visual only: never `hidden`, `display: none` or aria-hidden.
+    expect(panel).not.toHaveAttribute('hidden')
+    expect(log.closest('[aria-hidden="true"]')).toBeNull()
+    expect(log).toBeVisible()
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(historyLog()).toBe(log)
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(historyLog()).toBe(log)
+
+    // Keyboard: native button activation plus Escape to close and return focus.
+    fireEvent.click(toggle)
+    fireEvent.keyDown(log, { key: 'Escape' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  })
+
+  it('appends ordered bot events to the same log nodes while the history is collapsed', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+    const log = historyLog()
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+    const firstItems = within(log).getAllByRole('listitem')
+    expect(firstItems).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Completa subito' }))
+
+    expect(historyToggle()).toHaveAttribute('aria-expanded', 'false')
+    expect(historyLog()).toBe(log)
+    const items = within(log).getAllByRole('listitem')
+    expect(items.length).toBeGreaterThan(1)
+    expect(items[0]).toBe(firstItems[0])
+    expect(historyToggle()).toHaveTextContent(`${items.length} azioni`)
+    // The visible preview repeats the newest entry for sighted users only.
+    const preview = screen.getByText(`Ultima: ${items.at(-1)!.textContent}`)
+    expect(preview).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.click(historyToggle())
+    within(historyLog()).getAllByRole('listitem').forEach((item, index) => expect(item).toBe(items[index]))
+    expect(screen.queryByText(/^Ultima:/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the draw → select → discard path and bot completion working with the history collapsed', () => {
+    const state = dealInitialState(deck)
+    render(<GameTable initialState={state} />)
+    const hand = () => screen.getByRole('region', { name: 'Mano di You' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Pesca dal tallone/ }))
+    expect(within(hand()).getByText('12 carte')).toBeInTheDocument()
+
+    const [first] = within(hand()).getAllByRole('button', { pressed: false })
+    fireEvent.click(first!)
+    expect(first).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('carta selezionata')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+
+    expect(within(hand()).getByText('11 carte')).toBeInTheDocument()
+    expect(screen.getByText('Bot in gioco…')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Completa subito' }))
+
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeEnabled()
+    expect(historyToggle()).toHaveAttribute('aria-expanded', 'false')
+    expect(within(historyLog()).getAllByRole('listitem').length).toBeGreaterThan(0)
+  })
+
+  it('preserves the history and its disclosure state on the completed-round view', () => {
+    render(<GameTable initialState={botClosureState()} />)
+    fireEvent.click(historyToggle())
+
+    playPendingBots()
+
+    expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
+    expect(historyToggle()).toHaveAttribute('aria-expanded', 'true')
+    expect(within(historyLog()).getAllByRole('listitem').length).toBeGreaterThan(0)
+  })
+})

@@ -21,11 +21,11 @@ import {
   type MatchState,
   type RoundFactory,
 } from '../game/match'
-import type { GameState, Player, PlayerId } from '../game/state/types'
+import type { GameState, Player, PlayerId, Team } from '../game/state/types'
 import { BotActionTimeline } from './BotActionTimeline'
 import { sortCardsForDisplay } from './cardPresentation'
 import { MeldArea } from './MeldArea'
-import { PlayerSeat } from './PlayerSeat'
+import { PlayerSeat, seatRelationLabels, type SeatPosition, type SeatRelation } from './PlayerSeat'
 import { PlayingCard } from './PlayingCard'
 import { RoundScore } from './RoundScore'
 import {
@@ -169,12 +169,20 @@ const completeBotPlayback = (session: GameTableSession): GameTableSession => {
   return current === session ? current : { ...current, feedback: null }
 }
 
-const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
-  const activeIndex = playerOrder.indexOf(activeId)
-  const byOffset = (offset: number) => players.find(
-    (player) => player.id === playerOrder[(activeIndex + offset) % playerOrder.length],
-  )!
-  return { right: byOffset(1), top: byOffset(2), left: byOffset(3) }
+/**
+ * Visual-only seat mapping around the human, who sits at the bottom: the teammate on the
+ * left, the opponent who plays next on the right and the other opponent on top. Player
+ * IDs, teams and turn order are never changed by it.
+ */
+const tableSeats = (players: readonly Player[], human: Player) => {
+  const humanIndex = playerOrder.indexOf(human.id)
+  const othersInTurnOrder = [1, 2, 3].map((offset) => players.find(
+    (player) => player.id === playerOrder[(humanIndex + offset) % playerOrder.length],
+  )!)
+  const teammate = othersInTurnOrder.find((player) => player.teamId === human.teamId)
+  const opponents = othersInTurnOrder.filter((player) => player.teamId !== human.teamId)
+  if (!teammate || opponents.length !== 2) throw new Error('Unexpected table seating.')
+  return { left: teammate, right: opponents[0]!, top: opponents[1]! }
 }
 
 type TurnGuidanceContext = Readonly<{
@@ -257,6 +265,8 @@ export function GameTable({
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
   const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
+  // Visual disclosure state only; the history log stays mounted either way.
+  const [historyExpanded, setHistoryExpanded] = useState(false)
   const playbackSpeed = controlledPlaybackSpeed ?? localPlaybackSpeed
   const setPlaybackSpeed = onPlaybackSpeedChange ?? setLocalPlaybackSpeed
   const { match, botEvents, feedback } = session
@@ -357,14 +367,17 @@ export function GameTable({
     })
   }
 
+  const completeNowButton = isBotPlaying && !automationFailed && (
+    <button type="button" className="button button--ghost button--compact" onClick={completeBotsNow}>Completa subito</button>
+  )
+
+  // Slim application bar: match context and secondary controls stay visible but never
+  // compete with the table.
   const shellHeader = (
     <header className="game-header">
       <div className="brand">
         <span className="brand__mark" aria-hidden="true">B</span>
-        <div>
-          <span className="section-kicker">Tavolo locale</span>
-          <strong>Burraco</strong>
-        </div>
+        <strong>Burraco</strong>
       </div>
       <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
       <div className="game-header__actions">
@@ -383,14 +396,20 @@ export function GameTable({
             </label>
           ))}
         </fieldset>
-        {isBotPlaying && !automationFailed && (
-          <button type="button" className="button button--ghost" onClick={completeBotsNow}>Completa subito</button>
-        )}
         {onLeaveMatch && (
-          <button type="button" className="button button--new" onClick={leaveMatch}>Nuova partita</button>
+          <button type="button" className="button button--new button--compact" onClick={leaveMatch}>Nuova partita</button>
         )}
       </div>
     </header>
+  )
+
+  const history = (
+    <BotActionTimeline
+      events={botEvents}
+      players={game.players}
+      expanded={historyExpanded}
+      onExpandedChange={setHistoryExpanded}
+    />
   )
 
   if (game.round.status === 'completed') {
@@ -405,7 +424,7 @@ export function GameTable({
       <main className="game-shell">
         {shellHeader}
         <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} headingRef={resultHeadingRef} />
-        <BotActionTimeline events={botEvents} players={game.players} />
+        {history}
         <section className="match-summary" aria-labelledby="match-summary-title">
           <span className="round-complete__eyebrow">
             {outcome ? 'Partita conclusa' : `Dopo ${match.currentRoundNumber} smazzate`}
@@ -476,7 +495,11 @@ export function GameTable({
   if (!activeTeam) throw new Error(`Missing active team: ${activePlayer.teamId}`)
   const humanPlayer = game.players.find((player) => player.id === humanPlayerId)
   if (!humanPlayer) throw new Error(`Missing human player: ${humanPlayerId}`)
-  const seats = relativeSeats(game.players, humanPlayerId)
+  const seats = tableSeats(game.players, humanPlayer)
+  const relationOf = (player: Player): SeatRelation =>
+    player.teamId === humanPlayer.teamId ? 'teammate' : 'opponent'
+  const teamNumber = (teamId: string) => teamId === 'team-1' ? '1' : '2'
+  const activeRole = activePlayer.id === humanPlayerId ? 'Tu' : seatRelationLabels[relationOf(activePlayer)]
   const isHumanTurn = activePlayer.id === humanPlayerId
   const isActionPhase = isHumanTurn && round.turn.phase === 'action'
   const selectedIds = [...selectedCardIds]
@@ -504,105 +527,126 @@ export function GameTable({
   )
   const receivedCardIds = new Set(feedback?.receivedCardIds)
 
+  const seat = (player: Player, position: SeatPosition) => (
+    <PlayerSeat
+      player={player}
+      position={position}
+      relation={relationOf(player)}
+      bot
+      active={player.id === activePlayer.id}
+      cue={seatCue(player)}
+    />
+  )
+  const meldArea = (team: Team, placement: 'own' | 'opponent') => (
+    <MeldArea
+      key={team.id}
+      team={team}
+      owner={placement === 'own' ? 'La tua squadra' : 'Avversari'}
+      activeTeam={team.id === activeTeam.id}
+      canExtend={isActionPhase && selectedCardIds.size > 0}
+      onExtend={(meldIndex) => commitAction(
+        () => extendMeld(game, humanPlayerId, meldIndex, selectedIds),
+        { type: 'extend-meld', teamId: humanPlayer.teamId, meldIndex },
+      )}
+      feedback={feedback}
+    />
+  )
+  const ownTeam = game.teams.find((team) => team.id === humanPlayer.teamId)!
+  const opponentTeam = game.teams.find((team) => team.id !== humanPlayer.teamId)!
+
   return (
     <main className="game-shell">
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
-        <PlayerSeat player={seats.top} position="top" bot active={seats.top.id === activePlayer.id} cue={seatCue(seats.top)} />
-        <PlayerSeat player={seats.left} position="left" bot active={seats.left.id === activePlayer.id} cue={seatCue(seats.left)} />
-        <PlayerSeat player={seats.right} position="right" bot active={seats.right.id === activePlayer.id} cue={seatCue(seats.right)} />
+        {seat(seats.top, 'top')}
+        {seat(seats.left, 'left')}
+        {seat(seats.right, 'right')}
+
+        <div className="table-history">{history}</div>
 
         <div className="table-center">
-          <div className="turn-status" ref={turnStatusRef} tabIndex={-1}>
-            {/* Only attributes change here, so the live region is never remounted to animate. */}
-            <div
-              className="turn-banner"
-              aria-live="polite"
-              aria-atomic="true"
-              {...cueAttributes(feedback, feedback?.turnChange)}
-            >
-              <span className="turn-banner__pulse" aria-hidden="true" />
-              <div>
-                <span>Turno di</span>
-                <strong>{activePlayer.name}</strong>
-              </div>
-              <div className="turn-banner__phase">
-                <span>Fase</span>
-                <strong>{round.turn.phase === 'mustDraw' ? 'Pesca' : 'Gioco'}</strong>
-              </div>
-              {isBotPlaying && (
-                <div className="turn-banner__phase">
-                  <span>Stato</span>
-                  <strong>{automationFailed ? 'Bot fermi' : 'Bot in gioco…'}</strong>
+          {meldArea(opponentTeam, 'opponent')}
+
+          <div className="table-hub">
+            <div className="turn-status" ref={turnStatusRef} tabIndex={-1}>
+              {/* Only attributes change here, so the live region is never remounted to animate. */}
+              <div
+                className="turn-banner"
+                aria-live="polite"
+                aria-atomic="true"
+                {...cueAttributes(feedback, feedback?.turnChange)}
+              >
+                <span className="turn-banner__pulse" aria-hidden="true" />
+                <div>
+                  <span>Turno di</span>
+                  <strong>{activePlayer.name}</strong>
+                  <small className="turn-banner__role">{activeRole} · Squadra {teamNumber(activePlayer.teamId)}</small>
                 </div>
-              )}
-            </div>
-            <p className="turn-guidance">{guidance}</p>
-          </div>
-
-          {automationFailed && (
-            <div className="rule-error" role="alert">
-              <span aria-hidden="true">!</span>
-              <p><strong>Gioco automatico interrotto</strong>{BOT_AUTOMATION_FAILURE_MESSAGE}</p>
-            </div>
-          )}
-
-          <div className="pile-zone" aria-label="Tallone e monte degli scarti">
-            <button
-              type="button"
-              className="pile-control"
-              onClick={() => commitAction(() => drawCard(game, humanPlayerId), { type: 'draw-stock' })}
-              disabled={!canDrawStock}
-              {...cueAttributes(feedback, cuedAction === 'draw-stock' && 'draw')}
-              aria-label={`Pesca dal tallone, ${game.drawPile.length} carte rimaste`}
-            >
-              <span className="card-back" aria-hidden="true"><span>B</span></span>
-              <strong>Tallone</strong>
-              <span>{game.drawPile.length} carte</span>
-            </button>
-
-            <div
-              className="pozzetti-counter"
-              {...cueAttributes(feedback, (feedback?.pozzettoTeamIds.length ?? 0) > 0 && 'pozzetto')}
-            >
-              <span>Pozzetti</span>
-              <strong>{untouchedPozzetti}</strong>
-              <small>ancora disponibili</small>
-            </div>
-
-            <button
-              type="button"
-              className="pile-control"
-              onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
-              disabled={!canTakeDiscardPile}
-              {...cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
-              aria-label={discardTop
-                ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
-                : 'Monte degli scarti vuoto'}
-            >
-              <span className="pile-control__card">
-                {discardTop ? <PlayingCard card={discardTop} compact /> : <span className="empty-card" aria-hidden="true">—</span>}
-              </span>
-              <strong>Scarti</strong>
-              <span>{game.discardPile.length} {game.discardPile.length === 1 ? 'carta' : 'carte'}</span>
-            </button>
-          </div>
-
-          <div className="team-areas">
-            {game.teams.map((team) => (
-              <MeldArea
-                key={team.id}
-                team={team}
-                activeTeam={team.id === activeTeam.id}
-                canExtend={isActionPhase && selectedCardIds.size > 0}
-                onExtend={(meldIndex) => commitAction(
-                  () => extendMeld(game, humanPlayerId, meldIndex, selectedIds),
-                  { type: 'extend-meld', teamId: humanPlayer.teamId, meldIndex },
+                <div className="turn-banner__phase">
+                  <span>Fase</span>
+                  <strong>{round.turn.phase === 'mustDraw' ? 'Pesca' : 'Gioco'}</strong>
+                </div>
+                {isBotPlaying && (
+                  <div className="turn-banner__phase">
+                    <span>Stato</span>
+                    <strong>{automationFailed ? 'Bot fermi' : 'Bot in gioco…'}</strong>
+                  </div>
                 )}
-                feedback={feedback}
-              />
-            ))}
+              </div>
+              <p className="turn-guidance">{guidance}</p>
+              {completeNowButton}
+            </div>
+
+            {automationFailed && (
+              <div className="rule-error" role="alert">
+                <span aria-hidden="true">!</span>
+                <p><strong>Gioco automatico interrotto</strong>{BOT_AUTOMATION_FAILURE_MESSAGE}</p>
+              </div>
+            )}
+
+            <div className="pile-zone" aria-label="Tallone e monte degli scarti">
+              <button
+                type="button"
+                className="pile-control"
+                onClick={() => commitAction(() => drawCard(game, humanPlayerId), { type: 'draw-stock' })}
+                disabled={!canDrawStock}
+                {...cueAttributes(feedback, cuedAction === 'draw-stock' && 'draw')}
+                aria-label={`Pesca dal tallone, ${game.drawPile.length} carte rimaste`}
+              >
+                <span className="card-back" aria-hidden="true"><span>B</span></span>
+                <strong>Tallone</strong>
+                <span>{game.drawPile.length} carte</span>
+              </button>
+
+              <div
+                className="pozzetti-counter"
+                {...cueAttributes(feedback, (feedback?.pozzettoTeamIds.length ?? 0) > 0 && 'pozzetto')}
+              >
+                <span>Pozzetti</span>
+                <strong>{untouchedPozzetti}</strong>
+                <small>ancora disponibili</small>
+              </div>
+
+              <button
+                type="button"
+                className="pile-control"
+                onClick={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
+                disabled={!canTakeDiscardPile}
+                {...cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
+                aria-label={discardTop
+                  ? `Raccogli il monte degli scarti, ${game.discardPile.length} ${game.discardPile.length === 1 ? 'carta' : 'carte'}`
+                  : 'Monte degli scarti vuoto'}
+              >
+                <span className="pile-control__card">
+                  {discardTop ? <PlayingCard card={discardTop} compact /> : <span className="empty-card" aria-hidden="true">—</span>}
+                </span>
+                <strong>Scarti</strong>
+                <span>{game.discardPile.length} {game.discardPile.length === 1 ? 'carta' : 'carte'}</span>
+              </button>
+            </div>
           </div>
+
+          {meldArea(ownTeam, 'own')}
         </div>
 
         <section
@@ -612,7 +656,7 @@ export function GameTable({
         >
           <header className="active-player__header">
             <div>
-              <span className="section-kicker">Giocatore umano · Squadra {humanPlayer.teamId === 'team-1' ? '1' : '2'}</span>
+              <span className="section-kicker">Tu · Squadra {teamNumber(humanPlayer.teamId)}</span>
               <h1>{humanPlayer.name}</h1>
             </div>
             <span className="active-player__status">
@@ -679,7 +723,6 @@ export function GameTable({
           )}
         </section>
       </section>
-      <BotActionTimeline events={botEvents} players={game.players} />
     </main>
   )
 }

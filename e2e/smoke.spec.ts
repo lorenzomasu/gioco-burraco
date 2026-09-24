@@ -4,6 +4,7 @@ import {
   drawAndDiscard,
   drawPileButton,
   expect,
+  historyToggle,
   humanHandCards,
   NORMAL_BOT_DELAY_MS,
   roundIndicator,
@@ -58,6 +59,18 @@ test('a human turn hands control to the bots and back to a playable human turn',
   await expect(completeNowButton(page)).toBeHidden()
   await expect(turnBanner(page)).toContainText(PLAYER_NAME)
   expect(await timelineEntries(page).count()).toBeGreaterThan(1)
+
+  // The collapsed history kept every entry; it opens and closes from the keyboard.
+  const entries = await timelineEntries(page).allTextContents()
+  await expect(historyToggle(page)).toHaveAttribute('aria-expanded', 'false')
+  await historyToggle(page).focus()
+  await page.keyboard.press('Enter')
+  await expect(historyToggle(page)).toHaveAttribute('aria-expanded', 'true')
+  await expect(timelineEntries(page).last()).toBeVisible()
+  expect(await timelineEntries(page).allTextContents()).toEqual(entries)
+  await page.keyboard.press('Escape')
+  await expect(historyToggle(page)).toHaveAttribute('aria-expanded', 'false')
+  await expect(historyToggle(page)).toBeFocused()
 
   // The next human turn is playable.
   await expect(drawPileButton(page)).toBeEnabled()

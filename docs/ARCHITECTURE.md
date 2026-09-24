@@ -273,14 +273,36 @@ These presentation contracts are transient React concerns; none of them is store
   ordinary card actions or bot events never do.
 - The bot timeline is a mounted `role="log"` polite region announcing additions only;
   existing entries are never re-rendered as new nodes, so history is not re-announced.
+  It is presented as a compact disclosure (a native button with `aria-expanded` and
+  `aria-controls`, closed by default, Escape closes it): collapsing only clips the panel
+  visually and never uses `hidden`, `display: none` or `aria-hidden`, so the log stays in
+  the accessibility tree and each appended event is still announced exactly once. The
+  collapsed view shows an `aria-hidden` preview of the newest entry. The expanded state is
+  transient table state shared by the active table and the completed-round view.
 - The turn banner is the single polite status for turn and phase; rule errors are
   `role="alert"`, storage notices `role="status"` in normal document flow. Contextual
   guidance is plain text derived from the same enabled/disabled values as the controls,
   never an independent legality check.
 - Critical states (selected card, current player, active team, pozzetto) carry a text or
   shape cue in addition to colour, and unavailable actions stay native `disabled`.
-- Responsive behaviour lives in CSS breakpoints (1000 px, 760 px, 440 px), not in
-  JavaScript viewport branching.
+- Responsive behaviour lives in CSS breakpoints (1000 px, 760 px, 440 px, plus the
+  wide-desktop fit at 1200 px width and 640 px height), not in JavaScript viewport
+  branching.
+
+### Table composition
+
+The active match is a tabletop: the human's hand and actions sit at the bottom, the
+teammate on the left, and the two opponents on top and on the right — the opponent who
+plays right after the human sits on the right. The mapping is derived from `teamId`
+relative to the human and is visual only: player IDs, teams and turn order are never
+changed, and each seat states its relation («Compagno» / «Avversario») and team in text.
+The human's team melds are on the teammate's side and the opponents' melds on the
+opponents' side, with the stock, pozzetti count, discard pile and the turn status
+between them. On wide desktop viewports the table fits the screen and each meld area
+scrolls locally; narrower layouts keep the same grouping in document order (seats,
+history, opponents' melds, public area, own melds, hand). The application header is a
+slim bar for the round indicator, bot speed and «Nuova partita»; «Completa subito» sits
+with the turn status while bots are playing.
 
 ### Transient visual feedback
 

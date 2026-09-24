@@ -14,6 +14,7 @@ import {
   roundIndicator,
   startNewMatch,
   test,
+  historyToggle,
   timelineEntries,
 } from './fixtures'
 
@@ -76,6 +77,7 @@ test('a reload during bot playback resumes the pending chain from the committed 
   // Real time again: the recreated playback finishes the chain on its own timers.
   await page.clock.resume()
   await expect(drawPileButton(page)).toBeEnabled({ timeout: 30_000 })
+  await historyToggle(page).click()
   await expect(timelineEntries(page).first()).toBeVisible()
   await expect(humanHandCards(page)).toHaveCount(11)
   await drawPileButton(page).click()

@@ -5,6 +5,7 @@ import {
   discardButton,
   drawPileButton,
   expect,
+  historyToggle,
   humanHandCards,
   onboardingHeading,
   roundIndicator,
@@ -58,4 +59,12 @@ test('at 320 px a match starts and the draw/select/discard flow works without pa
   await completeNowButton(page).tap()
   await expect(drawPileButton(page)).toBeEnabled()
   await expectNoDocumentOverflow(page)
+
+  // The bot history disclosure opens by touch inside the page width.
+  await historyToggle(page).tap()
+  await expect(historyToggle(page)).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByRole('log', { name: 'Cronologia bot' }).getByRole('listitem').first()).toBeVisible()
+  await expectNoDocumentOverflow(page)
+  await historyToggle(page).tap()
+  await expect(historyToggle(page)).toHaveAttribute('aria-expanded', 'false')
 })

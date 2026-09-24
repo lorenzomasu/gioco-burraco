@@ -74,6 +74,8 @@ export const humanHandCards = (page: Page, name = PLAYER_NAME): Locator =>
   page.getByRole('region', { name: `Mano di ${name}` }).getByLabel(`Carte di ${name}`).getByRole('button')
 export const timelineEntries = (page: Page): Locator =>
   page.getByRole('region', { name: 'Cronologia bot' }).getByRole('listitem')
+/** The M27 disclosure toggle of the bot history; the log stays mounted while collapsed. */
+export const historyToggle = (page: Page): Locator => page.getByRole('button', { name: /^Cronologia bot/ })
 export const onboardingHeading = (page: Page): Locator => page.getByRole('heading', { level: 1, name: 'Burraco' })
 
 /** Opens a fresh application and starts smazzata 1 through the real onboarding form. */

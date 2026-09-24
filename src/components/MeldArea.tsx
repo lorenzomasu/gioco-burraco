@@ -26,6 +26,8 @@ const placementAnnotation = (placement: MeldCardPlacement): string | undefined =
 
 type MeldAreaProps = Readonly<{
   team: Team
+  /** Text relation of the team to the human (for example «La tua squadra»). */
+  owner?: string
   activeTeam: boolean
   canExtend: boolean
   onExtend: (meldIndex: number) => void
@@ -33,7 +35,7 @@ type MeldAreaProps = Readonly<{
   feedback?: TableFeedback | null
 }>
 
-export function MeldArea({ team, activeTeam, canExtend, onExtend, feedback = null }: MeldAreaProps) {
+export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedback = null }: MeldAreaProps) {
   const teamNumber = team.id === 'team-1' ? '1' : '2'
   const tookPozzetto = feedback?.pozzettoTeamIds.includes(team.id) ?? false
   const action = feedback?.action
@@ -44,14 +46,14 @@ export function MeldArea({ team, activeTeam, canExtend, onExtend, feedback = nul
 
   return (
     <section
-      className={`meld-area ${activeTeam ? 'meld-area--active' : ''}`}
+      className={`meld-area${activeTeam ? ' meld-area--active' : ''}`}
       aria-label={`Calate squadra ${teamNumber}`}
       {...cueAttributes(feedback, tookPozzetto && 'pozzetto')}
     >
       <header className="meld-area__header">
         <div>
-          <span className="section-kicker">Squadra {teamNumber}</span>
-          <h2>Calate</h2>
+          <span className="section-kicker">{owner ? `Calate · Squadra ${teamNumber}` : `Squadra ${teamNumber}`}</span>
+          <h2>{owner ?? 'Calate'}</h2>
         </div>
         <div className="meld-area__states">
           {activeTeam && <span className="turn-badge">Di turno</span>}
