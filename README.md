@@ -70,4 +70,4 @@ npm run smoke:deployed -- https://lorenzomasu.github.io/gioco-burraco/
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — technical architecture and invariants.
 - [`docs/RELEASE.md`](docs/RELEASE.md) — the production deployment and release procedure.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — the
-  v1 plan and the milestone development workflow.
+  product roadmap and the milestone development workflow.
