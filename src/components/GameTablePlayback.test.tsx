@@ -10,6 +10,14 @@ import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
 import { dealInitialState } from '../game/engine/startGame'
 import { discardCard } from '../game/engine/turn'
+import {
+  advanceMatch,
+  startMatch,
+  updateCurrentRound,
+  type MatchRoundNumber,
+  type MatchState,
+  type RoundFactory,
+} from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { GameState, InProgressGameState, PlayerId } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
@@ -437,4 +445,219 @@ describe('GameTable bot turn playback', () => {
       .toHaveAttribute('aria-pressed', 'true')
     expect(vi.getTimerCount()).toBe(0)
   })
+})
+
+/** Honors the lifecycle-requested starter through the engine setup API. */
+const rotatingRound: RoundFactory = ({ startingPlayerId }) => dealInitialState(deck, { startingPlayerId })
+
+const completedByHuman = (state: GameState): GameState => ({
+  ...state,
+  round: { status: 'completed', ending: 'closure', closedByPlayerId: 'player-1', closingTeamId: 'team-1' },
+})
+
+/** A match whose smazzata `nextRound - 1` is completed and settled, awaiting `Inizia smazzata N`. */
+const matchAwaiting = (nextRound: 2 | 3 | 4): MatchState => {
+  let match = startMatch(rotatingRound)
+  for (let roundNumber = 1; roundNumber < nextRound; roundNumber += 1) {
+    if (roundNumber > 1) match = advanceMatch(match, rotatingRound)
+    match = updateCurrentRound(match, completedByHuman(match.currentRound))
+  }
+  return match
+}
+
+/** The discard-pile control, whether the pile currently holds cards or is empty. */
+const discardPileButton = () =>
+  screen.getByRole('button', { name: /^(Raccogli il monte degli scarti|Monte degli scarti vuoto)/ })
+
+const expectHumanGameplayLocked = () => {
+  const humanHand = within(screen.getByLabelText('Carte di You'))
+  expect(humanHand.queryAllByRole('button')).toHaveLength(0)
+  expect(drawPileButton()).toBeDisabled()
+  expect(discardPileButton()).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Cala' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
+  for (const extend of screen.queryAllByRole('button', { name: 'Aggiungi alla calata' })) {
+    expect(extend).toBeDisabled()
+  }
+}
+
+describe('GameTable round starter rotation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('starts smazzata 2 on North and step-plays it through the existing playback', () => {
+    const createGame = vi.fn(rotatingRound)
+    const round2 = dealInitialState(deck, { startingPlayerId: 'player-2' })
+    const firstStep = playNextBotChainStep(round2, 'player-1')!
+    render(<GameTable initialState={botClosureState()} createGame={createGame} />)
+    advanceOneStep()
+    expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
+    expect(vi.getTimerCount()).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    expect(createGame.mock.calls).toEqual([[{ roundNumber: 2, startingPlayerId: 'player-2' }]])
+    expect(screen.getByText('Smazzata 2/4')).toBeInTheDocument()
+    expect(turnBanner()).toHaveTextContent('North')
+    expect(screen.getByText('Pesca')).toBeInTheDocument()
+    expect(screen.getByText('Bot in gioco…')).toBeInTheDocument()
+    expect(timelineItems()).toHaveLength(0)
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 41 carte rimaste')
+    expect(seatCardCount('North')).toHaveAccessibleName('11 carte in mano')
+    expect(vi.getTimerCount()).toBe(1)
+
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS - 1)
+    })
+    expect(timelineItems()).toHaveLength(0)
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 41 carte rimaste')
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(firstStep.events.length).toBeGreaterThan(0)
+    expect(timelineTypes()).toEqual(firstStep.events.map(({ type }) => type))
+    expect(timelineItems()[0]).toHaveTextContent(/^North /)
+    expect(drawPileButton())
+      .toHaveAccessibleName(`Pesca dal tallone, ${firstStep.state.drawPile.length} carte rimaste`)
+    const northAfterStep = firstStep.state.players.find(({ id }) => id === 'player-2')!.hand.length
+    expect(seatCardCount('North')).toHaveAccessibleName(`${northAfterStep} carte in mano`)
+    expect(createGame).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    [2, 'North'],
+    [3, 'Partner'],
+    [4, 'South'],
+  ] as const)('renders smazzata %i with its scheduled bot starter %s before any step', (roundNumber, starter) => {
+    const createGame = vi.fn(rotatingRound)
+    const firstStep = playNextBotChainStep(
+      dealInitialState(deck, { startingPlayerId: `player-${roundNumber}` }),
+      'player-1',
+    )!
+    render(<GameTable initialMatch={matchAwaiting(roundNumber)} createGame={createGame} />)
+
+    fireEvent.click(screen.getByRole('button', { name: `Inizia smazzata ${roundNumber}` }))
+
+    expect(createGame.mock.calls.at(-1)).toEqual([
+      { roundNumber, startingPlayerId: `player-${roundNumber}` },
+    ])
+    expect(screen.getByText(`Smazzata ${roundNumber}/4`)).toBeInTheDocument()
+    expect(turnBanner()).toHaveTextContent(starter)
+    expect(timelineItems()).toHaveLength(0)
+    expectHumanGameplayLocked()
+
+    advanceOneStep()
+
+    expect(timelineTypes()).toEqual(firstStep.events.map(({ type }) => type))
+    expect(timelineItems()[0]).toHaveTextContent(new RegExp(`^${starter} `))
+  })
+
+  it('locks human gameplay and hides bot hands and stock while the fresh-round chain is pending', () => {
+    let expected: GameState = dealInitialState(deck, { startingPlayerId: 'player-2' })
+    let progress: BotChainProgress = INITIAL_BOT_CHAIN_PROGRESS
+    const everPublicLabels = new Set<string>()
+    render(<GameTable initialMatch={matchAwaiting(2)} createGame={rotatingRound} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+    const humanHandSize = expected.players.find(({ id }) => id === 'player-1')!.hand.length
+
+    for (let step = 0; step < 50; step += 1) {
+      const next = playNextBotChainStep(expected, 'player-1', progress)
+      if (!next) break
+
+      expectHumanGameplayLocked()
+      const itemsBefore = timelineItems().length
+      const pileBefore = drawPileButton().getAttribute('aria-label')
+      const humanCard = within(screen.getByLabelText('Carte di You')).getAllByRole('img')[0]!
+      fireEvent.click(drawPileButton())
+      fireEvent.click(discardPileButton())
+      fireEvent.click(humanCard)
+      fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+      expect(drawPileButton()).toHaveAttribute('aria-label', pileBefore)
+      expect(timelineItems()).toHaveLength(itemsBefore)
+      expect(within(screen.getByRole('region', { name: 'Mano di You' })).getByText(`${humanHandSize} carte`))
+        .toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+      // Cards collected from the face-up discard pile were legitimately public before.
+      for (const label of publicCardLabels(expected)) everPublicLabels.add(label)
+      for (const hidden of [...botHandCards(expected), ...expected.drawPile, ...expected.pozzetti.flat()]) {
+        if (!everPublicLabels.has(cardLabel(hidden))) expectNotRendered(hidden)
+      }
+
+      advanceOneStep()
+      expected = next.state
+      progress = next.progress
+    }
+
+    expect(vi.getTimerCount()).toBe(0)
+    expect(turnBanner()).toHaveTextContent('You')
+  })
+
+  it('returns normal controls to the human after the fresh-round chain with the full-chain events', () => {
+    const round2 = dealInitialState(deck, { startingPlayerId: 'player-2' })
+    const expectedChain = playBotsUntilHumanTurnWithTrace(round2, 'player-1')
+    expect(expectedChain.state.round).toMatchObject({ status: 'in-progress', turn: { currentPlayerId: 'player-1' } })
+    render(<GameTable initialMatch={matchAwaiting(2)} createGame={rotatingRound} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) {
+      const before = timelineItems().length
+      advanceOneStep()
+      expect(timelineItems().length - before).toBeGreaterThanOrEqual(1)
+      expect(timelineItems().length - before).toBeLessThanOrEqual(2)
+    }
+
+    expect(timelineTypes()).toEqual(expectedChain.events.map(({ type }) => type))
+    expect(timelineItems().map((item) => item.textContent?.split(' ')[0]))
+      .toEqual(expectedChain.events.map(({ playerId }) => playerNames[playerId]))
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(screen.queryByText('Bot in gioco…')).not.toBeInTheDocument()
+    expect(drawPileButton()).toHaveAccessibleName(`Pesca dal tallone, ${expectedChain.state.drawPile.length} carte rimaste`)
+
+    fireEvent.click(drawPileButton())
+
+    expect(screen.getByText('Gioco')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Mano di You' })).getByText('12 carte')).toBeInTheDocument()
+    const selectable = within(screen.getByLabelText('Carte di You')).getAllByRole('button')[0]!
+    fireEvent.click(selectable)
+    expect(selectable).toHaveAttribute('aria-pressed', 'true')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([2, 3, 4] as const)(
+    'resets Nuova partita from pending smazzata %i to smazzata 1 with player-1',
+    (roundNumber: MatchRoundNumber) => {
+      const createGame = vi.fn(rotatingRound)
+      render(<GameTable initialMatch={matchAwaiting(roundNumber as 2 | 3 | 4)} createGame={createGame} />)
+      fireEvent.click(screen.getByRole('button', { name: `Inizia smazzata ${roundNumber}` }))
+      advanceOneStep()
+      expect(timelineItems()).toHaveLength(1)
+      expect(vi.getTimerCount()).toBe(1)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+      expect(createGame.mock.calls.at(-1)).toEqual([{ roundNumber: 1, startingPlayerId: 'player-1' }])
+      expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
+      expect(turnBanner()).toHaveTextContent('You')
+      expect(screen.getByText('Pesca')).toBeInTheDocument()
+      expect(screen.queryByText('Bot in gioco…')).not.toBeInTheDocument()
+      expect(timelineItems()).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+      expect(drawPileButton()).toBeEnabled()
+
+      act(() => {
+        vi.advanceTimersByTime(BOT_STEP_DELAY_MS * 3)
+      })
+      expect(timelineItems()).toHaveLength(0)
+      expect(turnBanner()).toHaveTextContent('You')
+    },
+  )
 })

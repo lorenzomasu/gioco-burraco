@@ -8,7 +8,6 @@ import {
 import { GameRuleError } from '../game/engine/errors'
 import { extendMeld } from '../game/engine/extendMeld'
 import { playMeld } from '../game/engine/playMeld'
-import { startGame } from '../game/engine/startGame'
 import { discardCard, drawCard, takeDiscardPile } from '../game/engine/turn'
 import {
   advanceMatch,
@@ -19,8 +18,9 @@ import {
   synchronizeMatch,
   updateCurrentRound,
   type MatchState,
+  type RoundFactory,
 } from '../game/match'
-import type { GameState, InProgressGameState, Player, PlayerId } from '../game/state/types'
+import type { GameState, Player, PlayerId } from '../game/state/types'
 import { BotActionTimeline } from './BotActionTimeline'
 import { sortCardsForDisplay } from './cardPresentation'
 import { MeldArea } from './MeldArea'
@@ -31,7 +31,7 @@ import { RoundScore } from './RoundScore'
 type GameTableProps = Readonly<{
   initialMatch?: MatchState
   initialState?: GameState
-  createGame?: () => InProgressGameState
+  createGame?: RoundFactory
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -98,7 +98,7 @@ const italianErrorMessages: Readonly<Record<string, string>> = {
   CANNOT_CLOSE_WITHOUT_DISCARD: 'La chiusura deve avvenire con lo scarto finale.',
 }
 
-export function GameTable({ initialMatch, initialState, createGame = startGame }: GameTableProps) {
+export function GameTable({ initialMatch, initialState, createGame }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
       ? {

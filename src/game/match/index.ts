@@ -1,7 +1,9 @@
 export {
   advanceMatch,
   calculateCumulativeScores,
+  createMatchRound,
   getFinalMatchOutcome,
+  getRoundStartingPlayerId,
   MATCH_LIFECYCLE_ERROR_CODES,
   MatchLifecycleError,
   settleCompletedRound,
@@ -16,6 +18,7 @@ export type {
   MatchRoundNumber,
   MatchState,
   RoundFactory,
+  RoundFactoryContext,
   SettledRoundResult,
   TeamCumulativeScore,
   TeamVictoryPoints,

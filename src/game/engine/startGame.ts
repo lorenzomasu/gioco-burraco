@@ -19,13 +19,27 @@ export const HAND_SIZE = 11
 export const POZZETTO_SIZE = 11
 export const INITIAL_DECK_SIZE = 108
 
+/** The standalone single-round starter when no caller requests another one. */
+export const DEFAULT_STARTING_PLAYER_ID: PlayerId = 'player-1'
+
+export type RoundSetupOptions = Readonly<{
+  /** Initial turn owner. Turn metadata only: it never changes the deal. */
+  startingPlayerId?: PlayerId
+}>
+
 /**
  * Applies the deterministic, digital dealing order to an already ordered deck.
  * Shuffling deliberately belongs to the caller so this operation is independently testable.
  */
-export const dealInitialState = (orderedDeck: Deck): InProgressGameState => {
+export const dealInitialState = (
+  orderedDeck: Deck,
+  { startingPlayerId = DEFAULT_STARTING_PLAYER_ID }: RoundSetupOptions = {},
+): InProgressGameState => {
   if (orderedDeck.length !== INITIAL_DECK_SIZE) {
     throw new RangeError(`Initial deal requires exactly ${INITIAL_DECK_SIZE} cards.`)
+  }
+  if (!PLAYER_DEFINITIONS.some(({ id }) => id === startingPlayerId)) {
+    throw new RangeError(`Unknown starting player: ${startingPlayerId}`)
   }
 
   let cursor = 0
@@ -47,13 +61,13 @@ export const dealInitialState = (orderedDeck: Deck): InProgressGameState => {
     drawPile: orderedDeck.slice(cursor),
     discardPile: [openingDiscard],
     pozzetti,
-    round: { status: 'in-progress', turn: { currentPlayerId: 'player-1', phase: 'mustDraw' } },
+    round: { status: 'in-progress', turn: { currentPlayerId: startingPlayerId, phase: 'mustDraw' } },
   }
 }
 
 /** Starts only the initial round layout. Subsequent player actions are future commands. */
-export const startGame = (random?: RandomSource): InProgressGameState =>
-  dealInitialState(shuffleDeck(createBurracoDeck(), random))
+export const startGame = (random?: RandomSource, options?: RoundSetupOptions): InProgressGameState =>
+  dealInitialState(shuffleDeck(createBurracoDeck(), random), options)
 
 export const getPlayer = (state: GameState, playerId: PlayerId): Player => {
   const player = state.players.find((candidate) => candidate.id === playerId)

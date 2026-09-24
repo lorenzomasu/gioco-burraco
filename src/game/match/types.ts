@@ -1,5 +1,5 @@
 import type { RoundScore } from '../scoring'
-import type { CompletedRoundState, GameState, InProgressGameState, TeamId } from '../state/types'
+import type { CompletedRoundState, GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
 
 export const MATCH_ROUND_COUNT = 4
 
@@ -18,7 +18,16 @@ export type MatchState = Readonly<{
   roundResults: readonly SettledRoundResult[]
 }>
 
-export type RoundFactory = () => InProgressGameState
+/**
+ * Transient creation context for one fresh round. It is passed to the factory only and
+ * is never stored in `MatchState`.
+ */
+export type RoundFactoryContext = Readonly<{
+  roundNumber: MatchRoundNumber
+  startingPlayerId: PlayerId
+}>
+
+export type RoundFactory = (context: RoundFactoryContext) => InProgressGameState
 
 export type TeamCumulativeScore = Readonly<{
   teamId: TeamId

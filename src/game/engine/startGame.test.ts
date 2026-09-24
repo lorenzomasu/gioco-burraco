@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
 import { createSeededRandom } from '../cards/shuffle'
 import { isJoker, isPinella, type Card, type Deck } from '../cards/types'
+import type { PlayerId } from '../state/types'
 import { dealInitialState, getPlayer, HAND_SIZE, POZZETTO_SIZE, startGame } from './startGame'
 
 const OPENING_DISCARD_INDEX = HAND_SIZE * 4 + POZZETTO_SIZE * 2
@@ -99,11 +100,58 @@ describe('dealInitialState', () => {
   })
 })
 
+describe('dealInitialState with an explicit starting player', () => {
+  const orderedDeck = createBurracoDeck()
+  const allPlayerIds: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
+
+  it('keeps player 1 as the default when no starter is requested', () => {
+    expect(dealInitialState(orderedDeck, {}).round.turn).toEqual({ currentPlayerId: 'player-1', phase: 'mustDraw' })
+    expect(dealInitialState(orderedDeck, {})).toEqual(dealInitialState(orderedDeck))
+  })
+
+  it.each(allPlayerIds)('starts %s awaiting a draw when requested', (startingPlayerId) => {
+    const state = dealInitialState(orderedDeck, { startingPlayerId })
+    expect(state.round).toEqual({
+      status: 'in-progress',
+      turn: { currentPlayerId: startingPlayerId, phase: 'mustDraw' },
+    })
+  })
+
+  it.each(allPlayerIds.slice(1))('changes only the initial turn owner for %s', (startingPlayerId) => {
+    const byDefault = dealInitialState(orderedDeck)
+    const rotated = dealInitialState(orderedDeck, { startingPlayerId })
+
+    expect(rotated.players).toEqual(byDefault.players)
+    expect(rotated.teams).toEqual(byDefault.teams)
+    expect(rotated.pozzetti).toEqual(byDefault.pozzetti)
+    expect(rotated.discardPile).toEqual(byDefault.discardPile)
+    expect(rotated.drawPile).toEqual(byDefault.drawPile)
+    expect(cardsInOriginalConsumptionOrder(rotated).map(({ id }) => id))
+      .toEqual(cardsInOriginalConsumptionOrder(byDefault).map(({ id }) => id))
+    expect(cardsInOriginalConsumptionOrder(rotated)).toEqual(orderedDeck)
+    expect({ ...rotated, round: byDefault.round }).toEqual(byDefault)
+  })
+
+  it('rejects an unknown starting player', () => {
+    expect(() => dealInitialState(orderedDeck, { startingPlayerId: 'player-5' as never }))
+      .toThrow('Unknown starting player: player-5')
+  })
+})
+
 describe('startGame', () => {
   it('shuffles before applying the same deterministic deal', () => {
     const first = startGame(createSeededRandom(77))
     const second = startGame(createSeededRandom(77))
     expect(first).toEqual(second)
     expect(first.drawPile).toHaveLength(41)
+  })
+
+  it('defaults to player 1 and deals identically whatever starter is requested', () => {
+    const byDefault = startGame(createSeededRandom(77))
+    const rotated = startGame(createSeededRandom(77), { startingPlayerId: 'player-3' })
+
+    expect(byDefault.round.turn).toEqual({ currentPlayerId: 'player-1', phase: 'mustDraw' })
+    expect(rotated.round.turn).toEqual({ currentPlayerId: 'player-3', phase: 'mustDraw' })
+    expect({ ...rotated, round: byDefault.round }).toEqual(byDefault)
   })
 })

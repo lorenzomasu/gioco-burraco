@@ -37,12 +37,25 @@ implementazione.
 - La sessantasettesima carta dell'ordine risultante (dopo 44 carte di mano e 22 di
   pozzetti) diventa direttamente lo scarto iniziale; le 41 carte restanti formano
   il tallone.
-- Il primo turno digitale è assegnato a `player-1`, in fase “attendere la pesca”.
+- Il primo turno digitale di una smazzata è assegnato al giocatore di mano iniziale,
+  in fase “attendere la pesca”. La scelta del giocatore iniziale è soltanto un dato del
+  turno: non modifica distribuzione, ordine o identità delle carte, pozzetti, scarto
+  iniziale o tallone.
+- Una smazzata singola creata senza contesto di partita inizia con `player-1`.
+- Nella partita locale di quattro smazzate il giocatore di mano iniziale ruota
+  nell'ordine del tavolo: `player-1` nella prima smazzata, `player-2` nella seconda,
+  `player-3` nella terza e `player-4` nella quarta. Ogni nuova partita riparte dalla
+  prima smazzata con `player-1`.
+- Questa rotazione è l'astrazione digitale adottata dal prodotto: mazziere, taglio,
+  preparazione dei pozzetti e gesti fisici della distribuzione non sono simulati.
+- Quando la smazzata inizia con un bot, i suoi turni vengono riprodotti con lo stesso
+  meccanismo passo per passo usato per ogni altro turno automatico, finché il turno
+  torna a `player-1` o la smazzata termina.
 
 ### Assunzioni temporanee di prodotto
 
-- I nomi visualizzati dei giocatori e l'identità iniziale di `player-1` sono segnaposto
-  dell'MVP; non definiscono una regola FIBUR.
+- I nomi visualizzati dei giocatori sono segnaposto dell'MVP; non definiscono una
+  regola FIBUR.
 
 ## Ciclo del turno — milestone 2
 

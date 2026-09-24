@@ -112,6 +112,25 @@ Only the match layer may advance to a fresh `GameState`, and round four is termi
 React may render match state and invoke match operations, but it must not implement
 settlement, cumulative scoring, VP thresholds, or lifecycle decisions itself.
 
+### Round starter rotation
+
+Engine round setup (`dealInitialState` / `startGame`) accepts an optional explicit
+starting `PlayerId` and defaults to `player-1`. It stays single-round and never depends
+on `MatchState` or round-history types. The starter is turn metadata only: it must not
+change card distribution, physical card identities, pozzetti, the opening discard, the
+draw-pile order, or any hidden-information boundary.
+
+The match layer owns the single authoritative round-number → starting-player schedule
+(`getRoundStartingPlayerId`: rounds 1–4 start with `player-1`…`player-4`). `startMatch`
+and `advanceMatch` pass a transient `RoundFactoryContext` (`roundNumber`,
+`startingPlayerId`) to the round factory; the default factory honors it through the
+engine setup API. The starter is not stored in `MatchState`; it is derived from
+`currentRoundNumber`, and the actual turn owner remains `round.turn.currentPlayerId`.
+
+React does not map rounds to starters. It renders the resulting fresh round and, when
+the starter is a bot, relies on the existing stepwise bot playback without any special
+round-start path.
+
 ## UI
 
 React components are not an alternative game engine.
