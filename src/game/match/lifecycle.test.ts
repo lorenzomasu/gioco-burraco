@@ -5,17 +5,21 @@ import type { CompletedRoundState, GameState } from '../state/types'
 import {
   advanceMatch,
   calculateCumulativeScores,
+  createMatchRound,
   getFinalMatchOutcome,
+  getRoundStartingPlayerId,
   MatchLifecycleError,
   settleCompletedRound,
   startMatch,
   synchronizeMatch,
   updateCurrentRound,
 } from './lifecycle'
-import type { MatchState, SettledRoundResult } from './types'
+import type { MatchState, RoundFactory, SettledRoundResult } from './types'
 
 const deck = createBurracoDeck()
 const freshRound = () => dealInitialState(deck)
+/** Honors the requested starter through the engine setup API, as the default factory does. */
+const contextAwareRound: RoundFactory = ({ startingPlayerId }) => dealInitialState(deck, { startingPlayerId })
 
 const completedRound = (
   state: GameState,
@@ -219,5 +223,115 @@ describe('four-round match lifecycle', () => {
     expect(completedMatch.roundResults).toHaveLength(4)
     expect(() => advanceMatch(completedMatch, factory)).toThrowError('cannot advance to a fifth round')
     expect(factory).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('round starter rotation', () => {
+  const completeAndAdvance = (match: MatchState, factory: RoundFactory): MatchState =>
+    advanceMatch(updateCurrentRound(match, completedRound(match.currentRound)), factory)
+
+  it('maps smazzate 1–4 to player-1…player-4 in table order', () => {
+    expect(([1, 2, 3, 4] as const).map(getRoundStartingPlayerId))
+      .toEqual(['player-1', 'player-2', 'player-3', 'player-4'])
+  })
+
+  it('requests and creates round 1 with starter player-1', () => {
+    const factory = vi.fn(contextAwareRound)
+    const match = startMatch(factory)
+
+    expect(factory).toHaveBeenCalledOnce()
+    expect(factory).toHaveBeenCalledWith({ roundNumber: 1, startingPlayerId: 'player-1' })
+    expect(match.currentRound.round).toEqual({
+      status: 'in-progress',
+      turn: { currentPlayerId: 'player-1', phase: 'mustDraw' },
+    })
+  })
+
+  it('requests each starter exactly once and in order across the 1→2→3→4 lifecycle', () => {
+    const factory = vi.fn(contextAwareRound)
+    let match = startMatch(factory)
+    const starters = [match.currentRound.round]
+
+    for (let roundNumber = 2; roundNumber <= 4; roundNumber += 1) {
+      match = completeAndAdvance(match, factory)
+      starters.push(match.currentRound.round)
+    }
+
+    expect(factory.mock.calls).toEqual([
+      [{ roundNumber: 1, startingPlayerId: 'player-1' }],
+      [{ roundNumber: 2, startingPlayerId: 'player-2' }],
+      [{ roundNumber: 3, startingPlayerId: 'player-3' }],
+      [{ roundNumber: 4, startingPlayerId: 'player-4' }],
+    ])
+    expect(starters).toEqual((['player-1', 'player-2', 'player-3', 'player-4'] as const).map((currentPlayerId) => ({
+      status: 'in-progress',
+      turn: { currentPlayerId, phase: 'mustDraw' },
+    })))
+    expect(Object.keys(match).sort()).toEqual(['currentRound', 'currentRoundNumber', 'roundResults', 'status'])
+  })
+
+  it('does not call the factory or skip a starter when a transition is rejected', () => {
+    const factory = vi.fn(contextAwareRound)
+    const started = startMatch(factory)
+    factory.mockClear()
+
+    expect(() => advanceMatch(started, factory)).toThrowError('cannot advance')
+    const unsettled = { ...started, currentRound: completedRound(started.currentRound) }
+    expect(() => advanceMatch(unsettled, factory)).toThrowError('must be settled')
+    expect(factory).not.toHaveBeenCalled()
+
+    const second = advanceMatch(settleCompletedRound(unsettled), factory)
+    expect(factory.mock.calls).toEqual([[{ roundNumber: 2, startingPlayerId: 'player-2' }]])
+    expect(second.currentRound.round).toMatchObject({ turn: { currentPlayerId: 'player-2' } })
+
+    const completedSecond = updateCurrentRound(second, completedRound(second.currentRound))
+    const third = advanceMatch(completedSecond, factory)
+    expect(factory.mock.calls.at(-1)).toEqual([{ roundNumber: 3, startingPlayerId: 'player-3' }])
+    expect(third.currentRound.round).toMatchObject({ turn: { currentPlayerId: 'player-3' } })
+
+    const fourth = completeAndAdvance(third, factory)
+    const completedMatch = updateCurrentRound(fourth, completedRound(fourth.currentRound))
+    expect(() => advanceMatch(completedMatch, factory)).toThrowError('fifth round')
+    expect(factory).toHaveBeenCalledTimes(3)
+  })
+
+  it('restarts the schedule at player-1 for a fresh second match', () => {
+    const factory = vi.fn(contextAwareRound)
+    let first = startMatch(factory)
+    first = completeAndAdvance(first, factory)
+    first = completeAndAdvance(first, factory)
+    expect(first.currentRound.round).toMatchObject({ turn: { currentPlayerId: 'player-3' } })
+    factory.mockClear()
+
+    const second = startMatch(factory)
+
+    expect(factory.mock.calls).toEqual([[{ roundNumber: 1, startingPlayerId: 'player-1' }]])
+    expect(second).toMatchObject({
+      status: 'in-progress',
+      currentRoundNumber: 1,
+      roundResults: [],
+      currentRound: { round: { status: 'in-progress', turn: { currentPlayerId: 'player-1', phase: 'mustDraw' } } },
+    })
+  })
+
+  it('leaves settled history and cumulative totals unaffected by the starter', () => {
+    const run = (factory: RoundFactory) => {
+      let match = startMatch(factory)
+      for (let roundNumber = 2; roundNumber <= 4; roundNumber += 1) match = completeAndAdvance(match, factory)
+      return updateCurrentRound(match, completedRound(match.currentRound, 'draw-pile-exhausted'))
+    }
+    const rotated = run(contextAwareRound)
+    const fixedStarter = run(freshRound)
+
+    expect(rotated.roundResults).toEqual(fixedStarter.roundResults)
+    expect(calculateCumulativeScores(rotated)).toEqual(calculateCumulativeScores(fixedStarter))
+    expect(getFinalMatchOutcome(rotated)).toEqual(getFinalMatchOutcome(fixedStarter))
+  })
+
+  it('uses the scheduled starter in the default factory', () => {
+    const match = startMatch()
+    expect(match.currentRound.round).toMatchObject({ turn: { currentPlayerId: 'player-1', phase: 'mustDraw' } })
+    expect(createMatchRound({ roundNumber: 4, startingPlayerId: 'player-4' }).round)
+      .toEqual({ status: 'in-progress', turn: { currentPlayerId: 'player-4', phase: 'mustDraw' } })
   })
 })

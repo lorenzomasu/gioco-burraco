@@ -1,6 +1,6 @@
 import { startGame } from '../engine/startGame'
 import { calculateRoundScore } from '../scoring'
-import type { CompletedGameState, GameState, TeamId } from '../state/types'
+import type { CompletedGameState, GameState, PlayerId, TeamId } from '../state/types'
 import { calculateFourRoundOutcome } from './victoryPoints'
 import type {
   MatchOutcome,
@@ -27,10 +27,28 @@ export class MatchLifecycleError extends Error {
   }
 }
 
-export const startMatch = (roundFactory: RoundFactory = startGame): MatchState => ({
+/** The single authoritative smazzata → initial player schedule, in table order. */
+const ROUND_STARTING_PLAYERS: Readonly<Record<MatchRoundNumber, PlayerId>> = {
+  1: 'player-1',
+  2: 'player-2',
+  3: 'player-3',
+  4: 'player-4',
+}
+
+export const getRoundStartingPlayerId = (roundNumber: MatchRoundNumber): PlayerId =>
+  ROUND_STARTING_PLAYERS[roundNumber]
+
+/** Default factory: a freshly shuffled round starting on the requested player. */
+export const createMatchRound: RoundFactory = ({ startingPlayerId }) =>
+  startGame(undefined, { startingPlayerId })
+
+const createRound = (roundFactory: RoundFactory, roundNumber: MatchRoundNumber) =>
+  roundFactory({ roundNumber, startingPlayerId: getRoundStartingPlayerId(roundNumber) })
+
+export const startMatch = (roundFactory: RoundFactory = createMatchRound): MatchState => ({
   status: 'in-progress',
   currentRoundNumber: 1,
-  currentRound: roundFactory(),
+  currentRound: createRound(roundFactory, 1),
   roundResults: [],
 })
 
@@ -77,7 +95,7 @@ export const updateCurrentRound = (match: MatchState, currentRound: GameState): 
 /** Starts the next fresh round after, and only after, the current one has been settled. */
 export const advanceMatch = (
   match: MatchState,
-  roundFactory: RoundFactory = startGame,
+  roundFactory: RoundFactory = createMatchRound,
 ): MatchState => {
   if (match.status === 'completed' || match.currentRoundNumber === 4) {
     throw new MatchLifecycleError('MATCH_COMPLETED', 'A four-round match cannot advance to a fifth round.')
@@ -89,10 +107,11 @@ export const advanceMatch = (
     throw new MatchLifecycleError('ROUND_NOT_SETTLED', 'The completed round must be settled before advancing.')
   }
 
+  const nextRoundNumber = (match.currentRoundNumber + 1) as MatchRoundNumber
   return {
     ...match,
-    currentRoundNumber: (match.currentRoundNumber + 1) as MatchRoundNumber,
-    currentRound: roundFactory(),
+    currentRoundNumber: nextRoundNumber,
+    currentRound: createRound(roundFactory, nextRoundNumber),
   }
 }
 
