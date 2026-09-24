@@ -3,7 +3,12 @@ import { extendMeld } from '../engine/extendMeld'
 import { GameRuleError } from '../engine/errors'
 import { playMeld } from '../engine/playMeld'
 import { discardCard } from '../engine/turn'
-import { classifyBurraco, validateMeld, type BurracoClassification } from '../melds'
+import {
+  classifyBurraco,
+  validateMeld,
+  validateMeldExtension,
+  type BurracoClassification,
+} from '../melds'
 import { cardValue } from '../scoring'
 import type { GameState, InProgressGameState, Player, PlayerId, Team } from '../state/types'
 
@@ -236,7 +241,7 @@ export const generateActionCandidates = (
 ].slice(0, MAX_ACTION_CANDIDATES)
 
 const canExtendMeld = (meld: Team['melds'][number], card: Card): boolean =>
-  validateMeld([...meld.cards.map((placement) => placement.card), card]).valid
+  validateMeldExtension(meld, [card]).valid
 
 const futureMeldCount = (hand: readonly Card[], target: Card): number => {
   const others = hand.filter((card) => card.id !== target.id)

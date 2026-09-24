@@ -1,4 +1,4 @@
-import { validateMeld } from '../melds'
+import { validateMeldExtension } from '../melds'
 import type { GameState, InProgressGameState, PlayerId } from '../state/types'
 import { GameRuleError } from './errors'
 import { cardsByPhysicalId, playerById, requireCurrentPlayer, requireMeldActionPhase } from './meldCommandGuards'
@@ -28,8 +28,7 @@ export const extendMeld = (
 
   const addedCards = cardsByPhysicalId(player, cardIds)
   const existingMeld = team.melds[meldIndex]!
-  const existingCards = existingMeld.cards.map((placement) => placement.card)
-  const validation = validateMeld([...existingCards, ...addedCards])
+  const validation = validateMeldExtension(existingMeld, addedCards)
   if (!validation.valid) {
     throw new GameRuleError('INVALID_MELD', `Cannot extend meld: ${validation.reason}.`)
   }

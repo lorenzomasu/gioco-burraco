@@ -162,7 +162,9 @@ dalla mano e non colloca ancora calate sul tavolo.
 
 ### Funzionalità rinviate
 
-- sostituire o spostare jolly e pinelle già sul tavolo;
+- spostare una matta tra calate, riprenderla in mano o riordinare una calata senza
+  aggiungere carte; la sostituzione all'interno della stessa sequenza è descritta
+  nella milestone 15;
 - punteggio.
 
 Queste funzioni restano fuori dall'attuale implementazione.
@@ -194,12 +196,40 @@ Queste funzioni restano fuori dall'attuale implementazione.
 - La calata bersaglio è identificata dal suo indice zero-based nella raccolta
   `team.melds`. La selezione vuota e un indice inesistente sono errori espliciti.
 - Il motore ricostruisce l'insieme completo usando le carte fisiche della calata e
-  quelle aggiunte, quindi lo passa nuovamente a `validateMeld`. Solo un risultato
-  completo valido sostituisce la calata precedente; ruoli e rango rappresentato da
-  jolly o pinelle possono quindi essere ricalcolati dal validatore.
+  quelle aggiunte, quindi lo valida come estensione della calata esistente. Solo un
+  risultato completo valido sostituisce la calata precedente; dalla milestone 15
+  l'eventuale ricalcolo del ruolo o del rango rappresentato da una matta già attiva
+  rispetta anche la posizione semantica che essa occupava sul tavolo.
 - La riuscita rimuove dalla mano soltanto gli ID fisici richiesti, sostituisce solo
   la calata selezionata e non termina il turno. Qualunque errore lascia invariato
   l'intero stato di gioco.
+
+## Sostituzione delle matte nelle sequenze esistenti — milestone 15
+
+- Una matta già attiva in una sequenza resta legata al rango che rappresenta. Una
+  normale estensione è valida quando conserva la stessa carta fisica come matta sullo
+  stesso rango rappresentato.
+- Per assegnare a quella matta un rango diverso, oppure per far tornare una pinella
+  attiva al ruolo di 2 naturale, l'estensione deve aggiungere dalla mano la carta
+  naturale esatta del rango e del seme precedentemente rappresentati. Una copia
+  fisica proveniente da uno qualunque dei due mazzi è valida; una carta già presente
+  nella sequenza prima della mossa non conta come sostituzione.
+- La carta naturale aggiunta e la matta sostituita restano entrambe nella stessa
+  sequenza, con i rispettivi ID fisici invariati. La matta non torna in mano e non
+  viene trasferita a un'altra calata.
+- Una matta libera oltre la sequenza naturale completa Asso–King, rappresentata con
+  `representedRank: null`, resta libera: non esiste un rango naturale esatto con cui
+  sbloccarne una reinterpretazione.
+- Una pinella dello stesso seme conservata come 2 naturale non è ancora una matta
+  attiva e può assumere quel ruolo quando una successiva estensione completa una
+  sequenza valida. Dal momento in cui viene memorizzata come matta, il suo rango
+  rappresentato resta vincolato dalle stesse regole fino all'esatta sostituzione.
+- Dopo una sostituzione legale, l'ordine e l'eventuale nuova posizione semantica della
+  matta sono quelli deterministici prodotti dal validatore. L'implementazione digitale
+  non simula lo spostamento manuale delle carte sul tavolo.
+- Restano fuori ambito lo spostamento di matte tra calate, il ritorno della matta in
+  mano, il riordino autonomo senza aggiungere carte e le procedure arbitrali per
+  irregolarità del gioco fisico.
 
 ## Classificazione del Burraco — milestone 6
 
@@ -228,9 +258,10 @@ Queste funzioni restano fuori dall'attuale implementazione.
   rivalidata produce sempre la classificazione aggiornata senza metadati di ciclo di
   vita ridondanti.
 
-La classificazione non implementa punteggio, sostituzione o spostamento delle matte
-o determinazione del vincitore; la chiusura usa dinamicamente questa classificazione
-senza memorizzarla nello stato.
+La classificazione non applica punteggio, sostituzione o spostamento delle matte e non
+determina il vincitore; la chiusura usa dinamicamente questa classificazione senza
+memorizzarla nello stato. La legalità della sostituzione in una sequenza esistente è
+verificata separatamente come descritto nella milestone 15.
 
 ## Acquisizione del pozzetto — milestone 7
 

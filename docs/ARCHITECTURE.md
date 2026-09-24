@@ -48,6 +48,11 @@ Meld validation and Burraco classification are derived behaviour.
 
 Validated meld logic must preserve the original physical cards and their semantic roles.
 
+New-meld validation through `validateMeld`, `validateSequence`, and `validateGroup`
+is stateless. Extending a stored meld uses the separate pure history-aware extension
+validator, which reuses stateless validation and then enforces the prior represented
+position of any already-active sequence wildcard.
+
 Do not persist derived classification into state unless a future milestone explicitly changes this architecture.
 
 Wildcard semantics must remain consistent with `docs/RULES.md` and the existing validator tests.
@@ -61,6 +66,9 @@ Bot behaviour must remain deterministic for the same visible game state.
 Bots may not inspect hidden opponent hands, future draw-pile order or identity, or pozzetti that have not yet been taken.
 
 Candidate generation may propose moves, but the engine remains authoritative for legality.
+
+Bot heuristics that predict whether a visible card extends an existing meld use the
+same history-aware extension validator as the engine.
 
 Do not duplicate game-rule validation inside bot strategy code.
 

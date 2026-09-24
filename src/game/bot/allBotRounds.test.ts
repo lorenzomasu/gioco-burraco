@@ -5,7 +5,7 @@ import type { GameState } from '../state/types'
 import { playBotTurn } from './playBotTurn'
 
 const SEEDS = Array.from({ length: 200 }, (_, index) => index + 1)
-/** Seed whose all-bot round cycled through the discard pile forever before draw-pile exhaustion. */
+/** Seed whose all-bot round cycled forever before M13 and now follows M15-aware discard ranking. */
 const PREVIOUSLY_ENDLESS_SEED = 125
 const MAX_TURNS_PER_ROUND = 200
 const SIMULATION_TIMEOUT_MS = 60_000
@@ -21,10 +21,10 @@ const playAllBotRound = (seed: number): Readonly<{ state: GameState; turns: numb
 }
 
 describe('all-bot rounds', () => {
-  it('ends the previously endless seed through draw-pile exhaustion', () => {
+  it('keeps the previously endless seed terminating under history-aware discard ranking', () => {
     const { state } = playAllBotRound(PREVIOUSLY_ENDLESS_SEED)
 
-    expect(state.round).toMatchObject({ status: 'completed', ending: 'draw-pile-exhausted' })
+    expect(state.round).toMatchObject({ status: 'completed', ending: 'closure' })
   })
 
   it(`completes every seeded round within ${MAX_TURNS_PER_ROUND} turns`, () => {

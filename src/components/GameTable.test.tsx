@@ -20,6 +20,8 @@ const card = (rank: Rank, suit: Suit, deckNumber: 1 | 2 = 1): Card => {
   return match
 }
 
+const joker = (): Card => deck.find((candidate) => candidate.rank === 'joker')!
+
 const validatedMeld = (cards: readonly Card[]): ValidatedMeld => {
   const result = validateMeld(cards)
   if (!result.valid) throw new Error(`Expected valid test meld, received ${result.reason}`)
@@ -243,6 +245,26 @@ describe('GameTable', () => {
     expect(within(teamArea).getAllByRole('img')).toHaveLength(4)
     expect(screen.queryByRole('button', { name: cardLabel(extension) })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: cardLabel(remainingCard) })).toBeInTheDocument()
+  })
+
+  it('renders the domain-provided represented rank after exact wildcard replacement', () => {
+    const wild = joker()
+    const existingMeld = validatedMeld([
+      card('three', 'clubs'), wild, card('five', 'clubs'),
+    ])
+    const replacement = card('four', 'clubs')
+    render(
+      <GameTable
+        initialState={actionState([replacement, card('king', 'spades')], [existingMeld])}
+      />,
+    )
+
+    expect(screen.getByText('Matta → 4')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(replacement) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata' }))
+
+    expect(screen.queryByText('Matta → 4')).not.toBeInTheDocument()
+    expect(screen.getByText('Matta → 2')).toBeInTheDocument()
   })
 
   it('shows an engine rule error without losing state or selection', () => {

@@ -154,7 +154,7 @@ describe('extendMeld', () => {
     expect(teamById(next, 'team-1').melds[0]).toEqual(expected.meld)
   })
 
-  it('allows full revalidation to recalculate an existing wildcard represented rank', () => {
+  it('allows exact replacement to reposition an existing wildcard', () => {
     const wild = joker()
     const existing = validatedMeld([card('three', 'clubs'), wild, card('five', 'clubs')])
     expect(existing.activeWildcard?.representedRank).toBe('four')
@@ -166,6 +166,71 @@ describe('extendMeld', () => {
     expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'two' })
     expect(extended.activeWildcard?.card).toBe(wild)
     expect(extended.cards.find((placement) => placement.card.id === naturalFour.id)?.role).toBe('natural')
+  })
+
+  it('rejects illegal historical wildcard reinterpretation atomically', () => {
+    const wild = joker()
+    const existing = validatedMeld([
+      card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), wild,
+    ])
+    expect(existing.activeWildcard?.representedRank).toBe('two')
+    const addition = card('seven', 'spades')
+    const retained = card('king', 'clubs')
+    const state = stateFor([addition, retained], [existing])
+    const before = structuredClone(state)
+    const references = {
+      players: state.players,
+      teams: state.teams,
+      round: state.round,
+      pozzetti: state.pozzetti,
+      drawPile: state.drawPile,
+      discardPile: state.discardPile,
+    }
+
+    expectRuleError(() => extendMeld(state, 'player-1', 0, [addition.id]), 'INVALID_MELD')
+
+    expect(state).toEqual(before)
+    expect(state.players).toBe(references.players)
+    expect(state.teams).toBe(references.teams)
+    expect(state.round).toBe(references.round)
+    expect(state.pozzetti).toBe(references.pozzetti)
+    expect(state.drawPile).toBe(references.drawPile)
+    expect(state.discardPile).toBe(references.discardPile)
+  })
+
+  it('still takes the pozzetto al volo after a legal exact replacement empties the first hand', () => {
+    const wild = joker()
+    const existing = validatedMeld([card('three', 'clubs'), wild, card('five', 'clubs')])
+    const replacement = card('four', 'clubs')
+    const state = stateFor([replacement], [existing])
+    const firstPozzetto = state.pozzetti[0]
+
+    const next = extendMeld(state, 'player-1', 0, [replacement.id])
+
+    expect(getPlayer(next, 'player-1').hand).toEqual(firstPozzetto)
+    expect(teamById(next, 'team-1').hasTakenPozzetto).toBe(true)
+    expect(next.pozzetti).toEqual([[], state.pozzetti[1]])
+    expect(teamById(next, 'team-1').melds[0]!.activeWildcard?.representedRank).toBe('two')
+  })
+
+  it('still requires a final discard after the pozzetto on a legal exact replacement', () => {
+    const wild = joker()
+    const existing = validatedMeld([card('three', 'clubs'), wild, card('five', 'clubs')])
+    const replacement = card('four', 'clubs')
+    const base = stateFor([replacement], [existing])
+    const state: InProgressGameState = {
+      ...base,
+      teams: base.teams.map((team) => team.id === 'team-1'
+        ? { ...team, hasTakenPozzetto: true }
+        : team),
+    }
+    const before = structuredClone(state)
+
+    expectRuleError(
+      () => extendMeld(state, 'player-1', 0, [replacement.id]),
+      'CANNOT_CLOSE_WITHOUT_DISCARD',
+    )
+    expect(state).toEqual(before)
   })
 
   it('derives an updated Burraco classification after extending the stored meld', () => {

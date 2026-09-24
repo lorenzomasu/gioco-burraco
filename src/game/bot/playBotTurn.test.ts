@@ -4,6 +4,7 @@ import type { Card, Pozzetto, Rank, Suit } from '../cards/types'
 import { dealInitialState, getPlayer } from '../engine/startGame'
 import { validateMeld, type ValidatedMeld } from '../melds'
 import type { GameState, InProgressGameState, PlayerId, TurnPhase } from '../state/types'
+import { generateDiscardCandidates, generateExtensionCandidates } from './candidates'
 import { BotAutomationError, playBotsUntilHumanTurn, playBotTurn } from './playBotTurn'
 import { chooseBestAction, chooseBestDiscard, chooseDrawSource } from './strategy'
 
@@ -174,6 +175,36 @@ describe('deterministic bot turns', () => {
     expect(teamForPlayer(next, 'player-2').melds[0]!.cards.map(({ card: placed }) => placed.id))
       .toContain(extension.id)
     expect(next.discardPile.at(-1)?.rank).toBe('king')
+  })
+
+  it('does not generate an extension that only stateless wildcard reinterpretation permits', () => {
+    const wild = joker()
+    const existing = validatedMeld([
+      card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), wild,
+    ])
+    const illegalExtension = card('seven', 'spades')
+    const state = stateFor({
+      hand: [illegalExtension, card('king', 'hearts')],
+      melds: [existing],
+    })
+
+    expect(generateExtensionCandidates(state, 'player-2')
+      .some((candidate) => candidate.cardIds.includes(illegalExtension.id))).toBe(false)
+  })
+
+  it('still generates an exact wildcard replacement extension', () => {
+    const wild = joker()
+    const existing = validatedMeld([card('three', 'clubs'), wild, card('five', 'clubs')])
+    const replacement = card('four', 'clubs')
+    const state = stateFor({ hand: [replacement, card('king', 'spades')], melds: [existing] })
+
+    const candidate = generateExtensionCandidates(state, 'player-2')
+      .find((option) => option.cardIds.includes(replacement.id))
+
+    expect(candidate?.kind).toBe('extend')
+    if (!candidate) throw new Error('Expected exact replacement candidate')
+    expect(teamForPlayer(candidate.state, 'player-2').melds[0]!.activeWildcard)
+      .toEqual({ card: wild, role: 'wildcard', representedRank: 'two' })
   })
 
   it('finds and plays an obvious new meld while preserving physical card IDs', () => {
@@ -523,6 +554,43 @@ describe('strategic action ranking', () => {
 })
 
 describe('strategic discard ranking', () => {
+  it('does not mark a card as useful to its own meld through illegal wildcard reinterpretation', () => {
+    const existing = validatedMeld([
+      card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), joker(),
+    ])
+    const misleading = card('seven', 'spades')
+    const state = stateFor({
+      hand: [misleading, card('king', 'hearts'), card('three', 'clubs')],
+      melds: [existing],
+    })
+
+    const candidate = generateDiscardCandidates(state, 'player-2')
+      .find((option) => option.card.id === misleading.id)
+
+    expect(candidate?.extendsOwnMeld).toBe(false)
+  })
+
+  it('does not mark a card as opponent help through illegal wildcard reinterpretation', () => {
+    const opponentMeld = validatedMeld([
+      card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), joker(),
+    ])
+    const misleading = card('seven', 'spades')
+    const base = stateFor({
+      hand: [misleading, card('king', 'hearts'), card('three', 'clubs')],
+    })
+    const state: InProgressGameState = {
+      ...base,
+      teams: base.teams.map((team) => team.id === 'team-1'
+        ? { ...team, melds: [opponentMeld] }
+        : team),
+    }
+
+    const candidate = generateDiscardCandidates(state, 'player-2')
+      .find((option) => option.card.id === misleading.id)
+
+    expect(candidate?.helpsOpponent).toBe(false)
+  })
+
   it('does not discard the first card when it belongs to a future meld', () => {
     const useful = card('seven', 'clubs')
     const dead = card('king', 'spades')
