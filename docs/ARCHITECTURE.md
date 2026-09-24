@@ -207,12 +207,13 @@ The wire format is an explicit versioned JSON envelope stored under the single k
 Nothing derived (cumulative totals, Match/Victory Points, Burraco classification) is
 stored. Transient machinery is never serialized: the round factory and its random
 source, bot public events, bot chain-progress counters, pending playback timers,
-selected cards, rule errors, callbacks and the playback-speed preference. Future
+selected cards, the manual hand order, drag payloads/targets/pointer state, rule errors,
+callbacks and the playback-speed preference. Future
 rounds are not pre-generated, so their shuffle is not part of the save.
 
 `GameTable` reports every committed `MatchState` (the initial one included) through
 `onMatchChange`, from an effect keyed on the match object, so selection, rule errors,
-timeline-only updates and speed changes never write, and a scheduled bot step that has
+hand sorting/reordering, drag gestures, timeline-only updates and speed changes never write, and a scheduled bot step that has
 not fired has not produced a save. The shell writes the envelope for an active match
 and removes it once the match is completed; a confirmed `Nuova partita` also removes it
 (a cancelled one changes nothing).
@@ -341,6 +342,47 @@ in `GameState`, `MatchState` or the local save.
   immediate bot completion ("Completa subito") clears it.
 - Every state a cue decorates stays expressed in text or static styling, and the
   reduced-motion policy collapses all animation and transition timing.
+
+### Hand order and direct manipulation
+
+The human hand's visible order is presentation state (`src/components/handOrder.ts`),
+held by `GameTable` as physical card IDs per round; the engine hand stays authoritative
+for which cards are held. None of it — nor the selection, drag payload, hovered target or
+pointer coordinates — ever enters `GameState`, `MatchState` or the local save, and no
+order-only change calls `onMatchChange`.
+
+- A new round, a restored save or a replaced session seeds the order from the existing
+  deterministic `sortCardsForDisplay`; a manual order is deliberately not persisted, so a
+  reload shows the sorted hand again.
+- After each committed transition the order is reconciled during render: surviving cards
+  keep their relative visible order, cards that left the hand are dropped and newly held
+  cards are appended in their engine-hand order.
+- «Ordina mano» reapplies the display sort; «Sposta a sinistra/destra» move the selected
+  cards one insertion step as one stable group; a pointer drop in the hand inserts the
+  payload as one contiguous group at the insertion boundary. None of them clears the
+  selection or commits anything.
+- Pointer Events (`src/components/useHandDrag.ts`, no drag-and-drop library, no HTML5
+  `dragstart/drop`) only collect intent for mouse, pen and touch. A mouse/pen press becomes
+  a drag after a small movement threshold, otherwise it stays the card's click; a touch
+  press must rest briefly before it can drag, so an ordinary swipe keeps scrolling the page
+  and the hand natively. The payload is fixed when the drag begins: a selected card drags
+  the whole selection in visible order, any other card only itself. Pointer cancel, lost
+  capture, a session change, the end of the human turn and unmount drop the gesture and
+  commit nothing.
+- Destinations are identified by the element under the release point
+  (`data-drop-target`), and only valid ones carry it: the hand while it is the human's turn;
+  the discard pile, the own team's «Nuova calata» target and each own-team meld (by index)
+  only in the human action phase. Opponent melds never are. A drop on the discard pile, the
+  new-meld target or meld `N` calls exactly `discardCard`, `playMeld` or `extendMeld(N)`
+  through the same commit and cue path as «Scarta e passa», «Cala» and «Aggiungi alla
+  calata»; React never pre-validates melds. Only interaction-structural cases are refused
+  before the engine (a multi-card discard, a drop outside every destination), with the same
+  single `role="alert"` surface used for translated `GameRuleError`s; a refusal keeps state,
+  selection and order.
+- Drag feedback is text plus outline shape (dashed while available, solid under the
+  pointer), independent of hover and colour; the pointer badge shows only a card count. The
+  native card buttons, «Cala», «Scarta e passa», «Aggiungi alla calata» and the reorder
+  buttons remain the complete keyboard and screen-reader path; drop surfaces add no tab stop.
 
 ## Browser end-to-end release gate
 

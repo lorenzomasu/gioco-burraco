@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { Card } from '../game/cards/types'
 import { PlayingCard } from './PlayingCard'
 import type { CueAttributes } from './tableFeedback'
+import type { DropState } from './useHandDrag'
 
 type DiscardPileProps = Readonly<{
   /** The engine's face-up pile, oldest first; the final element is the top card. */
@@ -11,6 +12,12 @@ type DiscardPileProps = Readonly<{
   onCollect: () => void
   /** Transient presentation cue of the latest committed change; purely visual. */
   cue?: CueAttributes
+  /**
+   * Direct-discard destination state: `null` when the pile is not a valid destination
+   * (outside the human action phase), otherwise whether a drag is idle, in progress or
+   * currently over the pile. Pointer intent only; discarding stays the engine command.
+   */
+  dropState?: DropState | null
 }>
 
 const cardCount = (count: number) => `${count} ${count === 1 ? 'carta' : 'carte'}`
@@ -21,7 +28,7 @@ const cardCount = (count: number) => `${count} ${count === 1 ? 'carta' : 'carte'
  * single native button for the whole pile, kept outside the card list so every card keeps
  * its own accessible description. Scroll position is local presentation state.
  */
-export function DiscardPile({ cards, canCollect, onCollect, cue }: DiscardPileProps) {
+export function DiscardPile({ cards, canCollect, onCollect, cue, dropState = null }: DiscardPileProps) {
   const spreadRef = useRef<HTMLOListElement>(null)
   const [overflowing, setOverflowing] = useState(false)
   const topCardId = cards.at(-1)?.id
@@ -51,7 +58,14 @@ export function DiscardPile({ cards, canCollect, onCollect, cue }: DiscardPilePr
   }, [cards.length])
 
   return (
-    <div className="discard-pile" role="group" aria-label="Monte degli scarti" {...cue}>
+    <div
+      className="discard-pile"
+      role="group"
+      aria-label="Monte degli scarti"
+      data-drop-target={dropState ? 'discard' : undefined}
+      data-drop-state={dropState && dropState !== 'idle' ? dropState : undefined}
+      {...cue}
+    >
       <div className="discard-pile__header">
         <strong>Scarti</strong>
         <span className="discard-pile__count">{cardCount(cards.length)}</span>
@@ -90,6 +104,14 @@ export function DiscardPile({ cards, canCollect, onCollect, cue }: DiscardPilePr
       >
         Raccogli tutto
       </button>
+
+      {/* Pointer affordance only; «Scarta e passa» stays the accessible discard control.
+          Rendered last so it paints above the cards without a z-index of its own. */}
+      {dropState && dropState !== 'idle' && (
+        <span className="drop-label" aria-hidden="true">
+          {dropState === 'active' ? 'Rilascia per scartare' : 'Scarta qui'}
+        </span>
+      )}
     </div>
   )
 }

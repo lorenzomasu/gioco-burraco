@@ -23,8 +23,17 @@ import {
 } from '../game/match'
 import type { GameState, Player, PlayerId, Team } from '../game/state/types'
 import { BotActionTimeline } from './BotActionTimeline'
-import { sortCardsForDisplay } from './cardPresentation'
 import { DiscardPile } from './DiscardPile'
+import {
+  canShiftCards,
+  inVisibleOrder,
+  moveCardsToBoundary,
+  reconcileHandOrder,
+  shiftCards,
+  sortedHandOrder,
+  type HandOrder,
+  type ShiftDirection,
+} from './handOrder'
 import { MeldArea } from './MeldArea'
 import { PlayerSeat, seatRelationLabels, type SeatPosition, type SeatRelation } from './PlayerSeat'
 import { PlayingCard } from './PlayingCard'
@@ -36,6 +45,7 @@ import {
   type HumanAction,
   type TableFeedback,
 } from './tableFeedback'
+import { useHandDrag, type DropTarget } from './useHandDrag'
 
 type GameTableProps = Readonly<{
   initialMatch?: MatchState
@@ -65,6 +75,8 @@ type GameTableProps = Readonly<{
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 const humanPlayerId: PlayerId = 'player-1'
 
+const humanHand = (game: GameState) => game.players.find(({ id }) => id === humanPlayerId)?.hand ?? []
+
 /** Transient presentation preference for bot playback; never part of game or match state. */
 export type BotPlaybackSpeed = 'normal' | 'fast'
 
@@ -84,6 +96,20 @@ const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
   normal: 'Normale',
   fast: 'Veloce',
 }
+
+/** Interaction-level rejection of a multi-card drop on the discard pile; no engine call. */
+export const MULTI_CARD_DISCARD_MESSAGE = 'Per scartare trascina una sola carta.'
+/** Interaction-level rejection of a real drag released outside every valid destination. */
+export const OUTSIDE_DROP_MESSAGE =
+  'Rilascia le carte nella mano, sugli scarti, su «Nuova calata» o su una calata della tua squadra.'
+/** The same rejection outside the action phase, when only reordering the hand is possible. */
+export const REORDER_ONLY_DROP_MESSAGE = 'In questa fase puoi solo riordinare le carte rilasciandole nella mano.'
+
+/**
+ * Transient presentation order of the human hand for one round, keyed by physical card ID.
+ * Never part of `GameState`, `MatchState` or the save; a new round starts a fresh order.
+ */
+type HandPresentation = Readonly<{ roundNumber: number; order: HandOrder }>
 
 /** User-facing message shown when automatic bot play stops on a `BotAutomationError`. */
 export const BOT_AUTOMATION_FAILURE_MESSAGE =
@@ -268,12 +294,31 @@ export function GameTable({
   const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   // Visual disclosure state only; the history log stays mounted either way.
   const [historyExpanded, setHistoryExpanded] = useState(false)
+  // Seeded once per round from the deterministic display sort; later only reconciled.
+  const [handPresentation, setHandPresentation] = useState<HandPresentation>(() => ({
+    roundNumber: session.match.currentRoundNumber,
+    order: sortedHandOrder(humanHand(session.match.currentRound)),
+  }))
   const playbackSpeed = controlledPlaybackSpeed ?? localPlaybackSpeed
   const setPlaybackSpeed = onPlaybackSpeedChange ?? setLocalPlaybackSpeed
   const { match, botEvents, feedback } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
   const { automationFailed } = session
+
+  // Reconcile the presentation order with the committed hand during render: survivors keep
+  // their visible order, new cards are appended in engine-hand order, and a new round (a
+  // fresh session) reseeds from the deterministic sort. Only transient state is updated.
+  const humanCards = humanHand(game)
+  const handOrder = handPresentation.roundNumber === match.currentRoundNumber
+    ? reconcileHandOrder(handPresentation.order, humanCards)
+    : sortedHandOrder(humanCards)
+  if (handOrder !== handPresentation.order) {
+    setHandPresentation({ roundNumber: match.currentRoundNumber, order: handOrder })
+  }
+  const setHandOrder = (order: HandOrder) => {
+    setHandPresentation((current) => current.order === order ? current : { ...current, order })
+  }
 
   // Focus follows major replacements of the primary view (a fresh round or the
   // completed-round result), never ordinary card actions or bot timeline events.
@@ -367,6 +412,51 @@ export function GameTable({
       return next
     })
   }
+
+  const isHumanInPlay = game.round.status === 'in-progress' && game.round.turn.currentPlayerId === humanPlayerId
+  const isHumanActionPhase = isHumanInPlay && game.round.status === 'in-progress' && game.round.turn.phase === 'action'
+
+  /**
+   * Turns a released drag into intent. A drop in the hand is a presentation-only reorder;
+   * game drops reuse the exact commands and commit path of the equivalent buttons, and the
+   * engine alone decides legality. Structural rejections call no engine command.
+   */
+  const dropCards = (payload: readonly string[], target: DropTarget | null) => {
+    if (target?.kind === 'hand') {
+      setHandOrder(moveCardsToBoundary(handOrder, payload, target.boundary))
+      return
+    }
+    if (!target || !isHumanActionPhase) {
+      setRuleError(isHumanActionPhase ? OUTSIDE_DROP_MESSAGE : REORDER_ONLY_DROP_MESSAGE)
+      return
+    }
+    const teamId = game.players.find(({ id }) => id === humanPlayerId)!.teamId
+    switch (target.kind) {
+      case 'discard':
+        if (payload.length !== 1) {
+          setRuleError(MULTI_CARD_DISCARD_MESSAGE)
+          return
+        }
+        commitAction(() => discardCard(game, humanPlayerId, payload[0]!), { type: 'discard' })
+        return
+      case 'new-meld':
+        commitAction(() => playMeld(game, humanPlayerId, payload), { type: 'play-meld', teamId })
+        return
+      case 'meld':
+        commitAction(
+          () => extendMeld(game, humanPlayerId, target.meldIndex, payload),
+          { type: 'extend-meld', teamId, meldIndex: target.meldIndex },
+        )
+    }
+  }
+
+  const handDrag = useHandDrag({
+    enabled: isHumanInPlay,
+    sessionKey: session,
+    // A selected card drags the whole selection in visible order; any other card alone.
+    resolvePayload: (cardId) => selectedCardIds.has(cardId) ? inVisibleOrder(handOrder, selectedCardIds) : [cardId],
+    onDrop: dropCards,
+  })
 
   const completeNowButton = isBotPlaying && !automationFailed && (
     <button type="button" className="button button--ghost button--compact" onClick={completeBotsNow}>Completa subito</button>
@@ -504,7 +594,17 @@ export function GameTable({
   const isHumanTurn = activePlayer.id === humanPlayerId
   const isActionPhase = isHumanTurn && round.turn.phase === 'action'
   const selectedIds = [...selectedCardIds]
-  const sortedHand = sortCardsForDisplay(humanPlayer.hand)
+  const cardsById = new Map(humanPlayer.hand.map((card) => [card.id, card]))
+  const visibleHand = handOrder.map((id) => cardsById.get(id)!)
+  const { drag } = handDrag
+  const draggedIds = new Set(drag?.payload)
+  const dragTarget = drag?.target ?? null
+  const insertBoundary = dragTarget?.kind === 'hand' ? dragTarget.boundary : null
+  const canShift = (direction: ShiftDirection) => isHumanTurn && canShiftCards(handOrder, selectedCardIds, direction)
+  // Presentation-only: neither control touches the match, the save or the selection.
+  const shiftSelection = (direction: ShiftDirection) => setHandOrder(shiftCards(handOrder, selectedCardIds, direction))
+  const sortHand = () => setHandOrder(sortedHandOrder(humanPlayer.hand))
+  const dropState = (active: boolean) => !drag ? 'idle' as const : active ? 'active' as const : 'available' as const
   // Public availability only: the count of non-empty pozzetti, never their contents.
   const untouchedPozzetti = game.pozzetti.filter((pozzetto) => pozzetto.length > 0).length
   const isDrawPhase = isHumanTurn && round.turn.phase === 'mustDraw'
@@ -550,13 +650,16 @@ export function GameTable({
         { type: 'extend-meld', teamId: humanPlayer.teamId, meldIndex },
       )}
       feedback={feedback}
+      directTargets={placement === 'own'
+        ? { enabled: isActionPhase, dragging: drag !== null, activeTarget: dragTarget }
+        : undefined}
     />
   )
   const ownTeam = game.teams.find((team) => team.id === humanPlayer.teamId)!
   const opponentTeam = game.teams.find((team) => team.id !== humanPlayer.teamId)!
 
   return (
-    <main className="game-shell">
+    <main className="game-shell" data-hand-dragging={drag ? '' : undefined}>
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
         {seat(seats.top, 'top')}
@@ -642,6 +745,7 @@ export function GameTable({
                 canCollect={canTakeDiscardPile}
                 onCollect={() => commitAction(() => takeDiscardPile(game, humanPlayerId), { type: 'collect-discard-pile' })}
                 cue={cueAttributes(feedback, (cuedAction === 'collect-discard-pile' && 'collect') || (cuedAction === 'discard' && 'discard'))}
+                dropState={isActionPhase ? dropState(dragTarget?.kind === 'discard') : null}
               />
             </div>
           </div>
@@ -666,19 +770,57 @@ export function GameTable({
           </header>
 
           <div
+            ref={handDrag.handRef}
             className="hand"
             aria-label={`Carte di ${humanPlayer.name}`}
+            data-drop-target={isHumanTurn ? 'hand' : undefined}
+            data-drop-state={drag ? dropState(insertBoundary !== null) : undefined}
             {...cueAttributes(feedback, isHumanCue && cuedAction === 'collect-discard-pile' && 'collect')}
           >
-            {sortedHand.map((card) => (
+            {visibleHand.map((card, index) => (
               <PlayingCard
                 key={card.id}
                 card={card}
                 selected={selectedCardIds.has(card.id)}
                 onToggle={isHumanTurn ? toggleCard : undefined}
                 cue={cueAttributes(feedback, receivedCardIds.has(card.id) && 'received')}
+                handInteraction={isHumanTurn ? {
+                  dragging: draggedIds.has(card.id),
+                  armed: handDrag.armedCardId === card.id,
+                  insertMarker: insertBoundary === index
+                    ? 'before'
+                    : insertBoundary === visibleHand.length && index === visibleHand.length - 1 ? 'after' : null,
+                  onPointerDown: handDrag.onPointerDown,
+                  onClickCapture: handDrag.onClickCapture,
+                  onContextMenu: handDrag.onContextMenu,
+                } : undefined}
               />
             ))}
+          </div>
+
+          {/* Presentation-only hand tools: never a game action, a save or a selection change. */}
+          <div className="hand-tools" role="group" aria-label="Ordine della mano">
+            <button type="button" className="button button--ghost button--small" onClick={sortHand}>
+              Ordina mano
+            </button>
+            <button
+              type="button"
+              className="button button--ghost button--small"
+              disabled={!canShift('left')}
+              onClick={() => shiftSelection('left')}
+              aria-label="Sposta a sinistra"
+            >
+              <span aria-hidden="true">←</span> Sposta
+            </button>
+            <button
+              type="button"
+              className="button button--ghost button--small"
+              disabled={!canShift('right')}
+              onClick={() => shiftSelection('right')}
+              aria-label="Sposta a destra"
+            >
+              Sposta <span aria-hidden="true">→</span>
+            </button>
           </div>
 
           <div className="action-bar">
@@ -706,6 +848,17 @@ export function GameTable({
               Scarta e passa
             </button>
           </div>
+
+          {drag && (
+            // A count badge following the pointer; it never shows card identities.
+            <span
+              className="drag-proxy"
+              aria-hidden="true"
+              style={{ left: drag.x, top: drag.y }}
+            >
+              {drag.payload.length === 1 ? '1 carta' : `${drag.payload.length} carte`}
+            </span>
+          )}
 
           {ruleError && (
             <div className="rule-error" role="alert">

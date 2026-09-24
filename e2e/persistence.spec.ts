@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { cardLabel, sortCardsForDisplay } from '../src/components/cardPresentation'
 import { LEAVE_MATCH_CONFIRMATION } from '../src/components/GameTable'
 import {
   NORMAL_BOT_DELAY_MS,
@@ -53,7 +54,12 @@ test('committed progress survives a reload and play continues', async ({ page })
   await expect(drawPileButton(page)).toHaveAttribute('aria-label', tallone!)
   await expect(discardPileCards(page)).toHaveCount(discards.length)
   expect(await pileLabels(page)).toEqual(discards)
-  expect(await handLabels(page)).toEqual(hand)
+  // The same physical cards; the M29 presentation order is transient, so a reload reseeds
+  // it from the deterministic display sort of the saved hand.
+  expect([...await handLabels(page)].sort()).toEqual([...hand].sort())
+  expect(await handLabels(page)).toEqual(
+    sortCardsForDisplay(save!.match.currentRound.players.find(({ id }) => id === 'player-1')!.hand).map(cardLabel),
+  )
 
   // At least one more legal action is accepted after the reload.
   await drawAndDiscard(page)
