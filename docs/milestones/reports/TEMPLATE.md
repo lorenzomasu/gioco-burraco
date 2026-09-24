@@ -8,7 +8,7 @@
 
 ## Verification
 
-- `npm run verify`: passed / failed / not run
+- `npm run verify`: passed / failed / not run (for an internal checkpoint in an approved batch, use the batch report instead)
 - Tests: <count/result>
 - Build: passed / failed / not run
 - `git diff --check`: passed / failed / not run
