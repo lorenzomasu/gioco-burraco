@@ -118,14 +118,18 @@ For a new milestone:
 `npm run verify`
 
 9. fix any failures caused by the milestone;
-10. record the `npm run verify` result in the completion report;
-11. commit the implementation;
-12. push only the milestone branch;
-13. stop before merging.
+10. create or update `docs/milestones/reports/MXX-implementation.md` using `docs/milestones/reports/TEMPLATE.md`;
+11. record the `npm run verify` result, material deviations, known risks or ambiguities, and incidental changes in that report;
+12. review the complete implementation diff, including the report;
+13. commit the completed implementation and report;
+14. push only the milestone branch;
+15. stop before merging.
 
 The implementer must not start the next milestone.
 
 Running `npm run verify` locally remains a required implementer responsibility. A known local verification failure is always blocking and must be fixed before merge.
+
+The implementation report is review context, not an authoritative specification. It must not redefine scope or make deviations acceptable by declaration. The milestone specification remains authoritative, and the independent reviewer must verify report claims against the repository.
 
 ## Independent review
 
@@ -138,6 +142,7 @@ ChatGPT performs an independent review directly from the milestone branch or pul
 The review should compare:
 
 - milestone specification;
+- versioned implementation report under `docs/milestones/reports/`, when present;
 - implementation diff;
 - automated tests;
 - `docs/RULES.md`;
@@ -176,8 +181,8 @@ If the review finds problems:
 1. ChatGPT produces one focused Codex fix prompt containing only the review findings that require action;
 2. continue in the same Codex milestone task when practical, because the implementation context is already loaded;
 3. Codex changes only what is required by the findings;
-4. Codex reruns `npm run verify`, commits, and pushes the same milestone branch;
-5. ChatGPT re-reviews the previous findings and plausible regressions caused by the fixes.
+4. Codex reruns `npm run verify`, updates the implementation report when the fix changes verification evidence, deviations, risks, ambiguities, or incidental changes, then commits and pushes the same milestone branch;
+5. ChatGPT re-reviews the previous findings, the updated report, and plausible regressions caused by the fixes.
 
 Do not repeat the entire milestone specification in a fix prompt.
 
@@ -222,6 +227,7 @@ Therefore:
 
 - do not ask the user to paste repository diffs that can be read directly from GitHub;
 - do not ask the user to paste test output when CI or repository tooling already provides the required evidence, unless diagnosing a local-only failure;
+- do not ask the user to relay implementation-agent risk, deviation, or ambiguity notes when they can be versioned in the milestone implementation report;
 - do not generate large implementation prompts that duplicate versioned repository documentation;
 - do not make the implementation agent write its own contract;
 - do not add mandatory review agents without a concrete reason;
