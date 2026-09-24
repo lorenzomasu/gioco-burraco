@@ -19,7 +19,7 @@ Before implementing any task, read:
 
 `docs/RULES.md` is authoritative for implemented game behaviour.
 
-`docs/ROADMAP.md` is authoritative for the agreed v1 milestone sequence and product boundary. A versioned milestone specification remains authoritative for the concrete implementation scope of that milestone and may refine the roadmap's higher-level details without silently changing its objective or dependencies.
+`docs/ROADMAP.md` is authoritative for the agreed release-cycle milestone sequence and product boundaries. A versioned milestone specification remains authoritative for the concrete implementation scope of that milestone and may refine the roadmap's higher-level details without silently changing its objective or dependencies.
 
 Do not invent Burraco rules, product behaviour, or technical requirements.
 
