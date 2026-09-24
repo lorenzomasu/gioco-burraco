@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  BotAutomationError,
   INITIAL_BOT_CHAIN_PROGRESS,
   playBotsUntilHumanTurnWithTrace,
   playNextBotChainStep,
   type BotChainProgress,
+  type BotPublicActionEvent,
+  type BotRunLimits,
 } from '../game/bot'
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
@@ -21,7 +24,26 @@ import {
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { GameState, InProgressGameState, PlayerId } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+
+/**
+ * Pass-through spy on the one chain-step primitive, so tests can observe that every
+ * playback mode uses it and can inject smaller safety limits into the UI path.
+ */
+const botStepSpy = vi.hoisted(() => ({ limits: undefined as BotRunLimits | undefined }))
+
+vi.mock('../game/bot', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../game/bot')>()
+  return {
+    ...actual,
+    playNextBotChainStep: vi.fn((...args: Parameters<typeof actual.playNextBotChainStep>) => {
+      const [state, humanPlayerId, progress, limits] = args
+      return actual.playNextBotChainStep(state, humanPlayerId, progress, botStepSpy.limits ?? limits)
+    }),
+  }
+})
+
+const chainStepSpy = vi.mocked(playNextBotChainStep)
 
 const deck = createBurracoDeck()
 
@@ -658,6 +680,534 @@ describe('GameTable round starter rotation', () => {
       })
       expect(timelineItems()).toHaveLength(0)
       expect(turnBanner()).toHaveTextContent('You')
+    },
+  )
+})
+
+/** Runs the chain-step primitive from a session until it yields control, collecting every step. */
+const stepTrace = (
+  state: GameState,
+  progress: BotChainProgress = INITIAL_BOT_CHAIN_PROGRESS,
+) => {
+  const steps: { state: GameState; events: readonly BotPublicActionEvent[]; progress: BotChainProgress }[] = []
+  let current = state
+  let currentProgress = progress
+  for (let next = playNextBotChainStep(current, 'player-1', currentProgress); next;
+    next = playNextBotChainStep(current, 'player-1', currentProgress)) {
+    steps.push(next)
+    current = next.state
+    currentProgress = next.progress
+  }
+  return { steps, state: current, events: steps.flatMap(({ events }) => events) }
+}
+
+const speedRadio = (label: 'Normale' | 'Veloce') => screen.getByRole('radio', { name: label })
+
+const completeNowButton = () => screen.queryByRole('button', { name: 'Completa subito' })
+
+const advance = (ms: number) => {
+  act(() => {
+    vi.advanceTimersByTime(ms)
+  })
+}
+
+const discardKingOfHearts = () => {
+  fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+  fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+}
+
+const timelineTexts = () => timelineItems().map((item) => item.textContent)
+
+const expectTimelineMatches = (events: readonly BotPublicActionEvent[]) => {
+  expect(timelineTypes()).toEqual(events.map(({ type }) => type))
+  expect(timelineItems().map((item) => item.textContent?.split(' ')[0]))
+    .toEqual(events.map(({ playerId }) => playerNames[playerId]))
+}
+
+/** Rendered table and timeline, excluding the header playback controls. */
+const renderedOutcome = () => {
+  const table = screen.queryByRole('region', { name: 'Tavolo di Burraco' })
+  return [
+    table?.innerHTML ?? document.querySelector('main')!.innerHTML.replace(/<header[\s\S]*?<\/header>/, ''),
+    screen.getByRole('region', { name: 'Cronologia bot' }).innerHTML,
+  ]
+}
+
+type PlaybackMode = 'normal' | 'fast' | 'immediate'
+
+/** Drives the pending chain to its endpoint with one playback mode. */
+const finishPlayback = (mode: PlaybackMode) => {
+  if (mode === 'immediate') {
+    fireEvent.click(completeNowButton()!)
+  } else {
+    for (let step = 0; step < 100 && vi.getTimerCount() > 0; step += 1) advance(BOT_PLAYBACK_DELAYS_MS[mode])
+  }
+  expect(vi.getTimerCount()).toBe(0)
+}
+
+const selectMode = (mode: PlaybackMode) => {
+  if (mode === 'fast') fireEvent.click(speedRadio('Veloce'))
+}
+
+describe('GameTable bot playback speed', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('offers exactly two speeds from one delay mapping, defaulting to normal at 550 ms', () => {
+    expect(BOT_PLAYBACK_DELAYS_MS).toEqual({ normal: 550, fast: 150 })
+    expect(BOT_STEP_DELAY_MS).toBe(BOT_PLAYBACK_DELAYS_MS.normal)
+    render(<GameTable initialState={pendingBotState()} />)
+
+    const group = screen.getByRole('group', { name: 'Velocità bot' })
+    expect(within(group).getAllByRole('radio')).toHaveLength(2)
+    expect(speedRadio('Normale')).toBeChecked()
+    expect(speedRadio('Veloce')).not.toBeChecked()
+
+    advance(549)
+    expect(timelineItems()).toHaveLength(0)
+    advance(1)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+  })
+
+  it('changes no game or timeline state when the speed changes with no bot pending', () => {
+    render(<GameTable initialState={chainState()} />)
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('ace', 'spades')) }))
+    const before = renderedOutcome()
+    expect(completeNowButton()).not.toBeInTheDocument()
+
+    fireEvent.click(speedRadio('Veloce'))
+
+    expect(speedRadio('Veloce')).toBeChecked()
+    expect(renderedOutcome()).toEqual(before)
+    expect(screen.getByRole('button', { name: cardLabel(card('ace', 'spades')) }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(vi.getTimerCount()).toBe(0)
+
+    fireEvent.click(speedRadio('Normale'))
+    expect(renderedOutcome()).toEqual(before)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['normal', 'fast'] as const)('commits exactly one step per %s delay', (speed) => {
+    const delay = BOT_PLAYBACK_DELAYS_MS[speed]
+    const state = chainState()
+    const expected = stepTrace(discardCard(state, 'player-1', card('king', 'hearts').id))
+    render(<GameTable initialState={state} />)
+    selectMode(speed)
+    discardKingOfHearts()
+
+    let committedEvents = 0
+    for (const step of expected.steps) {
+      advance(delay - 1)
+      expect(timelineItems()).toHaveLength(committedEvents)
+      advance(1)
+      committedEvents += step.events.length
+      expect(timelineItems()).toHaveLength(committedEvents)
+    }
+
+    expectTimelineMatches(expected.events)
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('reschedules a partly elapsed normal step to 150 ms after switching to fast', () => {
+    render(<GameTable initialState={pendingBotState()} />)
+    advance(300)
+    expect(vi.getTimerCount()).toBe(1)
+
+    fireEvent.click(speedRadio('Veloce'))
+
+    expect(timelineItems()).toHaveLength(0)
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 6 carte rimaste')
+    expect(vi.getTimerCount()).toBe(1)
+    advance(149)
+    expect(timelineItems()).toHaveLength(0)
+    advance(1)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+    // The cancelled normal timer would have fired here, 550 ms after it was scheduled.
+    advance(100)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 5 carte rimaste')
+  })
+
+  it('reschedules a partly elapsed fast step to 550 ms after switching to normal', () => {
+    render(<GameTable initialState={pendingBotState()} />)
+    fireEvent.click(speedRadio('Veloce'))
+    advance(100)
+
+    fireEvent.click(speedRadio('Normale'))
+
+    expect(timelineItems()).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(1)
+    // The cancelled fast timer would have fired 50 ms after the change.
+    advance(549)
+    expect(timelineItems()).toHaveLength(0)
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 6 carte rimaste')
+    advance(1)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+  })
+
+  it('never leaves duplicate callbacks after repeated speed toggles', () => {
+    const state = pendingBotState()
+    const expected = stepTrace(state)
+    render(<GameTable initialState={state} />)
+
+    for (const label of ['Veloce', 'Normale', 'Veloce', 'Normale', 'Veloce'] as const) {
+      advance(100)
+      fireEvent.click(speedRadio(label))
+      expect(vi.getTimerCount()).toBe(1)
+      expect(timelineItems()).toHaveLength(0)
+    }
+
+    advance(149)
+    expect(timelineItems()).toHaveLength(0)
+    advance(1)
+    expect(timelineItems()).toHaveLength(expected.steps[0]!.events.length)
+    expect(vi.getTimerCount()).toBe(1)
+
+    finishPlayback('fast')
+    expectTimelineMatches(expected.events)
+  })
+
+  it.each([2, 3, 4] as const)('keeps the selected speed after Inizia smazzata %i', (roundNumber) => {
+    const firstStep = playNextBotChainStep(
+      dealInitialState(deck, { startingPlayerId: `player-${roundNumber}` }),
+      'player-1',
+    )!
+    render(<GameTable initialMatch={matchAwaiting(roundNumber)} createGame={rotatingRound} />)
+    fireEvent.click(speedRadio('Veloce'))
+
+    fireEvent.click(screen.getByRole('button', { name: `Inizia smazzata ${roundNumber}` }))
+
+    expect(speedRadio('Veloce')).toBeChecked()
+    expect(timelineItems()).toHaveLength(0)
+    expect(completeNowButton()).toBeInTheDocument()
+    advance(149)
+    expect(timelineItems()).toHaveLength(0)
+    advance(1)
+    expect(timelineTypes()).toEqual(firstStep.events.map(({ type }) => type))
+  })
+
+  it('keeps the selected speed after Nuova partita while resetting the session', () => {
+    const createGame = vi.fn(() => pendingBotState())
+    render(<GameTable initialState={chainState()} createGame={createGame} />)
+    fireEvent.click(speedRadio('Veloce'))
+    discardKingOfHearts()
+    advance(150)
+    expect(timelineItems()).toHaveLength(1)
+    chainStepSpy.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(speedRadio('Veloce')).toBeChecked()
+    expect(timelineItems()).toHaveLength(0)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(turnBanner()).toHaveTextContent('North')
+    advance(149)
+    expect(timelineItems()).toHaveLength(0)
+    advance(1)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+    // The fresh match starts the chain from fresh safety progress.
+    expect(chainStepSpy.mock.calls[0]![2]).toEqual(INITIAL_BOT_CHAIN_PROGRESS)
+  })
+})
+
+describe('GameTable immediate bot completion', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    botStepSpy.limits = undefined
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('shows Completa subito only while a bot chain is pending', () => {
+    render(<GameTable initialState={chainState()} />)
+    expect(completeNowButton()).not.toBeInTheDocument()
+
+    discardKingOfHearts()
+    expect(completeNowButton()).toBeEnabled()
+
+    fireEvent.click(completeNowButton()!)
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(completeNowButton()).not.toBeInTheDocument()
+  })
+
+  it('completes the whole chain after zero delayed steps with the full-chain trace', () => {
+    const state = chainState()
+    const afterHuman = discardCard(state, 'player-1', card('king', 'hearts').id)
+    const expected = playBotsUntilHumanTurnWithTrace(afterHuman, 'player-1')
+    render(<GameTable initialState={state} />)
+    discardKingOfHearts()
+    expect(timelineItems()).toHaveLength(0)
+
+    fireEvent.click(completeNowButton()!)
+
+    expectTimelineMatches(expected.events)
+    expect(new Set(expected.events.map(({ playerId }) => playerId)))
+      .toEqual(new Set(['player-2', 'player-3', 'player-4']))
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(screen.queryByText('Bot in gioco…')).not.toBeInTheDocument()
+    expect(drawPileButton()).toHaveAccessibleName(`Pesca dal tallone, ${expected.state.drawPile.length} carte rimaste`)
+    expect(drawPileButton()).toBeEnabled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('continues from the partial chain and current progress through the chain-step primitive', () => {
+    const state = chainState()
+    const afterHuman = discardCard(state, 'player-1', card('king', 'hearts').id)
+    const full = stepTrace(afterHuman)
+    const delayedSteps = 4
+    const partial = full.steps[delayedSteps - 1]!
+    expect(partial.progress).not.toEqual(INITIAL_BOT_CHAIN_PROGRESS)
+    const remaining = stepTrace(partial.state, partial.progress)
+    render(<GameTable initialState={state} />)
+    discardKingOfHearts()
+    for (let step = 0; step < delayedSteps; step += 1) advanceOneStep()
+    const committedBefore = timelineTexts()
+    expect(committedBefore).toHaveLength(full.steps.slice(0, delayedSteps).flatMap(({ events }) => events).length)
+    chainStepSpy.mockClear()
+
+    fireEvent.click(completeNowButton()!)
+
+    // One primitive call per remaining committed step plus the final call yielding control.
+    expect(chainStepSpy).toHaveBeenCalledTimes(remaining.steps.length + 1)
+    expect(chainStepSpy.mock.calls[0]![0]).toEqual(partial.state)
+    expect(chainStepSpy.mock.calls[0]![2]).toEqual(partial.progress)
+    expect(timelineTexts().slice(0, committedBefore.length)).toEqual(committedBefore)
+    expect(timelineItems()).toHaveLength(committedBefore.length + remaining.events.length)
+    expectTimelineMatches(full.events)
+    expect(turnBanner()).toHaveTextContent('You')
+  })
+
+  it('cancels a pending delayed step so it cannot fire after immediate completion', () => {
+    const state = chainState()
+    const expected = stepTrace(discardCard(state, 'player-1', card('king', 'hearts').id))
+    render(<GameTable initialState={state} />)
+    discardKingOfHearts()
+    advanceOneStep()
+    advance(BOT_STEP_DELAY_MS - 1)
+    expect(vi.getTimerCount()).toBe(1)
+
+    fireEvent.click(completeNowButton()!)
+    const completed = renderedOutcome()
+    chainStepSpy.mockClear()
+
+    expect(vi.getTimerCount()).toBe(0)
+    advance(BOT_STEP_DELAY_MS * 10)
+    expect(chainStepSpy).not.toHaveBeenCalled()
+    expect(renderedOutcome()).toEqual(completed)
+    expectTimelineMatches(expected.events)
+  })
+
+  it('stops when a bot closes the round and keeps the terminal event on the completed-round screen', () => {
+    const discarded = card('king', 'spades')
+    render(<GameTable initialState={botClosureState()} />)
+
+    fireEvent.click(completeNowButton()!)
+
+    expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
+    expect(timelineTypes()).toEqual(['discard'])
+    expect(timelineItems()[0]).toHaveTextContent(`North scarta ${cardLabel(discarded)}.`)
+    expect(completeNowButton()).not.toBeInTheDocument()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('preserves pozzetto side-effect events in order without revealing the pozzetto', () => {
+    const base = chainState()
+    const state: InProgressGameState = {
+      ...base,
+      players: base.players.map((player) => player.id === 'player-2'
+        ? { ...player, hand: [card('ten', 'clubs'), card('ten', 'diamonds'), card('ten', 'hearts')] }
+        : player),
+      round: {
+        status: 'in-progress',
+        turn: { currentPlayerId: 'player-2', phase: 'action', acquisition: { source: 'drawPile', cardIds: [] } },
+      },
+    }
+    const expected = stepTrace(state)
+    expect(expected.events.slice(0, 2).map(({ type }) => type)).toEqual(['play-meld', 'take-pozzetto'])
+    render(<GameTable initialState={state} />)
+
+    fireEvent.click(completeNowButton()!)
+
+    expectTimelineMatches(expected.events)
+    expect(timelineItems()[1]).toHaveTextContent('North prende il pozzetto al volo.')
+    const everPublic = new Set([
+      ...[state, ...expected.steps.map((step) => step.state)].flatMap((seen) => [...publicCardLabels(seen)]),
+    ])
+    const final = expected.state
+    for (const hidden of [...botHandCards(final), ...final.drawPile, ...final.pozzetti.flat()]) {
+      if (!everPublic.has(cardLabel(hidden))) expectNotRendered(hidden)
+    }
+  })
+
+  it.each(['normal', 'fast', 'immediate'] as const)(
+    'reaches the same final table and timeline in %s mode from the same pending session',
+    (mode) => {
+      const reference = (() => {
+        const { unmount } = render(<GameTable initialMatch={matchAwaiting(3)} createGame={rotatingRound} />)
+        fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 3' }))
+        finishPlayback('normal')
+        const outcome = renderedOutcome()
+        unmount()
+        return outcome
+      })()
+      const expected = stepTrace(dealInitialState(deck, { startingPlayerId: 'player-3' }))
+      render(<GameTable initialMatch={matchAwaiting(3)} createGame={rotatingRound} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 3' }))
+      selectMode(mode)
+      advanceOneStep()
+
+      finishPlayback(mode)
+
+      expect(renderedOutcome()).toEqual(reference)
+      expectTimelineMatches(expected.events)
+    },
+  )
+})
+
+describe('GameTable playback safety, reset and hidden information', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    botStepSpy.limits = undefined
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('enforces the existing chain safety limit with the current progress in immediate completion', () => {
+    const state = chainState()
+    const afterHuman = discardCard(state, 'player-1', card('king', 'hearts').id)
+    const steps = stepTrace(afterHuman).steps
+    const partnerStart = steps.findIndex((step) => step.events[0]!.playerId === 'player-3')
+    expect(steps.slice(partnerStart).some((step) => step.events[0]!.playerId === 'player-4')).toBe(true)
+    botStepSpy.limits = { maxBotTurns: 2 }
+    render(<GameTable initialState={state} />)
+    discardKingOfHearts()
+    for (let step = 0; step <= partnerStart; step += 1) advanceOneStep()
+    expect(turnBanner()).toHaveTextContent('Partner')
+
+    // Restarting from fresh counters would let Partner and South finish within two turns.
+    expect(() => fireEvent.click(completeNowButton()!))
+      .toThrow(new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'))
+  })
+
+  it('enforces the same chain safety limit in delayed playback', () => {
+    botStepSpy.limits = { maxBotTurns: 2 }
+    render(<GameTable initialState={chainState()} />)
+    discardKingOfHearts()
+
+    expect(() => {
+      for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) advanceOneStep()
+    }).toThrow(new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'))
+  })
+
+  it('does not let a callback rescheduled by a speed change mutate a fresh match', () => {
+    const freshDrawPile = [
+      card('two', 'spades', 2), card('three', 'spades', 2), card('four', 'spades', 2),
+      card('five', 'spades', 2), card('six', 'spades', 2), card('seven', 'spades', 2),
+      card('eight', 'spades', 2), card('nine', 'spades', 2),
+    ]
+    render(<GameTable initialState={chainState()} createGame={() => pendingBotState(freshDrawPile)} />)
+    discardKingOfHearts()
+    advance(400)
+
+    fireEvent.click(speedRadio('Veloce'))
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(vi.getTimerCount()).toBe(1)
+    expect(timelineItems()).toHaveLength(0)
+    advance(149)
+    expect(timelineItems()).toHaveLength(0)
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 8 carte rimaste')
+    advance(1)
+    expect(timelineTypes()).toEqual(['draw-stock'])
+    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 7 carte rimaste')
+    expect(seatCardCount('North')).toHaveAccessibleName('5 carte in mano')
+  })
+
+  it.each(['normal', 'fast', 'immediate'] as const)(
+    'keeps human gameplay locked until the chain ends in %s mode',
+    (mode) => {
+      render(<GameTable initialMatch={matchAwaiting(2)} createGame={rotatingRound} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+      selectMode(mode)
+      const humanHandSize = within(screen.getByLabelText('Carte di You')).getAllByRole('img').length
+
+      const attemptHumanActions = () => {
+        expectHumanGameplayLocked()
+        const itemsBefore = timelineItems().length
+        const pileBefore = drawPileButton().getAttribute('aria-label')
+        fireEvent.click(drawPileButton())
+        fireEvent.click(discardPileButton())
+        fireEvent.click(within(screen.getByLabelText('Carte di You')).getAllByRole('img')[0]!)
+        fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+        expect(drawPileButton()).toHaveAttribute('aria-label', pileBefore)
+        expect(timelineItems()).toHaveLength(itemsBefore)
+        expect(within(screen.getByLabelText('Carte di You')).getAllByRole('img')).toHaveLength(humanHandSize)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      }
+
+      if (mode === 'immediate') {
+        attemptHumanActions()
+        advanceOneStep()
+        attemptHumanActions()
+        fireEvent.click(completeNowButton()!)
+      } else {
+        for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) {
+          attemptHumanActions()
+          advance(BOT_PLAYBACK_DELAYS_MS[mode])
+        }
+      }
+
+      expect(turnBanner()).toHaveTextContent('You')
+      expect(drawPileButton()).toBeEnabled()
+    },
+  )
+
+  it.each(['normal', 'fast', 'immediate'] as const)(
+    'never renders hidden bot-hand, stock or pozzetto identities in %s mode',
+    (mode) => {
+      const expected = stepTrace(dealInitialState(deck, { startingPlayerId: 'player-2' }))
+      const everPublic = new Set<string>()
+      const expectHiddenNotRendered = (state: GameState) => {
+        for (const label of publicCardLabels(state)) everPublic.add(label)
+        for (const hidden of [...botHandCards(state), ...state.drawPile, ...state.pozzetti.flat()]) {
+          if (!everPublic.has(cardLabel(hidden))) expectNotRendered(hidden)
+        }
+      }
+      render(<GameTable initialMatch={matchAwaiting(2)} createGame={rotatingRound} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+      selectMode(mode)
+
+      if (mode === 'immediate') {
+        for (const step of expected.steps) for (const label of publicCardLabels(step.state)) everPublic.add(label)
+        fireEvent.click(completeNowButton()!)
+      } else {
+        for (const step of expected.steps) {
+          advance(BOT_PLAYBACK_DELAYS_MS[mode])
+          expectHiddenNotRendered(step.state)
+        }
+      }
+
+      expect(vi.getTimerCount()).toBe(0)
+      expectHiddenNotRendered(expected.state)
+      for (const event of expected.events) {
+        if (event.type === 'draw-stock') expect(Object.keys(event)).toEqual(['type', 'playerId'])
+      }
+      expectTimelineMatches(expected.events)
     },
   )
 })

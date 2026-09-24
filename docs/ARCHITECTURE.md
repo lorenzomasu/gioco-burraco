@@ -97,6 +97,19 @@ the chain-step safety counters, and the event timeline are transient UI session 
 and are never stored in `GameState` or `MatchState`; replacing the session cancels any
 pending playback step.
 
+Playback speed (`normal` / `fast`) is transient React presentation state of the mounted
+game UI. The UI owns the single authoritative speed → delay mapping (normal 550 ms,
+fast 150 ms); the preference survives new rounds and new matches while the component
+stays mounted, and is never persisted. Changing speed only cancels and reschedules the
+pending presentation timer (measured from the change); it never commits a domain action.
+Immediate completion ("Completa subito") is a UI orchestration mode that repeatedly
+applies the same chain-step progression from the current session state, events, and
+safety progress until control returns to the human or the round ends, appending every
+committed step's public events in order; the existing safety limits and
+`BotAutomationError` still apply, and replacing the session cancels any pending
+delayed step. No playback preference or timing state belongs in `GameState`,
+`MatchState`, or `src/game`.
+
 ## Match lifecycle
 
 `GameState` remains the complete state of exactly one smazzata. The match layer owns

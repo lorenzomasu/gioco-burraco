@@ -37,8 +37,22 @@ type GameTableProps = Readonly<{
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 const humanPlayerId: PlayerId = 'player-1'
 
-/** The single presentation delay between committed bot steps. */
-export const BOT_STEP_DELAY_MS = 550
+/** Transient presentation preference for bot playback; never part of game or match state. */
+export type BotPlaybackSpeed = 'normal' | 'fast'
+
+/** The single authoritative presentation delay between committed bot steps, per speed. */
+export const BOT_PLAYBACK_DELAYS_MS: Readonly<Record<BotPlaybackSpeed, number>> = {
+  normal: 550,
+  fast: 150,
+}
+
+/** The default (normal) presentation delay between committed bot steps. */
+export const BOT_STEP_DELAY_MS = BOT_PLAYBACK_DELAYS_MS.normal
+
+const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
+  normal: 'Normale',
+  fast: 'Veloce',
+}
 
 /**
  * Transient UI session. Bot events and playback safety counters live here, never in
@@ -71,6 +85,22 @@ const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
     botEvents: [...session.botEvents, ...step.events],
     botProgress: step.progress,
   }
+}
+
+/**
+ * Completes the pending bot chain synchronously from the current session by repeatedly
+ * applying the same one-step progression used by delayed playback. It terminates when
+ * control returns to the human or the round completes; the existing chain-step safety
+ * limits raise `BotAutomationError` for a non-progressing chain.
+ */
+const completeBotPlayback = (session: GameTableSession): GameTableSession => {
+  let current = session
+  let next = advanceBotPlayback(current)
+  while (next !== current) {
+    current = next
+    next = advanceBotPlayback(current)
+  }
+  return current
 }
 
 const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
@@ -112,6 +142,7 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
+  const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   const { match, botEvents } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
@@ -122,9 +153,15 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
     const timer = setTimeout(() => {
       // A callback scheduled for a replaced session must never mutate the new one.
       setSession((current) => current === scheduledSession ? advanceBotPlayback(current) : current)
-    }, BOT_STEP_DELAY_MS)
+    }, BOT_PLAYBACK_DELAYS_MS[playbackSpeed])
+    // A speed change cancels the pending step and reschedules it with the new delay.
     return () => clearTimeout(timer)
-  }, [session])
+  }, [session, playbackSpeed])
+
+  const completeBotsNow = () => {
+    // Replacing the session cancels any pending delayed step.
+    setSession((current) => hasPendingBot(current.match) ? completeBotPlayback(current) : current)
+  }
 
   const resetTransientState = () => {
     setSelectedCardIds(new Set())
@@ -177,6 +214,24 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
       </div>
       <div className="game-header__actions">
         <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
+        <fieldset className="playback-controls">
+          <legend>Velocità bot</legend>
+          {(['normal', 'fast'] as const).map((speed) => (
+            <label key={speed} className="playback-controls__option">
+              <input
+                type="radio"
+                name="bot-playback-speed"
+                value={speed}
+                checked={playbackSpeed === speed}
+                onChange={() => setPlaybackSpeed(speed)}
+              />
+              {playbackSpeedLabels[speed]}
+            </label>
+          ))}
+        </fieldset>
+        {isBotPlaying && (
+          <button type="button" className="button button--ghost" onClick={completeBotsNow}>Completa subito</button>
+        )}
         <button type="button" className="button button--new" onClick={beginNewMatch}>Nuova partita</button>
       </div>
     </header>
