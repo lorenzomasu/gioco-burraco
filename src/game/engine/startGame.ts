@@ -25,6 +25,11 @@ export const DEFAULT_STARTING_PLAYER_ID: PlayerId = 'player-1'
 export type RoundSetupOptions = Readonly<{
   /** Initial turn owner. Turn metadata only: it never changes the deal. */
   startingPlayerId?: PlayerId
+  /**
+   * Display names overriding the defaults per seat. Presentation metadata only: IDs,
+   * teams, the deal and turn order never depend on them.
+   */
+  playerNames?: Readonly<Partial<Record<PlayerId, string>>>
 }>
 
 /**
@@ -33,7 +38,7 @@ export type RoundSetupOptions = Readonly<{
  */
 export const dealInitialState = (
   orderedDeck: Deck,
-  { startingPlayerId = DEFAULT_STARTING_PLAYER_ID }: RoundSetupOptions = {},
+  { startingPlayerId = DEFAULT_STARTING_PLAYER_ID, playerNames = {} }: RoundSetupOptions = {},
 ): InProgressGameState => {
   if (orderedDeck.length !== INITIAL_DECK_SIZE) {
     throw new RangeError(`Initial deal requires exactly ${INITIAL_DECK_SIZE} cards.`)
@@ -54,7 +59,11 @@ export const dealInitialState = (
   }
   const openingDiscard = orderedDeck[cursor++]!
 
-  const players = PLAYER_DEFINITIONS.map((definition, index) => ({ ...definition, hand: hands[index] }))
+  const players = PLAYER_DEFINITIONS.map((definition, index) => ({
+    ...definition,
+    name: playerNames[definition.id] ?? definition.name,
+    hand: hands[index],
+  }))
   return {
     players,
     teams: TEAMS,

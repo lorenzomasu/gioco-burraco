@@ -656,3 +656,67 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+.start-screen {
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  display: grid;
+  place-items: center;
+}
+
+.start-panel {
+  width: min(34rem, 100%);
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  border: 1px solid rgba(246, 199, 96, .22);
+  border-radius: 1.25rem;
+  background: rgba(8, 44, 33, .82);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
+}
+
+.start-panel h1 {
+  margin: 0;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.start-panel__intro { margin: 1.5rem 0 1rem; color: #dcebe3; }
+
+.start-panel__setup {
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: .6rem;
+  list-style: none;
+}
+
+.start-panel__setup li {
+  padding: .7rem .9rem;
+  border-radius: .7rem;
+  color: #dcebe3;
+  background: rgba(255, 255, 255, .06);
+  font-size: .9rem;
+}
+
+.start-panel__setup strong { color: #f6c760; }
+
+.start-form { display: grid; gap: .6rem; }
+
+.start-form label { font-weight: 700; }
+
+.start-form input {
+  min-height: 2.75rem;
+  padding: .6rem .8rem;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: .7rem;
+  color: #f8f4e9;
+  background: rgba(0, 0, 0, .25);
+  font: inherit;
+}
+
+.start-form input:focus-visible {
+  outline: 3px solid #f6c760;
+  outline-offset: 2px;
+}
+
+.start-form .button { margin-top: .4rem; }

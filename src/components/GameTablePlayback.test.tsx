@@ -172,6 +172,7 @@ describe('GameTable bot turn playback', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllTimers()
     vi.useRealTimers()
   })
@@ -389,62 +390,30 @@ describe('GameTable bot turn playback', () => {
     expect(timelineItems()[0]).toHaveTextContent('North pesca dal tallone.')
   })
 
-  it('clears the previous match and step-plays a pending bot after Nuova partita', () => {
+  it('cancels the pending bot step when a confirmed Nuova partita unmounts the table', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const createGame = vi.fn(() => pendingBotState())
-    render(<GameTable initialState={chainState()} createGame={createGame} />)
-    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
-    advanceOneStep()
-    advanceOneStep()
-    expect(timelineItems()).toHaveLength(2)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
-
-    expect(timelineItems()).toHaveLength(0)
-    expect(turnBanner()).toHaveTextContent('North')
-    expect(screen.getByText('Pesca')).toBeInTheDocument()
-
-    advanceOneStep()
-
-    expect(timelineTypes()).toEqual(['draw-stock'])
-  })
-
-  it('prevents a stale pending playback callback from mutating a fresh match', () => {
-    const freshDrawPile = [
-      card('two', 'spades', 2), card('three', 'spades', 2), card('four', 'spades', 2),
-      card('five', 'spades', 2), card('six', 'spades', 2), card('seven', 'spades', 2),
-      card('eight', 'spades', 2), card('nine', 'spades', 2),
-    ]
-    const createGame = vi.fn(() => pendingBotState(freshDrawPile))
-    render(<GameTable initialState={chainState()} createGame={createGame} />)
-    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
-
-    // The old session's first bot step is just about to fire when the match is reset.
-    act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS - 1)
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-
-    expect(timelineItems()).toHaveLength(0)
-    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 8 carte rimaste')
-    expect(screen.getByText('Pesca')).toBeInTheDocument()
+    const onLeaveMatch = vi.fn()
+    const { unmount } = render(
+      <GameTable initialState={chainState()} createGame={createGame} onLeaveMatch={onLeaveMatch} />,
+    )
+    discardKingOfHearts()
+    // The first bot step is just about to fire when the match is left.
+    advance(BOT_STEP_DELAY_MS - 1)
     expect(vi.getTimerCount()).toBe(1)
+    chainStepSpy.mockClear()
 
-    act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS - 2)
-    })
-    expect(timelineItems()).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
-    act(() => {
-      vi.advanceTimersByTime(1)
-    })
-    expect(timelineTypes()).toEqual(['draw-stock'])
-    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 7 carte rimaste')
-    expect(seatCardCount('North')).toHaveAccessibleName('5 carte in mano')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(onLeaveMatch).toHaveBeenCalledOnce()
+    expect(createGame).not.toHaveBeenCalled()
+
+    // The shell replaces the table on leave; its effect cleanup cancels the step.
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    advance(BOT_STEP_DELAY_MS * 3)
+    expect(chainStepSpy).not.toHaveBeenCalled()
   })
 
   it('restores normal human controls once playback returns control to the human', () => {
@@ -509,6 +478,7 @@ describe('GameTable round starter rotation', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllTimers()
     vi.useRealTimers()
   })
@@ -655,31 +625,46 @@ describe('GameTable round starter rotation', () => {
   })
 
   it.each([2, 3, 4] as const)(
-    'resets Nuova partita from pending smazzata %i to smazzata 1 with player-1',
+    'requires confirmation to leave pending smazzata %i and keeps it intact when cancelled',
     (roundNumber: MatchRoundNumber) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
       const createGame = vi.fn(rotatingRound)
-      render(<GameTable initialMatch={matchAwaiting(roundNumber as 2 | 3 | 4)} createGame={createGame} />)
+      const onLeaveMatch = vi.fn()
+      const { unmount } = render(
+        <GameTable
+          initialMatch={matchAwaiting(roundNumber as 2 | 3 | 4)}
+          createGame={createGame}
+          onLeaveMatch={onLeaveMatch}
+        />,
+      )
       fireEvent.click(screen.getByRole('button', { name: `Inizia smazzata ${roundNumber}` }))
       advanceOneStep()
       expect(timelineItems()).toHaveLength(1)
       expect(vi.getTimerCount()).toBe(1)
+      const bannerBefore = turnBanner().textContent
+      const pileBefore = drawPileButton().getAttribute('aria-label')
 
       fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
-      expect(createGame.mock.calls.at(-1)).toEqual([{ roundNumber: 1, startingPlayerId: 'player-1' }])
-      expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
-      expect(turnBanner()).toHaveTextContent('You')
-      expect(screen.getByText('Pesca')).toBeInTheDocument()
-      expect(screen.queryByText('Bot in gioco…')).not.toBeInTheDocument()
-      expect(timelineItems()).toHaveLength(0)
-      expect(vi.getTimerCount()).toBe(0)
-      expect(drawPileButton()).toBeEnabled()
+      expect(confirm).toHaveBeenCalledOnce()
+      expect(onLeaveMatch).not.toHaveBeenCalled()
+      expect(createGame).toHaveBeenCalledOnce()
+      expect(screen.getByText(`Smazzata ${roundNumber}/4`)).toBeInTheDocument()
+      expect(turnBanner().textContent).toBe(bannerBefore)
+      expect(drawPileButton()).toHaveAttribute('aria-label', pileBefore)
+      expect(timelineItems()).toHaveLength(1)
+      expect(vi.getTimerCount()).toBe(1)
 
-      act(() => {
-        vi.advanceTimersByTime(BOT_STEP_DELAY_MS * 3)
-      })
-      expect(timelineItems()).toHaveLength(0)
-      expect(turnBanner()).toHaveTextContent('You')
+      advanceOneStep()
+      expect(timelineItems().length).toBeGreaterThan(1)
+
+      confirm.mockReturnValue(true)
+      fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+      expect(onLeaveMatch).toHaveBeenCalledOnce()
+      expect(createGame).toHaveBeenCalledOnce()
+      unmount()
+      expect(vi.getTimerCount()).toBe(0)
     },
   )
 })
@@ -894,27 +879,30 @@ describe('GameTable bot playback speed', () => {
     expect(timelineTypes()).toEqual(firstStep.events.map(({ type }) => type))
   })
 
-  it('keeps the selected speed after Nuova partita while resetting the session', () => {
-    const createGame = vi.fn(() => pendingBotState())
-    render(<GameTable initialState={chainState()} createGame={createGame} />)
-    fireEvent.click(speedRadio('Veloce'))
-    discardKingOfHearts()
-    advance(150)
-    expect(timelineItems()).toHaveLength(1)
-    chainStepSpy.mockClear()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
-
+  it('uses a shell-owned speed preference when one is provided', () => {
+    const onPlaybackSpeedChange = vi.fn()
+    const { rerender } = render(
+      <GameTable initialState={pendingBotState()} playbackSpeed="fast" onPlaybackSpeedChange={onPlaybackSpeedChange} />,
+    )
     expect(speedRadio('Veloce')).toBeChecked()
-    expect(timelineItems()).toHaveLength(0)
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(turnBanner()).toHaveTextContent('North')
     advance(149)
     expect(timelineItems()).toHaveLength(0)
     advance(1)
     expect(timelineTypes()).toEqual(['draw-stock'])
-    // The fresh match starts the chain from fresh safety progress.
-    expect(chainStepSpy.mock.calls[0]![2]).toEqual(INITIAL_BOT_CHAIN_PROGRESS)
+
+    fireEvent.click(speedRadio('Normale'))
+    expect(onPlaybackSpeedChange).toHaveBeenCalledExactlyOnceWith('normal')
+    // The owner decides; until it re-renders with the new value the table keeps fast.
+    expect(speedRadio('Veloce')).toBeChecked()
+
+    rerender(
+      <GameTable initialState={pendingBotState()} playbackSpeed="normal" onPlaybackSpeedChange={onPlaybackSpeedChange} />,
+    )
+    expect(speedRadio('Normale')).toBeChecked()
+    advance(549)
+    expect(timelineItems()).toHaveLength(1)
+    advance(1)
+    expect(timelineItems().length).toBeGreaterThan(1)
   })
 })
 
@@ -1111,30 +1099,6 @@ describe('GameTable playback safety, reset and hidden information', () => {
     expect(() => {
       for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) advanceOneStep()
     }).toThrow(new BotAutomationError('Bot chain exceeded the 2-turn safety limit.'))
-  })
-
-  it('does not let a callback rescheduled by a speed change mutate a fresh match', () => {
-    const freshDrawPile = [
-      card('two', 'spades', 2), card('three', 'spades', 2), card('four', 'spades', 2),
-      card('five', 'spades', 2), card('six', 'spades', 2), card('seven', 'spades', 2),
-      card('eight', 'spades', 2), card('nine', 'spades', 2),
-    ]
-    render(<GameTable initialState={chainState()} createGame={() => pendingBotState(freshDrawPile)} />)
-    discardKingOfHearts()
-    advance(400)
-
-    fireEvent.click(speedRadio('Veloce'))
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
-
-    expect(vi.getTimerCount()).toBe(1)
-    expect(timelineItems()).toHaveLength(0)
-    advance(149)
-    expect(timelineItems()).toHaveLength(0)
-    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 8 carte rimaste')
-    advance(1)
-    expect(timelineTypes()).toEqual(['draw-stock'])
-    expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 7 carte rimaste')
-    expect(seatCardCount('North')).toHaveAccessibleName('5 carte in mano')
   })
 
   it.each(['normal', 'fast', 'immediate'] as const)(

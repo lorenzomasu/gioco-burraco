@@ -19,6 +19,7 @@ React components render state, collect player intent, and invoke the game engine
 - `src/game/match` — four-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
 - `src/game/bot` — deterministic bot candidate generation, ranking, and turn execution.
 - `src/components` — React UI for human and bot-controlled seats.
+- `src/shell` — application-shell helpers that turn onboarding choices into match configuration.
 
 Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`.
 
@@ -97,10 +98,11 @@ the chain-step safety counters, and the event timeline are transient UI session 
 and are never stored in `GameState` or `MatchState`; replacing the session cancels any
 pending playback step.
 
-Playback speed (`normal` / `fast`) is transient React presentation state of the mounted
-game UI. The UI owns the single authoritative speed → delay mapping (normal 550 ms,
-fast 150 ms); the preference survives new rounds and new matches while the component
-stays mounted, and is never persisted. Changing speed only cancels and reschedules the
+Playback speed (`normal` / `fast`) is transient React presentation state. The game
+table owns the single authoritative speed → delay mapping (normal 550 ms, fast 150 ms).
+The application shell owns the preference, so it survives new rounds and new matches
+started from onboarding while the application stays mounted; a standalone table keeps
+its own. It is never persisted. Changing speed only cancels and reschedules the
 pending presentation timer (measured from the change); it never commits a domain action.
 Immediate completion ("Completa subito") is a UI orchestration mode that repeatedly
 applies the same chain-step progression from the current session state, events, and
@@ -140,9 +142,31 @@ and `advanceMatch` pass a transient `RoundFactoryContext` (`roundNumber`,
 engine setup API. The starter is not stored in `MatchState`; it is derived from
 `currentRoundNumber`, and the actual turn owner remains `round.turn.currentPlayerId`.
 
+Engine round setup also accepts optional per-seat display names (`playerNames`). They
+are configuration metadata copied into `Player.name` only: player IDs, teams, the deal,
+card identities and turn order never depend on them. `createMatchRoundFactory` builds a
+match's round factory from that configuration (and an optional explicit shuffle source),
+so every round the match layer creates, including rounds 2–4, carries the same names.
+
 React does not map rounds to starters. It renders the resulting fresh round and, when
 the starter is a bot, relies on the existing stepwise bot playback without any special
 round-start path.
+
+## Application shell
+
+`App` is the application shell. It owns transient screen selection (onboarding or one
+mounted match), the onboarding name, and the bot-speed preference. Onboarding trims the
+human name and refuses an empty one; starting a match turns it into a round factory via
+`src/shell/matchSetup.ts` and mounts `GameTable` with it. No game or match decision is
+made by the shell: the match layer still owns the lifecycle, starter schedule,
+settlement and outcome.
+
+`GameTable` owns exactly one match session. Leaving it goes through the shell's
+`onLeaveMatch` callback: an in-progress match (including between smazzate) requires an
+explicit native confirmation, a completed match does not. Leaving unmounts the table,
+whose effect cleanup cancels any pending bot playback step; the shell returns to
+onboarding and never starts another match on its own. Confirmation primitives, screen
+state and timers never enter `src/game`.
 
 ## UI
 

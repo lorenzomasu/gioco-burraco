@@ -32,6 +32,14 @@ type GameTableProps = Readonly<{
   initialMatch?: MatchState
   initialState?: GameState
   createGame?: RoundFactory
+  /**
+   * Leaves the mounted match (the app shell returns to onboarding). The match actions
+   * are offered only when the owner provides it.
+   */
+  onLeaveMatch?: () => void
+  /** Optional shell-owned speed preference; the table keeps its own when omitted. */
+  playbackSpeed?: BotPlaybackSpeed
+  onPlaybackSpeedChange?: (speed: BotPlaybackSpeed) => void
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -48,6 +56,9 @@ export const BOT_PLAYBACK_DELAYS_MS: Readonly<Record<BotPlaybackSpeed, number>> 
 
 /** The default (normal) presentation delay between committed bot steps. */
 export const BOT_STEP_DELAY_MS = BOT_PLAYBACK_DELAYS_MS.normal
+
+/** Native confirmation shown before an in-progress match is discarded. */
+export const LEAVE_MATCH_CONFIRMATION = 'Vuoi abbandonare la partita in corso? Punteggi e carte andranno persi.'
 
 const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
   normal: 'Normale',
@@ -128,7 +139,14 @@ const italianErrorMessages: Readonly<Record<string, string>> = {
   CANNOT_CLOSE_WITHOUT_DISCARD: 'La chiusura deve avvenire con lo scarto finale.',
 }
 
-export function GameTable({ initialMatch, initialState, createGame }: GameTableProps) {
+export function GameTable({
+  initialMatch,
+  initialState,
+  createGame,
+  onLeaveMatch,
+  playbackSpeed: controlledPlaybackSpeed,
+  onPlaybackSpeedChange,
+}: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
       ? {
@@ -142,7 +160,9 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
-  const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
+  const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
+  const playbackSpeed = controlledPlaybackSpeed ?? localPlaybackSpeed
+  const setPlaybackSpeed = onPlaybackSpeedChange ?? setLocalPlaybackSpeed
   const { match, botEvents } = session
   const game = match.currentRound
   const isBotPlaying = hasPendingBot(match)
@@ -168,9 +188,15 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
     setRuleError(null)
   }
 
-  const beginNewMatch = () => {
-    setSession(freshSession(startMatch(createGame)))
-    resetTransientState()
+  /**
+   * Discarding an in-progress match needs explicit confirmation; a completed match is
+   * left directly. Cancelling changes nothing. Leaving unmounts the table, whose effect
+   * cleanup cancels any pending bot step.
+   */
+  const leaveMatch = () => {
+    if (!onLeaveMatch) return
+    if (match.status === 'in-progress' && !window.confirm(LEAVE_MATCH_CONFIRMATION)) return
+    onLeaveMatch()
   }
 
   const beginNextRound = () => {
@@ -232,7 +258,9 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
         {isBotPlaying && (
           <button type="button" className="button button--ghost" onClick={completeBotsNow}>Completa subito</button>
         )}
-        <button type="button" className="button button--new" onClick={beginNewMatch}>Nuova partita</button>
+        {onLeaveMatch && (
+          <button type="button" className="button button--new" onClick={leaveMatch}>Nuova partita</button>
+        )}
       </div>
     </header>
   )
@@ -279,6 +307,11 @@ export function GameTable({ initialMatch, initialState, createGame }: GameTableP
               <p>{outcome.leadingTeamId
                 ? `Prima la Squadra ${outcome.leadingTeamId === 'team-1' ? '1' : '2'}.`
                 : 'Parità esatta.'}</p>
+              {onLeaveMatch && (
+                <button type="button" className="button button--primary match-summary__action" onClick={leaveMatch}>
+                  Gioca ancora
+                </button>
+              )}
             </div>
           ) : (
             <button type="button" className="button button--primary match-summary__action" onClick={beginNextRound}>

@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createBurracoDeck } from '../cards/deck'
+import { createSeededRandom } from '../cards/shuffle'
 import { dealInitialState } from '../engine/startGame'
 import type { CompletedRoundState, GameState } from '../state/types'
 import {
   advanceMatch,
   calculateCumulativeScores,
   createMatchRound,
+  createMatchRoundFactory,
   getFinalMatchOutcome,
   getRoundStartingPlayerId,
   MatchLifecycleError,
@@ -333,5 +335,58 @@ describe('round starter rotation', () => {
     expect(match.currentRound.round).toMatchObject({ turn: { currentPlayerId: 'player-1', phase: 'mustDraw' } })
     expect(createMatchRound({ roundNumber: 4, startingPlayerId: 'player-4' }).round)
       .toEqual({ status: 'in-progress', turn: { currentPlayerId: 'player-4', phase: 'mustDraw' } })
+  })
+})
+
+describe('configured match round factory', () => {
+  const completeAndAdvance = (match: MatchState, factory: RoundFactory): MatchState =>
+    advanceMatch(updateCurrentRound(match, completedRound(match.currentRound)), factory)
+
+  const playMatch = (factory: RoundFactory): readonly MatchState[] => {
+    const matches = [startMatch(factory)]
+    for (let roundNumber = 2; roundNumber <= 4; roundNumber += 1) {
+      matches.push(completeAndAdvance(matches.at(-1)!, factory))
+    }
+    return matches
+  }
+
+  it('carries the configured human name into every round of the match with the scheduled starter', () => {
+    const rounds = playMatch(createMatchRoundFactory({
+      playerNames: { 'player-1': 'Lorenzo' },
+      random: createSeededRandom(21),
+    }))
+
+    expect(rounds.map(({ currentRoundNumber }) => currentRoundNumber)).toEqual([1, 2, 3, 4])
+    for (const [index, { currentRound }] of rounds.entries()) {
+      expect(currentRound.players.map(({ id, name, teamId }) => ({ id, name, teamId }))).toEqual([
+        { id: 'player-1', name: 'Lorenzo', teamId: 'team-1' },
+        { id: 'player-2', name: 'North', teamId: 'team-2' },
+        { id: 'player-3', name: 'Partner', teamId: 'team-1' },
+        { id: 'player-4', name: 'South', teamId: 'team-2' },
+      ])
+      expect(currentRound.teams.map(({ id, playerIds }) => ({ id, playerIds }))).toEqual([
+        { id: 'team-1', playerIds: ['player-1', 'player-3'] },
+        { id: 'team-2', playerIds: ['player-2', 'player-4'] },
+      ])
+      expect(currentRound.round).toMatchObject({
+        turn: { currentPlayerId: getRoundStartingPlayerId((index + 1) as 1 | 2 | 3 | 4), phase: 'mustDraw' },
+      })
+    }
+  })
+
+  it('deals exactly the same cards as an unnamed factory with the same shuffle source', () => {
+    const named = playMatch(createMatchRoundFactory({
+      playerNames: { 'player-1': 'Lorenzo' },
+      random: createSeededRandom(21),
+    }))
+    const unnamed = playMatch(createMatchRoundFactory({ random: createSeededRandom(21) }))
+
+    for (const [index, { currentRound }] of named.entries()) {
+      const expected = unnamed[index]!.currentRound
+      expect({
+        ...currentRound,
+        players: currentRound.players.map((player) => ({ ...player, name: expected.players.find(({ id }) => id === player.id)!.name })),
+      }).toEqual(expected)
+    }
   })
 })

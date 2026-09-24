@@ -8,7 +8,7 @@ import type { MatchState, SettledRoundResult } from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import { BOT_STEP_DELAY_MS, GameTable, LEAVE_MATCH_CONFIRMATION } from './GameTable'
 
 const deck = createBurracoDeck()
 
@@ -169,6 +169,7 @@ describe('GameTable', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllTimers()
     vi.useRealTimers()
   })
@@ -312,17 +313,20 @@ describe('GameTable', () => {
     }
   })
 
-  it('starts a fresh engine game and clears transient UI state', () => {
+  it('keeps the exact match, selection and error when Nuova partita is cancelled', () => {
     const invalidCards = [
       card('three', 'clubs'),
       card('five', 'hearts'),
       card('seven', 'spades'),
     ]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const createGame = vi.fn(() => dealInitialState(deck))
+    const onLeaveMatch = vi.fn()
     render(
       <GameTable
         initialState={actionState([...invalidCards, card('king', 'diamonds')])}
         createGame={createGame}
+        onLeaveMatch={onLeaveMatch}
       />,
     )
 
@@ -334,10 +338,34 @@ describe('GameTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
-    expect(createGame).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryAllByRole('button', { pressed: true })).toHaveLength(0)
-    expect(screen.getByText('Pesca')).toBeInTheDocument()
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(LEAVE_MATCH_CONFIRMATION)
+    expect(onLeaveMatch).not.toHaveBeenCalled()
+    expect(createGame).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    for (const selected of invalidCards) {
+      expect(screen.getByRole('button', { name: cardLabel(selected) })).toHaveAttribute('aria-pressed', 'true')
+    }
+    expect(within(screen.getByRole('region', { name: 'Mano di You' })).getByText('4 carte')).toBeInTheDocument()
+    expect(screen.getByText('Gioco')).toBeInTheDocument()
+  })
+
+  it('leaves an in-progress match only after explicit confirmation', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const createGame = vi.fn(() => dealInitialState(deck))
+    const onLeaveMatch = vi.fn()
+    render(<GameTable initialState={dealInitialState(deck)} createGame={createGame} onLeaveMatch={onLeaveMatch} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(LEAVE_MATCH_CONFIRMATION)
+    expect(onLeaveMatch).toHaveBeenCalledOnce()
+    expect(createGame).not.toHaveBeenCalled()
+  })
+
+  it('offers no match exit when no shell owns the table', () => {
+    render(<GameTable initialState={dealInitialState(deck)} />)
+
+    expect(screen.queryByRole('button', { name: 'Nuova partita' })).not.toBeInTheDocument()
   })
 
   it('renders bot-created melds after the automatic turn chain', () => {
@@ -378,40 +406,34 @@ describe('GameTable', () => {
     )
   })
 
-  it('runs pending bots after a new-game reset and clears transient state', () => {
-    const invalidCards = [
-      card('three', 'clubs'), card('five', 'hearts'), card('seven', 'spades'),
-    ]
-    const pendingBotState = automaticSequenceState()
-    const createGame = vi.fn((): InProgressGameState => ({
-      ...pendingBotState,
-      round: {
-        status: 'in-progress',
-        turn: { currentPlayerId: 'player-2', phase: 'mustDraw' },
-      },
-    }))
-    render(
-      <GameTable
-        initialState={actionState([...invalidCards, card('king', 'diamonds')])}
-        createGame={createGame}
-      />,
-    )
+  it('keeps pending bot playback and its events when Nuova partita is cancelled', () => {
+    const state = automaticSequenceState(true)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const onLeaveMatch = vi.fn()
+    render(<GameTable initialState={state} onLeaveMatch={onLeaveMatch} />)
 
-    for (const selected of invalidCards) {
-      fireEvent.click(screen.getByRole('button', { name: cardLabel(selected) }))
-    }
-    fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
-    expect(screen.getByRole('alert')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(state.players[0]!.hand[0]!) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    })
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(onLeaveMatch).not.toHaveBeenCalled()
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
+    expect(timeline).toHaveTextContent('North pesca dal tallone.')
+    expect(vi.getTimerCount()).toBe(1)
+
     playPendingBots()
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(timeline).getAllByRole('listitem').length).toBeGreaterThan(1)
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
     expect(screen.getByText('Pesca')).toBeInTheDocument()
-    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
-    expect(within(timeline).getAllByRole('listitem').length).toBeGreaterThan(0)
-    expect(timeline).toHaveTextContent('North pesca dal tallone.')
   })
 
   it('does not render hidden pozzetto card labels in the acquisition event', () => {
@@ -470,22 +492,26 @@ describe('GameTable', () => {
     expect(timeline).not.toHaveTextContent(`North scarta ${cardLabel(priorDiscard)}.`)
   })
 
-  it('clears prior bot events when starting a new match', () => {
-    const state = automaticSequenceState(true)
+  it('requires confirmation to leave between smazzate of an unfinished match', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const createGame = vi.fn(() => dealInitialState(deck))
-    render(<GameTable initialState={state} createGame={createGame} />)
-
-    fireEvent.click(screen.getByRole('button', { name: cardLabel(state.players[0]!.hand[0]!) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
-    playPendingBots()
-    expect(within(screen.getByRole('region', { name: 'Cronologia bot' })).getAllByRole('listitem').length)
-      .toBeGreaterThan(0)
+    const onLeaveMatch = vi.fn()
+    render(<GameTable initialState={emptyCompletedRound()} createGame={createGame} onLeaveMatch={onLeaveMatch} />)
+    expect(screen.queryByRole('button', { name: 'Gioca ancora' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
 
-    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
-    expect(within(timeline).queryAllByRole('listitem')).toHaveLength(0)
-    expect(timeline).toHaveTextContent('Nessuna azione automatica in questa smazzata.')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(onLeaveMatch).not.toHaveBeenCalled()
+    expect(createGame).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Inizia smazzata 2' })).toBeInTheDocument()
+
+    confirm.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(onLeaveMatch).toHaveBeenCalledOnce()
+    expect(createGame).not.toHaveBeenCalled()
   })
 
   it('renders the engine scoring breakdown and removes gameplay controls for a completed round', () => {
@@ -550,35 +576,41 @@ describe('GameTable', () => {
     expect(screen.queryByRole('heading', { name: 'Punteggio cumulativo' })).not.toBeInTheDocument()
   })
 
-  it('shows the terminal four-round result and resets the complete match', () => {
-    const finalRound = emptyCompletedRound()
-    const initialMatch: MatchState = {
-      status: 'in-progress',
-      currentRoundNumber: 4,
-      currentRound: finalRound,
-      roundResults: [
-        settledResult(1, 100, 0),
-        settledResult(2, 100, 0),
-        settledResult(3, 100, 0),
-      ],
-    }
-    const createGame = vi.fn(() => dealInitialState(deck))
+  it.each(['Gioca ancora', 'Nuova partita'])(
+    'shows the terminal four-round result and leaves it through %s without confirmation',
+    (actionName) => {
+      const finalRound = emptyCompletedRound()
+      const initialMatch: MatchState = {
+        status: 'in-progress',
+        currentRoundNumber: 4,
+        currentRound: finalRound,
+        roundResults: [
+          settledResult(1, 100, 0),
+          settledResult(2, 100, 0),
+          settledResult(3, 100, 0),
+        ],
+      }
+      const confirm = vi.spyOn(window, 'confirm')
+      const createGame = vi.fn(() => dealInitialState(deck))
+      const onLeaveMatch = vi.fn()
 
-    render(<GameTable initialMatch={initialMatch} createGame={createGame} />)
+      render(<GameTable initialMatch={initialMatch} createGame={createGame} onLeaveMatch={onLeaveMatch} />)
 
-    expect(screen.getByText('Smazzata 4/4')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Risultato finale' })).toBeInTheDocument()
-    expect(screen.getByText('Match Points')).toHaveTextContent('300')
-    const victoryPoints = screen.getByLabelText('Victory Points')
-    expect(within(victoryPoints).getByText('11 VP')).toBeInTheDocument()
-    expect(within(victoryPoints).getByText('9 VP')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Inizia smazzata 5/ })).not.toBeInTheDocument()
+      expect(screen.getByText('Smazzata 4/4')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Risultato finale' })).toBeInTheDocument()
+      expect(screen.getByText('Match Points')).toHaveTextContent('300')
+      const victoryPoints = screen.getByLabelText('Victory Points')
+      expect(within(victoryPoints).getByText('11 VP')).toBeInTheDocument()
+      expect(within(victoryPoints).getByText('9 VP')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Inizia smazzata 5/ })).not.toBeInTheDocument()
+      expect(within(screen.getByRole('region', { name: 'Punteggio cumulativo' }))
+        .getByRole('button', { name: 'Gioca ancora' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+      fireEvent.click(screen.getByRole('button', { name: actionName }))
 
-    expect(createGame).toHaveBeenCalledOnce()
-    expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Tavolo di Burraco' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Risultato finale' })).not.toBeInTheDocument()
-  })
+      expect(confirm).not.toHaveBeenCalled()
+      expect(onLeaveMatch).toHaveBeenCalledOnce()
+      expect(createGame).not.toHaveBeenCalled()
+    },
+  )
 })

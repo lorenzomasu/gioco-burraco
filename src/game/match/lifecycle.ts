@@ -1,4 +1,5 @@
-import { startGame } from '../engine/startGame'
+import type { RandomSource } from '../cards/shuffle'
+import { startGame, type RoundSetupOptions } from '../engine/startGame'
 import { calculateRoundScore } from '../scoring'
 import type { CompletedGameState, GameState, PlayerId, TeamId } from '../state/types'
 import { calculateFourRoundOutcome } from './victoryPoints'
@@ -38,9 +39,23 @@ const ROUND_STARTING_PLAYERS: Readonly<Record<MatchRoundNumber, PlayerId>> = {
 export const getRoundStartingPlayerId = (roundNumber: MatchRoundNumber): PlayerId =>
   ROUND_STARTING_PLAYERS[roundNumber]
 
+export type MatchRoundFactoryOptions = Readonly<{
+  /** Display names applied to every round of the match; configuration metadata only. */
+  playerNames?: RoundSetupOptions['playerNames']
+  /** Explicit shuffle source shared by every round; defaults to `Math.random`. */
+  random?: RandomSource
+}>
+
+/**
+ * Builds the factory for one match: every fresh round is shuffled, starts on the player
+ * requested by the match schedule, and carries the same configured player names.
+ */
+export const createMatchRoundFactory = (
+  { playerNames, random }: MatchRoundFactoryOptions = {},
+): RoundFactory => ({ startingPlayerId }) => startGame(random, { startingPlayerId, playerNames })
+
 /** Default factory: a freshly shuffled round starting on the requested player. */
-export const createMatchRound: RoundFactory = ({ startingPlayerId }) =>
-  startGame(undefined, { startingPlayerId })
+export const createMatchRound: RoundFactory = createMatchRoundFactory()
 
 const createRound = (roundFactory: RoundFactory, roundNumber: MatchRoundNumber) =>
   roundFactory({ roundNumber, startingPlayerId: getRoundStartingPlayerId(roundNumber) })

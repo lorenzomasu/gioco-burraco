@@ -138,6 +138,33 @@ describe('dealInitialState with an explicit starting player', () => {
   })
 })
 
+describe('dealInitialState with configured player names', () => {
+  const orderedDeck = createBurracoDeck()
+
+  it('keeps the default seat names when none are configured', () => {
+    expect(dealInitialState(orderedDeck).players.map(({ name }) => name))
+      .toEqual(['You', 'North', 'Partner', 'South'])
+  })
+
+  it('renames only the configured seat and changes nothing else', () => {
+    const byDefault = dealInitialState(orderedDeck, { startingPlayerId: 'player-2' })
+    const named = dealInitialState(orderedDeck, { startingPlayerId: 'player-2', playerNames: { 'player-1': 'Lorenzo' } })
+
+    expect(named.players.map(({ id, name, teamId }) => ({ id, name, teamId }))).toEqual([
+      { id: 'player-1', name: 'Lorenzo', teamId: 'team-1' },
+      { id: 'player-2', name: 'North', teamId: 'team-2' },
+      { id: 'player-3', name: 'Partner', teamId: 'team-1' },
+      { id: 'player-4', name: 'South', teamId: 'team-2' },
+    ])
+    expect(named.players.map(({ hand }) => hand)).toEqual(byDefault.players.map(({ hand }) => hand))
+    expect(cardsInOriginalConsumptionOrder(named)).toEqual(orderedDeck)
+    expect({
+      ...named,
+      players: named.players.map((player, index) => ({ ...player, name: byDefault.players[index]!.name })),
+    }).toEqual(byDefault)
+  })
+})
+
 describe('startGame', () => {
   it('shuffles before applying the same deterministic deal', () => {
     const first = startGame(createSeededRandom(77))

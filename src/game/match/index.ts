@@ -2,6 +2,7 @@ export {
   advanceMatch,
   calculateCumulativeScores,
   createMatchRound,
+  createMatchRoundFactory,
   getFinalMatchOutcome,
   getRoundStartingPlayerId,
   MATCH_LIFECYCLE_ERROR_CODES,
@@ -11,6 +12,7 @@ export {
   synchronizeMatch,
   updateCurrentRound,
 } from './lifecycle'
+export type { MatchRoundFactoryOptions } from './lifecycle'
 export { calculateFourRoundOutcome } from './victoryPoints'
 export { MATCH_ROUND_COUNT } from './types'
 export type {
