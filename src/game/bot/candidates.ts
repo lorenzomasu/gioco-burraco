@@ -20,6 +20,7 @@ export type BotActionCandidate = Readonly<{
   kind: 'extend' | 'meld'
   state: InProgressGameState
   cardIds: readonly string[]
+  meldIndex: number
   cardsPlayed: number
   pointsPlayed: number
   wildcardsPlayed: number
@@ -139,6 +140,7 @@ const actionCandidate = ({
     kind,
     state: after,
     cardIds: sortedIds,
+    meldIndex,
     cardsPlayed: cards.length,
     pointsPlayed: cards.reduce((total, card) => total + cardValue(card), 0),
     wildcardsPlayed: cards.filter(isWildcard).length,

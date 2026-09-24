@@ -481,6 +481,28 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
 .rule-error p { margin: 0; display: flex; flex: 1; flex-direction: column; font-size: .78rem; }
 .rule-error button { border: 0; color: inherit; background: transparent; cursor: pointer; font-size: 1.2rem; }
 
+.bot-timeline {
+  width: min(1480px, 100%);
+  margin: 1rem auto 0;
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 1rem;
+  background: rgba(3, 24, 18, .72);
+}
+
+.bot-timeline__header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.bot-timeline__header h2 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.15rem; }
+.bot-timeline__list {
+  margin: .8rem 0 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: .38rem;
+  color: #dbe8e1;
+  font-size: .82rem;
+}
+.bot-timeline__list li::marker { color: #f6c760; font-variant-numeric: tabular-nums; }
+.bot-timeline__empty { margin: .65rem 0 0; color: #b9cfc5; font-size: .8rem; }
+
 .round-complete {
   width: min(950px, 100%);
   margin: clamp(3rem, 9vh, 8rem) auto 0;
@@ -501,6 +523,10 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   background: rgba(3, 24, 18, .72);
   text-align: center;
 }
+
+.round-complete + .bot-timeline,
+.match-summary + .bot-timeline,
+.bot-timeline:has(+ .match-summary) { width: min(950px, 100%); }
 
 .match-summary h2,
 .final-result h3 {

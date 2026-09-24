@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { playBotsUntilHumanTurn } from '../game/bot'
+import {
+  playBotsUntilHumanTurnWithTrace,
+  type BotPublicActionEvent,
+} from '../game/bot'
 import { GameRuleError } from '../game/engine/errors'
 import { extendMeld } from '../game/engine/extendMeld'
 import { playMeld } from '../game/engine/playMeld'
@@ -16,6 +19,7 @@ import {
   type MatchState,
 } from '../game/match'
 import type { GameState, InProgressGameState, Player, PlayerId } from '../game/state/types'
+import { BotActionTimeline } from './BotActionTimeline'
 import { sortCardsForDisplay } from './cardPresentation'
 import { MeldArea } from './MeldArea'
 import { PlayerSeat } from './PlayerSeat'
@@ -31,11 +35,19 @@ type GameTableProps = Readonly<{
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
 const humanPlayerId: PlayerId = 'player-1'
 
-const prepareMatchForUi = (match: MatchState): MatchState => {
+type GameTableSession = Readonly<{
+  match: MatchState
+  botEvents: readonly BotPublicActionEvent[]
+}>
+
+const prepareMatchForUi = (match: MatchState): GameTableSession => {
   const synchronized = synchronizeMatch(match)
-  if (synchronized.status === 'completed') return synchronized
-  const automatedRound = playBotsUntilHumanTurn(synchronized.currentRound, humanPlayerId)
-  return updateCurrentRound(synchronized, automatedRound)
+  if (synchronized.status === 'completed') return { match: synchronized, botEvents: [] }
+  const automatedRound = playBotsUntilHumanTurnWithTrace(synchronized.currentRound, humanPlayerId)
+  return {
+    match: updateCurrentRound(synchronized, automatedRound.state),
+    botEvents: automatedRound.events,
+  }
 }
 
 const relativeSeats = (players: readonly Player[], activeId: PlayerId) => {
@@ -64,7 +76,7 @@ const italianErrorMessages: Readonly<Record<string, string>> = {
 }
 
 export function GameTable({ initialMatch, initialState, createGame = startGame }: GameTableProps) {
-  const [match, setMatch] = useState<MatchState>(() => {
+  const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
       ? {
           status: 'in-progress',
@@ -77,6 +89,7 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
+  const { match, botEvents } = session
   const game = match.currentRound
 
   const resetTransientState = () => {
@@ -85,19 +98,22 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
   }
 
   const beginNewMatch = () => {
-    setMatch(prepareMatchForUi(startMatch(createGame)))
+    setSession(prepareMatchForUi(startMatch(createGame)))
     resetTransientState()
   }
 
   const beginNextRound = () => {
-    setMatch(prepareMatchForUi(advanceMatch(match, createGame)))
+    setSession(prepareMatchForUi(advanceMatch(match, createGame)))
     resetTransientState()
   }
 
   const commitAction = (action: () => GameState) => {
     try {
-      const nextGame = playBotsUntilHumanTurn(action(), humanPlayerId)
-      setMatch(updateCurrentRound(match, nextGame))
+      const automated = playBotsUntilHumanTurnWithTrace(action(), humanPlayerId)
+      setSession({
+        match: updateCurrentRound(match, automated.state),
+        botEvents: [...botEvents, ...automated.events],
+      })
       resetTransientState()
     } catch (error) {
       if (!(error instanceof GameRuleError)) throw error
@@ -142,6 +158,7 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
       <main className="game-shell">
         {shellHeader}
         <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} />
+        <BotActionTimeline events={botEvents} players={game.players} />
         <section className="match-summary" aria-labelledby="match-summary-title">
           <span className="round-complete__eyebrow">
             {outcome ? 'Partita conclusa' : `Dopo ${match.currentRoundNumber} smazzate`}
@@ -319,6 +336,7 @@ export function GameTable({ initialMatch, initialState, createGame = startGame }
           )}
         </section>
       </section>
+      <BotActionTimeline events={botEvents} players={game.players} />
     </main>
   )
 }

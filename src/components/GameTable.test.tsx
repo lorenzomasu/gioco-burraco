@@ -204,6 +204,11 @@ describe('GameTable', () => {
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
     expect(screen.getByText('Pesca')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Mano di North' })).not.toBeInTheDocument()
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    const timelineItems = within(timeline).getAllByRole('listitem')
+    expect(timelineItems[0]).toHaveTextContent(/^North /)
+    expect(timelineItems.some((item) => item.textContent?.startsWith('Partner '))).toBe(true)
+    expect(timelineItems.some((item) => item.textContent?.startsWith('South '))).toBe(true)
   })
 
   it('creates a valid meld from selected physical cards', () => {
@@ -327,15 +332,28 @@ describe('GameTable', () => {
     expect(within(botTeamArea).getByText('Combinazione')).toBeInTheDocument()
     expect(within(botTeamArea).getAllByRole('img')).toHaveLength(3)
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    expect(timeline).toHaveTextContent(cardLabel(card('nine', 'clubs')))
+    expect(timeline).toHaveTextContent(cardLabel(card('nine', 'diamonds')))
+    expect(timeline).toHaveTextContent(cardLabel(card('nine', 'hearts')))
+    for (const drawItem of timeline.querySelectorAll('[data-event-type="draw-stock"]')) {
+      expect(drawItem).not.toHaveTextContent('mazzo')
+      expect(drawItem).not.toHaveTextContent(cardLabel(state.drawPile[0]!))
+    }
   })
 
   it('does not expose human controls during a bot turn that closes the round', () => {
-    render(<GameTable initialState={botClosureState()} />)
+    const state = botClosureState()
+    const discarded = state.players.find(({ id }) => id === 'player-2')!.hand[0]!
+    render(<GameTable initialState={state} />)
 
     expect(screen.getByRole('heading', { name: 'Ha chiuso North' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Cala' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Scarta e passa' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Mano di You' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Cronologia bot' })).toHaveTextContent(
+      `North scarta ${cardLabel(discarded)}.`,
+    )
   })
 
   it('runs pending bots after a new-game reset and clears transient state', () => {
@@ -368,6 +386,79 @@ describe('GameTable', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Mano di You' })).toBeInTheDocument()
     expect(screen.getByText('Pesca')).toBeInTheDocument()
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    expect(within(timeline).getAllByRole('listitem').length).toBeGreaterThan(0)
+    expect(timeline).toHaveTextContent('North pesca dal tallone.')
+  })
+
+  it('does not render hidden pozzetto card labels in the acquisition event', () => {
+    const initial = automaticSequenceState()
+    const state: InProgressGameState = {
+      ...initial,
+      players: initial.players.map((player) => player.id === 'player-2'
+        ? {
+            ...player,
+            hand: [card('ten', 'clubs'), card('ten', 'diamonds'), card('ten', 'hearts')],
+          }
+        : player),
+      round: {
+        status: 'in-progress',
+        turn: {
+          currentPlayerId: 'player-2',
+          phase: 'action',
+          acquisition: { source: 'drawPile', cardIds: [] },
+        },
+      },
+    }
+
+    render(<GameTable initialState={state} />)
+
+    const pozzettoItem = screen.getByText('North prende il pozzetto al volo.')
+    expect(pozzettoItem).not.toHaveTextContent('mazzo')
+    for (const hiddenCard of state.pozzetti[0]) {
+      expect(pozzettoItem).not.toHaveTextContent(cardLabel(hiddenCard))
+    }
+  })
+
+  it('clears the completed-round timeline before starting the next smazzata', () => {
+    const completedByBot = botClosureState()
+    const priorDiscard = completedByBot.players.find(({ id }) => id === 'player-2')!.hand[0]!
+    const pendingBotRound = automaticSequenceState()
+    const createGame = vi.fn((): InProgressGameState => ({
+      ...pendingBotRound,
+      round: {
+        status: 'in-progress',
+        turn: { currentPlayerId: 'player-2', phase: 'mustDraw' },
+      },
+    }))
+    render(<GameTable initialState={completedByBot} createGame={createGame} />)
+
+    expect(within(screen.getByRole('region', { name: 'Cronologia bot' })).getAllByRole('listitem'))
+      .toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    expect(within(timeline).getAllByRole('listitem').length).toBeGreaterThan(0)
+    expect(timeline).toHaveTextContent('North pesca dal tallone.')
+    expect(timeline).not.toHaveTextContent(`North scarta ${cardLabel(priorDiscard)}.`)
+  })
+
+  it('clears prior bot events when starting a new match', () => {
+    const state = automaticSequenceState(true)
+    const createGame = vi.fn(() => dealInitialState(deck))
+    render(<GameTable initialState={state} createGame={createGame} />)
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(state.players[0]!.hand[0]!) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    expect(within(screen.getByRole('region', { name: 'Cronologia bot' })).getAllByRole('listitem').length)
+      .toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+
+    const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
+    expect(within(timeline).queryAllByRole('listitem')).toHaveLength(0)
+    expect(timeline).toHaveTextContent('Nessuna azione automatica in questa smazzata.')
   })
 
   it('renders the engine scoring breakdown and removes gameplay controls for a completed round', () => {

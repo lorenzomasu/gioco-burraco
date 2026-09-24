@@ -72,6 +72,13 @@ same history-aware extension validator as the engine.
 
 Do not duplicate game-rule validation inside bot strategy code.
 
+Bot public action events are transient execution metadata produced only by the bot
+orchestration layer after successful engine transitions commit. They are not stored
+in `GameState` or `MatchState`. React may retain and render these events for the
+current smazzata, but must not infer them by diffing game states. Public events must
+never expose stock identities, unrevealed pozzetto contents, rejected candidates,
+or other hidden strategy information.
+
 ## Match lifecycle
 
 `GameState` remains the complete state of exactly one smazzata. The match layer owns
