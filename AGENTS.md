@@ -33,7 +33,7 @@ Follow `docs/WORKFLOW.md` unless the user explicitly requests a different proces
 
 ## Git workflow
 
-Work on a dedicated branch.
+Work on a dedicated branch. An approved delivery batch may share one batch branch across sequential milestone specifications as defined in `docs/WORKFLOW.md`.
 
 Never modify `main` directly.
 
@@ -67,15 +67,15 @@ Prefer deterministic tests.
 
 ## Verification
 
-Before declaring a task complete, run:
+Before declaring a standalone task or an approved delivery batch complete, run:
 
 npm run verify
 
-Never claim that verification passed unless it was actually executed.
+For an internal milestone checkpoint inside an approved batch, use targeted tests/checks and continue without the full gate unless risk requires it. Never claim that canonical verification passed unless it was actually executed.
 
 ## Completion report
 
-Report:
+Report concisely and do not restate the specification. For a standalone milestone report the items below; for a batch use `docs/milestones/reports/BATCH-TEMPLATE.md`.
 
 - current branch;
 - commit SHA, if applicable;
