@@ -410,11 +410,40 @@ Update this roadmap explicitly for any material change to product objectives, or
 
 ---
 
+# V1.1.1 — Table flow & mobile polish corrective release
+
+## Why this patch exists
+
+Post-v1.1 playtesting found four connected usability problems in the active table:
+
+- the teammate is visually seated beside the human instead of opposite, so the clockwise turn flow is harder to follow;
+- public team melds use internal scrolling, making the board state harder to read at a glance;
+- normal bot playback advances too quickly to follow comfortably;
+- the active table still carries too much dashboard-like chrome and does not yet feel sufficiently direct or polished on mobile.
+
+These are presentation/interaction corrections to the released v1.1 product. They do not change Burraco legality, scoring, team membership, hidden information or the deterministic engine.
+
+## Corrective milestone
+
+`M33.1 Table Flow & Mobile Polish` → release `v1.1.1`.
+
+### M33.1 — Table Flow & Mobile Polish
+
+**Outcome:** make the live table easier to understand without scrolling or mentally reconstructing turn order. The human remains at the bottom; their teammate is opposite at the top; the next/previous opponents occupy the left/right seats so the visual order follows the existing clockwise player order. Public melds remain simultaneously visible through adaptive density rather than ordinary internal scrolling, bot playback becomes followable at normal speed, and the active-match chrome is reduced/refined without weakening accessibility or existing actions.
+
+**Dependency:** released `v1.1.0` baseline.
+
+**Release role:** standalone corrective delivery and patch release. After independent review and exact-SHA PR/CI merge, the post-merge production workflow and deployed smoke must be green before tagging that exact SHA as `v1.1.1`.
+
+**Boundary:** no game-rule, scoring, bot-strategy, persistence-schema, match-length, difficulty or PWA work belongs here.
+
+After `v1.1.1`, continue with the v1.2 sequence below.
+
 # V1.2 — Single-player depth & installable app
 
 ## Product outcome and boundary
 
-V1.1 established the table interaction model, full discard visibility, direct manipulation, motion, sound, responsive polish and release hardening. V1.2 should add meaningful replayability and make the browser client behave more like an installable app without opening the much larger online/backend scope.
+V1.1 established the table interaction model, full discard visibility, direct manipulation, motion, sound, responsive polish and release hardening. The v1.1.1 corrective patch then fixes post-release table-flow, meld-density and bot-pacing issues before new product scope begins. V1.2 should add meaningful replayability and make the browser client behave more like an installable app without opening the much larger online/backend scope.
 
 Keep the rules baseline, deterministic engine, physical-card identity, hidden-information guarantees, one-human/three-bot team structure and static-client deployment model. New setup options must be explicit product choices rather than silent rule changes. Online multiplayer, accounts, cloud sync, leaderboards and a full replay system remain outside this cycle.
 
@@ -434,7 +463,7 @@ M34, M35 and M37 cross boundaries that justify standalone review gates. M36 is p
 
 The milestone specification must resolve the exact supported presets from the current rules/product model rather than invent arbitrary values. Generalize match lifecycle, completion/progress presentation and tests only as far as required by those presets. Persist the chosen configuration safely and define backward compatibility for existing v1.1 local saves.
 
-**Dependency:** released v1.1 baseline.
+**Dependency:** released v1.1.1 corrective baseline.
 
 **Risk boundary:** match lifecycle and persistence. Deliver standalone.
 
