@@ -19,6 +19,12 @@ import {
   saveAudioPreferences,
   type AudioPreferences,
 } from './shell/audioPreferences'
+import {
+  guidanceAfterMatchCompletion,
+  loadGuidancePreferences,
+  saveGuidancePreferences,
+  type GuidancePreferences,
+} from './shell/guidancePreferences'
 import { createSetupRoundFactory, type MatchSetup } from './shell/matchSetup'
 
 type AppProps = Readonly<{
@@ -110,6 +116,10 @@ export default function App({
   const [overlay, setOverlay] = useState<ShellOverlay>(null)
   const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   const [audioPreferences, setAudioPreferences] = useState<AudioPreferences>(() => loadAudioPreferences(storage))
+  // M36 contextual guidance: browser-local presentation preference, independent of the save.
+  const [guidancePreferences, setGuidancePreferences] = useState<GuidancePreferences>(
+    () => loadGuidancePreferences(storage),
+  )
   // One presentation-only sound service for the application's lifetime.
   const [sound] = useState(() => createSoundController(createSoundBackend, audioPreferences))
   const [playSounds] = useState(() => sound.play)
@@ -138,6 +148,14 @@ export default function App({
     saveAudioPreferences(storage, next)
   }
 
+  const changeGuidancePreferences = (next: GuidancePreferences) => {
+    if (next.enabled === guidancePreferences.enabled && next.completedOnce === guidancePreferences.completedOnce) return
+    setGuidancePreferences(next)
+    // Like audio, a write failure keeps the in-memory state and never touches the match save.
+    saveGuidancePreferences(storage, next)
+  }
+  const setGuidanceEnabled = (enabled: boolean) => changeGuidancePreferences({ ...guidancePreferences, enabled })
+
   // The single Help and Settings entries, shared by onboarding and every match view.
   const shellActions = (
     <>
@@ -161,6 +179,8 @@ export default function App({
           onSpeedChange={setPlaybackSpeed}
           audio={audioPreferences}
           onAudioChange={changeAudioPreferences}
+          guidanceEnabled={guidancePreferences.enabled}
+          onGuidanceEnabledChange={setGuidanceEnabled}
           onClose={() => setOverlay(null)}
         />
       )}
@@ -193,6 +213,8 @@ export default function App({
   const persistMatch = (match: MatchState) => {
     if (match.status === 'completed') {
       clearMatchSave(storage)
+      // Only the authoritative completed match ends the first guided match (M36).
+      changeGuidancePreferences(guidanceAfterMatchCompletion(guidancePreferences))
     } else if (!saveMatch(setup, match, storage)) {
       setNotice(SAVE_FAILED_NOTICE)
     }
@@ -232,6 +254,7 @@ export default function App({
         playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
         shellActions={shellActions}
+        guidance={{ enabled: guidancePreferences.enabled, onDismiss: () => setGuidanceEnabled(false) }}
       />
     </SoundContext>,
   )

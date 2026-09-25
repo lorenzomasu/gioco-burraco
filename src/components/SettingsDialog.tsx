@@ -9,14 +9,24 @@ type SettingsDialogProps = Readonly<{
   onSpeedChange: (speed: BotPlaybackSpeed) => void
   audio: AudioPreferences
   onAudioChange: (preferences: AudioPreferences) => void
+  guidanceEnabled: boolean
+  onGuidanceEnabledChange: (enabled: boolean) => void
   onClose: () => void
 }>
 
 /**
- * The single app-level settings surface. Both preferences are shell presentation state:
+ * The single app-level settings surface. Every preference is shell presentation state:
  * opening, changing or closing it never touches `GameState`, `MatchState` or the match save.
  */
-export function SettingsDialog({ speed, onSpeedChange, audio, onAudioChange, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  speed,
+  onSpeedChange,
+  audio,
+  onAudioChange,
+  guidanceEnabled,
+  onGuidanceEnabledChange,
+  onClose,
+}: SettingsDialogProps) {
   return (
     <Dialog title="Impostazioni" onClose={onClose} className="dialog--settings">
       <div className="settings-section">
@@ -26,6 +36,19 @@ export function SettingsDialog({ speed, onSpeedChange, audio, onAudioChange, onC
       <div className="settings-section">
         <AudioControls preferences={audio} onChange={onAudioChange} />
         <p className="settings-section__help">Effetti brevi e facoltativi: ogni informazione resta visibile anche senza audio.</p>
+      </div>
+      <div className="settings-section">
+        <label className="settings-toggle">
+          <input
+            type="checkbox"
+            checked={guidanceEnabled}
+            onChange={(event) => onGuidanceEnabledChange(event.target.checked)}
+          />
+          Guida contestuale
+        </label>
+        <p className="settings-section__help">
+          Durante la partita spiega cosa puoi fare nella fase in corso e perché alcuni comandi non sono disponibili.
+        </p>
       </div>
     </Dialog>
   )

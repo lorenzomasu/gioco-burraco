@@ -9,7 +9,7 @@ import {
   type BotDifficulty,
   type BotPublicActionEvent,
 } from '../game/bot'
-import { GameRuleError } from '../game/engine/errors'
+import { GameRuleError, type GameErrorCode } from '../game/engine/errors'
 import { extendMeld } from '../game/engine/extendMeld'
 import { playMeld } from '../game/engine/playMeld'
 import { discardCard, drawCard, takeDiscardPile } from '../game/engine/turn'
@@ -30,6 +30,8 @@ import { BotActionTimeline } from './BotActionTimeline'
 import { BotSpeedControl } from './BotSpeedControl'
 import { Dialog } from './Dialog'
 import { DiscardPile } from './DiscardPile'
+import { GuidedCoach } from './GuidedCoach'
+import { deriveCoaching } from './guidedCoaching'
 import {
   canShiftCards,
   inVisibleOrder,
@@ -90,6 +92,12 @@ type GameTableProps = Readonly<{
    * table without them shows its own bot-speed control instead.
    */
   shellActions?: ReactNode
+  /**
+   * Shell-owned contextual guidance (M36). When provided and enabled, the active match
+   * shows the non-modal coach with a dismiss control; otherwise the compact one-line
+   * guidance is kept. A standalone table without it stays compact.
+   */
+  guidance?: Readonly<{ enabled: boolean; onDismiss: () => void }>
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -359,6 +367,7 @@ export function GameTable({
   onMatchChange,
   focusContextOnMount = false,
   shellActions,
+  guidance: guidanceControl,
 }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
@@ -374,6 +383,8 @@ export function GameTable({
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
   const [ruleError, setRuleError] = useState<string | null>(null)
+  // Code of the engine rejection behind `ruleError`, for contextual coaching only.
+  const [rejectionCode, setRejectionCode] = useState<GameErrorCode | null>(null)
   const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   // Visual disclosure state only; the history log stays mounted either way.
   const [historyExpanded, setHistoryExpanded] = useState(false)
@@ -477,14 +488,16 @@ export function GameTable({
   }
 
   /** Shows a refused action (engine or interaction-structural) with its UI-only sound. */
-  const rejectAction = (message: string) => {
+  const rejectAction = (message: string, code: GameErrorCode | null = null) => {
     setRuleError(message)
+    setRejectionCode(code)
     playSounds(['invalid'])
   }
 
   const resetTransientState = () => {
     setSelectedCardIds(new Set())
     setRuleError(null)
+    setRejectionCode(null)
   }
 
   /**
@@ -568,7 +581,7 @@ export function GameTable({
       resetTransientState()
     } catch (error) {
       if (!(error instanceof GameRuleError)) throw error
-      rejectAction(italianErrorMessages[error.code] ?? error.message)
+      rejectAction(italianErrorMessages[error.code] ?? error.message, error.code)
     }
   }
 
@@ -819,6 +832,25 @@ export function GameTable({
     canTakeDiscardPile,
     hasTeamMelds: activeTeam.melds.length > 0,
   })
+  // M36: the coach reads only public/presentation facts and the committed feedback cue.
+  const coaching = guidanceControl?.enabled ? deriveCoaching({
+    isBotPlaying,
+    automationFailed,
+    phase: round.turn.phase,
+    canDrawStock,
+    canTakeDiscardPile,
+    selectedCount: selectedCardIds.size,
+    hasTeamMelds: game.teams.some((team) => team.id === humanPlayer.teamId && team.melds.length > 0),
+    rejectionCode,
+    pozzettoTaken: {
+      ownTeam: feedback?.pozzettoTeamIds.includes(humanPlayer.teamId) ?? false,
+      opponentTeam: feedback?.pozzettoTeamIds.some((teamId) => teamId !== humanPlayer.teamId) ?? false,
+    },
+    burracoReached: {
+      ownTeam: feedback?.burracoMelds.some(({ teamId }) => teamId === humanPlayer.teamId) ?? false,
+      opponentTeam: feedback?.burracoMelds.some(({ teamId }) => teamId !== humanPlayer.teamId) ?? false,
+    },
+  }) : null
   // Presentation-only cues for the latest committed change (see `tableFeedback.ts`).
   const cuedAction = feedback?.action?.type
   const isHumanCue = feedback !== null && feedback.actorId === null
@@ -901,7 +933,9 @@ export function GameTable({
                   </div>
                 )}
               </div>
-              <p className="turn-guidance">{guidance}</p>
+              {coaching && guidanceControl
+                ? <GuidedCoach coaching={coaching} onDismiss={guidanceControl.onDismiss} />
+                : <p className="turn-guidance">{guidance}</p>}
               {completeNowButton}
             </div>
 
@@ -1080,7 +1114,10 @@ export function GameTable({
               <button
                 type="button"
                 className="rule-error__dismiss"
-                onClick={() => setRuleError(null)}
+                onClick={() => {
+                  setRuleError(null)
+                  setRejectionCode(null)
+                }}
                 aria-label="Chiudi messaggio di errore"
               >
                 ×

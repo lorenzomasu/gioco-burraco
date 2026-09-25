@@ -135,6 +135,19 @@ button { font: inherit; }
 .audio-controls input[type='range'] { width: 6.5rem; min-height: 2.75rem; }
 .audio-controls input:focus-visible { outline: 3px solid #f6c760; outline-offset: 2px; }
 .audio-controls__value { min-width: 2.6rem; font-variant-numeric: tabular-nums; }
+/* M36 contextual-guidance toggle, matching the native mute checkbox. */
+.settings-toggle {
+  min-height: 2.75rem;
+  padding: .3rem .6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: .7rem;
+  cursor: pointer;
+}
+.settings-toggle input { margin: 0; accent-color: #f6c760; }
+.settings-toggle input:focus-visible { outline: 3px solid #f6c760; outline-offset: 2px; }
 
 .round-indicator {
   padding: .2rem .6rem;
@@ -468,6 +481,38 @@ button { font: inherit; }
   line-height: 1.35;
   text-align: center;
 }
+
+/* M36: compact, non-modal contextual coach in place of the one-line guidance. */
+.guided-coach {
+  width: 100%;
+  max-width: 24rem;
+  padding: .45rem .6rem;
+  border: 1px solid rgba(246, 199, 96, .35);
+  border-radius: .6rem;
+  background: rgba(8, 30, 22, .72);
+  color: #e3eee8;
+  font-size: .76rem;
+  line-height: 1.35;
+}
+.guided-coach__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .25rem;
+}
+.guided-coach__title {
+  margin: 0;
+  color: #f6c760;
+  font-size: .78rem;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.guided-coach p { margin: .2rem 0 0; }
+.guided-coach__now { font-weight: 600; }
+.guided-coach__context { padding-left: .45rem; border-left: 2px solid #f6c760; }
+.guided-coach__unavailable { margin: .25rem 0 0; padding-left: 1rem; color: #bcd2c8; }
+.guided-coach__reminder { color: #bcd2c8; font-style: italic; }
 
 .pile-zone {
   flex: 1 1 22rem;
@@ -1565,6 +1610,7 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .turn-status { flex-basis: 100%; gap: .25rem; }
   .turn-banner { padding: .35rem .6rem; gap: .45rem; }
   .turn-guidance { font-size: .7rem; color: #bcd2c8; }
+  .guided-coach { max-width: none; padding: .35rem .5rem; font-size: .7rem; }
   /* M33.1: one-line meld headers and lighter persistent help keep the board state first. */
   .meld-area { padding: .4rem .45rem; }
   .meld-area h2 { font-size: .92rem; }
