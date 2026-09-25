@@ -71,6 +71,32 @@ const expectEveryPublicMeldCard = async (page: Page) => {
   }
 }
 
+/**
+ * Brings one team's meld area to the top of the viewport (page scrolling between table
+ * regions is allowed) and measures it there. `toBeVisible()` alone is not enough: an
+ * element below the fold is still "visible", so these are real viewport geometries.
+ */
+const meldAreaInViewport = (page: Page, team: 1 | 2) => page.evaluate((label) => {
+  const area = document.querySelector<HTMLElement>(`section[aria-label="${label}"]`)!
+  area.scrollIntoView({ block: 'start' })
+  const viewport = window.innerHeight
+  const rect = (element: Element) => element.getBoundingClientRect()
+  const inside = (element: Element) => rect(element).top >= -0.5 && rect(element).bottom <= viewport + 0.5
+  const melds = [...area.querySelectorAll('article')]
+  const cards = [...area.querySelectorAll('.meld__cards .playing-card')]
+  return {
+    viewport,
+    areaHeight: rect(area).height,
+    areaInside: inside(area),
+    firstMeldInside: inside(melds[0]!),
+    lastMeldInside: inside(melds.at(-1)!),
+    // Every meld and card of the team is inside the same viewport span at once.
+    meldsOutside: melds.filter((meld) => !inside(meld)).map((meld) => meld.getAttribute('aria-label')),
+    cardsOutside: cards.filter((card) => !inside(card)).length,
+    cardCount: cards.length,
+  }
+}, `Calate squadra ${team}`)
+
 const primaryControls = (page: Page): readonly Locator[] => [
   page.getByRole('button', { name: 'Cala', exact: true }),
   discardButton(page),
@@ -85,6 +111,7 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
   { width: 1440, height: 900 },
+  { width: 1280, height: 720 },
 ]) {
   test.describe(`${viewport.width} px`, () => {
     test.use({ viewport })
@@ -93,6 +120,19 @@ for (const viewport of [
       await openDenseTable(page)
       await expectNoDocumentOverflow(page)
       await expectEveryPublicMeldCard(page)
+
+      // Each team's complete meld area fits one viewport-height span: first and last meld
+      // (and every card) are inspectable together without further page scrolling.
+      for (const team of [1, 2] as const) {
+        const area = await meldAreaInViewport(page, team)
+        expect(area.areaHeight).toBeLessThanOrEqual(area.viewport)
+        expect(area.areaInside).toBe(true)
+        expect(area.firstMeldInside).toBe(true)
+        expect(area.lastMeldInside).toBe(true)
+        expect(area.meldsOutside).toEqual([])
+        expect(area.cardsOutside).toBe(0)
+        expect(area.cardCount).toBe(state.teams[team - 1]!.melds.reduce((total, meld) => total + meld.cards.length, 0))
+      }
 
       const facts = await layoutFacts(page)
       expect(facts.scrolling).toBe(0)
@@ -111,10 +151,18 @@ for (const viewport of [
         await expect(control).toBeVisible()
         expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(43.5)
       }
+      // The compact extension controls keep a 44 × 44 px hit area around their centre.
       for (const extend of await teamArea(page, 1).getByRole('button', { name: /^Aggiungi alla calata/ }).all()) {
-        const box = (await extend.boundingBox())!
-        expect(box.height).toBeGreaterThanOrEqual(43.5)
-        expect(box.width).toBeGreaterThanOrEqual(43.5)
+        const hits = await extend.evaluate((button) => {
+          // Centred, so every probe point lies inside the viewport.
+          button.scrollIntoView({ block: 'center', inline: 'center' })
+          const box = button.getBoundingClientRect()
+          const x = box.left + box.width / 2
+          const y = box.top + box.height / 2
+          return [[x - 21, y - 21], [x + 21, y - 21], [x - 21, y + 21], [x + 21, y + 21]]
+            .map(([px, py]) => button.contains(document.elementFromPoint(px!, py!)))
+        })
+        expect(hits).toEqual([true, true, true, true])
       }
     })
 

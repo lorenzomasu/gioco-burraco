@@ -346,10 +346,17 @@ tile width, card size and overlap to the available width, wraps a long sequence 
 another row, gives a meld of eight or more cards a whole grid row, and keeps every
 overlapped card's rank/suit corner visible and wildcard/pinella annotations uncovered.
 Burraco labels stay text; in dense tiles the meld type word is visually hidden but
-remains in the document. Narrow meld tiles shorten the visible extension label while its
-accessible name and 44 px target are unchanged. When content exceeds the viewport the
-page grows (document scroll) instead of hiding melds; there is never document-level
-horizontal overflow. The application header is a
+remains in the document. A dense board in a narrow meld area (phones and the wide-desktop
+meld columns, via a container query) switches to a compact overview with smaller cards
+and tighter tiles, keeping the same corner size. The extension control is visually
+compact (so it never sets a tile's row height) with an invisible 44 × 44 px hit area, and
+narrow tiles shorten its visible label while its accessible name is unchanged; on a full
+board the «Nuova calata» help text is visually hidden (still its description) except
+while a drag makes the target available. Together these keep each team's complete meld
+area within one viewport height for the stress fixture at every supported width, so the
+first and last meld of a team are inspectable together: the page may scroll between
+table regions on narrow layouts, never through one team's melds. There is never
+document-level horizontal overflow. The application header is a
 slim bar for the round indicator, a compact settled match score («La tua squadra» /
 «Avversari», from `calculateCumulativeScores`, never a partial-round score), the «Come si
 gioca» and «Impostazioni» entries and «Nuova partita»; «Completa subito» sits with the

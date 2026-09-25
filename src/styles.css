@@ -656,7 +656,9 @@ button { font: inherit; }
 }
 
 .meld-area--active { border-color: rgba(246, 199, 96, .7); box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .15); }
-.meld-area__header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.meld-area__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem .5rem; }
+/* Kicker and team name share one line so the header never costs the melds a row. */
+.meld-area__header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; }
 .meld-area__states { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .35rem; }
 .meld-area h2 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1rem; }
 
@@ -795,6 +797,40 @@ button { font: inherit; }
 .meld__cards .playing-card--annotated + .playing-card { margin-left: .2rem; }
 .meld__cards .playing-card__annotation { font-size: .56rem; line-height: 1.05; }
 
+/*
+ * Compact overview for a full board in a narrow meld area (phones, and the meld columns
+ * of wide desktop tables): smaller meld cards and tighter tiles keep each team's complete
+ * meld area within one screen height. The rank/suit corner keeps its readable size and
+ * remains exposed on every card.
+ */
+.meld-area { container: meld-area / inline-size; }
+@container meld-area (max-width: 23rem) {
+  .meld-area[data-density='dense'] .meld-list {
+    --meld-gap: .25rem;
+    --meld-card-w: 2.05rem;
+    --meld-card-h: 2.85rem;
+    --meld-card-strip: 1.2rem;
+    --meld-pip: .85rem;
+    --meld-corner: .6rem;
+  }
+  .meld-area[data-density='dense'] .meld { padding: .25rem .3rem .2rem; }
+  .meld-area[data-density='dense'] .meld__cards { row-gap: .2rem; padding-block: .15rem .2rem; }
+  .meld-area[data-density='dense'] .burraco-badge { padding: .1rem .35rem; gap: .2rem; }
+  .meld-area[data-density='dense'] .burraco-badge__kind { letter-spacing: .02em; }
+}
+
+/*
+ * The extension control is visually compact so it never sets a meld's row height; an
+ * invisible hit area keeps its 44 × 44 px pointer/touch target.
+ */
+.meld > .button { position: relative; z-index: 1; min-height: 1.6rem; padding: .15rem .55rem; }
+.meld > .button::after {
+  content: '';
+  position: absolute;
+  /* Per axis: grows the padding box to at least 2.75rem (44 px) around its centre. */
+  inset: min(0px, calc((100% - 2.75rem) / 2));
+}
+
 /* A long meld takes a whole row of the grid so its cards wrap as little as possible. */
 .meld[data-long] { grid-column: 1 / -1; }
 /* Dense tiles keep the type word for assistive technology and drop it visually. */
@@ -832,7 +868,7 @@ button { font: inherit; }
 }
 
 @container meld (max-width: 9.5rem) {
-  .meld > .button { min-width: 2.75rem; padding-inline: .3rem; font-size: 1rem; }
+  .meld > .button { min-width: 2rem; padding: 0 .3rem; font-size: .9rem; line-height: 1; }
   .meld > .button::before { content: '＋'; }
   .meld__add-text { display: none; }
 }
@@ -1421,13 +1457,16 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 @keyframes panel-rise { from { opacity: 0; translate: 0 .8rem; } to { opacity: 1; translate: 0 0; } }
 
 /*
- * Wide desktop tables fit the screen: seats, piles and the hand stay in one view. The
- * human's team melds sit on the teammate's side, the opponents' melds on the right-hand
- * opponent's side, the public piles between them; each meld area scrolls on its own.
+ * Wide desktop tables: three columns with the human's team melds, the public piles and
+ * the opponents' melds. Narrower seat columns leave the meld columns as wide as possible,
+ * so each team's complete meld area fits the screen height (M33.1); the table grows
+ * rather than hiding a meld, and no meld area ever scrolls on its own.
  */
 @media (min-width: 1200px) and (min-height: 640px) {
-  /* The table fills the screen and grows (the page scrolls) rather than hiding melds. */
-  .table-surface { min-height: max(calc(100dvh - 4.25rem), 36rem); }
+  .table-surface {
+    min-height: max(calc(100dvh - 4.25rem), 36rem);
+    grid-template-columns: minmax(8.5rem, 10.5rem) minmax(0, 1fr) minmax(8.5rem, 10.5rem);
+  }
   .table-center {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -1441,7 +1480,7 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .table-hub {
     grid-area: hub;
     /* Wide enough for an overlapping discard spread; the meld columns keep the rest. */
-    width: clamp(17.5rem, 23vw, 22rem);
+    width: clamp(16rem, 20vw, 20rem);
     flex-direction: column;
     flex-wrap: nowrap;
     align-self: center;
@@ -1454,8 +1493,6 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .pozzetti-counter { max-width: 5rem; }
   .player-seat { min-height: 3.5rem; padding-block: .45rem; }
   .player-seat__avatar { width: 2.1rem; flex-basis: 2.1rem; font-size: 1rem; }
-  .meld-area__header { flex-direction: column; align-items: flex-start; }
-  .meld-area__states { justify-content: flex-start; }
 }
 
 @media (max-width: 1000px) {
@@ -1530,8 +1567,6 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .turn-guidance { font-size: .7rem; color: #bcd2c8; }
   /* M33.1: one-line meld headers and lighter persistent help keep the board state first. */
   .meld-area { padding: .4rem .45rem; }
-  .meld-area__header { align-items: center; }
-  .meld-area__header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; }
   .meld-area h2 { font-size: .92rem; }
   .new-meld-target { margin-top: .35rem; padding: .3rem .5rem; }
   .new-meld-target__help { font-size: .64rem; }
@@ -1728,6 +1763,18 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 
 .new-meld-target[data-drop-target] { border-color: rgba(246, 199, 96, .55); color: #d6e6de; }
 .new-meld-target__label { color: #f8f4e9; font-size: .8rem; }
+/*
+ * On a full board the persistent help is secondary: it stays the target's description for
+ * assistive technology and reappears visually while a drag makes the target available.
+ */
+.meld-area:not([data-density='roomy']) .new-meld-target:not([data-drop-state]) .new-meld-target__help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .table-center > .meld-area .new-meld-target { flex: 0 0 auto; }
 
 /* A count badge that follows the pointer; fixed, so it never widens the page. */
