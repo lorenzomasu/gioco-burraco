@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { usePlaySounds } from '../audio/SoundContext'
 import {
   BotAutomationError,
   INITIAL_BOT_CHAIN_PROGRESS,
@@ -46,6 +47,7 @@ import {
   type HumanAction,
   type TableFeedback,
 } from './tableFeedback'
+import { finalAccentSounds, soundsForFeedback } from './tableSound'
 import { useHandDrag, type DropTarget } from './useHandDrag'
 
 type GameTableProps = Readonly<{
@@ -71,6 +73,8 @@ type GameTableProps = Readonly<{
    * match replaces onboarding. Later round/result replacements always move focus.
    */
   focusContextOnMount?: boolean
+  /** Shell-owned sound controls shown in the header (provisional M31 placement). */
+  audioControls?: ReactNode
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -148,6 +152,11 @@ type GameTableSession = Readonly<{
   feedback: TableFeedback | null
   /** Set once bot automation failed; stops playback until the session is replaced. */
   automationFailed: boolean
+  /**
+   * Whether «Completa subito» produced this session: its intermediate steps had no cue, so
+   * only the final committed state may sound once.
+   */
+  completedImmediately: boolean
 }>
 
 /** Starts a fresh session without resolving any pending bot; playback steps it later. */
@@ -157,6 +166,7 @@ const freshSession = (match: MatchState): GameTableSession => ({
   botProgress: INITIAL_BOT_CHAIN_PROGRESS,
   feedback: null,
   automationFailed: false,
+  completedImmediately: false,
 })
 
 const hasPendingBot = (match: MatchState): boolean =>
@@ -178,6 +188,7 @@ const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
     botProgress: step.progress,
     feedback: botStepFeedback(session.match.currentRound, step.state, step.events, session.feedback),
     automationFailed: false,
+    completedImmediately: false,
   }
 }
 
@@ -214,7 +225,7 @@ const completeBotPlayback = (session: GameTableSession): GameTableSession => {
   // A failure keeps every step committed before it, exactly as delayed playback would.
   if (next.automationFailed) current = next
   // Immediate completion skips every intermediate cue: nothing cosmetic is left pending.
-  return current === session ? current : { ...current, feedback: null }
+  return current === session ? current : { ...current, feedback: null, completedImmediately: true }
 }
 
 /**
@@ -298,6 +309,7 @@ export function GameTable({
   onPlaybackSpeedChange,
   onMatchChange,
   focusContextOnMount = false,
+  audioControls,
 }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
@@ -379,9 +391,39 @@ export function GameTable({
     return () => clearTimeout(timer)
   }, [session, playbackSpeed])
 
+  // Sounds follow committed presentation events exactly once: the M30 cue of a committed
+  // change, or only the final state after «Completa subito». Mounting or restoring a match,
+  // a fresh round and transient-only updates stay silent. Requests are fire-and-forget.
+  const playSounds = usePlaySounds()
+  const soundedSessionRef = useRef(session)
+  useEffect(() => {
+    const previous = soundedSessionRef.current
+    if (previous === session) return
+    soundedSessionRef.current = session
+    if (previous.match === session.match) return
+    const round = session.match.currentRound.round
+    const facts = {
+      roundCompleted: round.status === 'completed',
+      matchCompleted: session.match.status === 'completed',
+      humanTurn: round.status === 'in-progress' && round.turn.currentPlayerId === humanPlayerId,
+      fastPlayback: playbackSpeed === 'fast',
+    }
+    if (session.feedback && session.feedback !== previous.feedback) {
+      playSounds(soundsForFeedback(session.feedback, facts))
+    } else if (session.completedImmediately) {
+      playSounds(finalAccentSounds(facts))
+    }
+  }, [session, playbackSpeed, playSounds])
+
   const completeBotsNow = () => {
     // Replacing the session cancels any pending delayed step.
     setSession((current) => canPlayBots(current) ? completeBotPlayback(current) : current)
+  }
+
+  /** Shows a refused action (engine or interaction-structural) with its UI-only sound. */
+  const rejectAction = (message: string) => {
+    setRuleError(message)
+    playSounds(['invalid'])
   }
 
   const resetTransientState = () => {
@@ -431,16 +473,18 @@ export function GameTable({
         botProgress: INITIAL_BOT_CHAIN_PROGRESS,
         feedback: nextFeedback,
         automationFailed: false,
+        completedImmediately: false,
       })
       resetTransientState()
     } catch (error) {
       if (!(error instanceof GameRuleError)) throw error
-      setRuleError(italianErrorMessages[error.code] ?? error.message)
+      rejectAction(italianErrorMessages[error.code] ?? error.message)
     }
   }
 
   const toggleCard = (cardId: string) => {
     if (isBotPlaying) return
+    playSounds(['selection'])
     setSelectedCardIds((current) => {
       const next = new Set(current)
       if (next.has(cardId)) next.delete(cardId)
@@ -463,14 +507,14 @@ export function GameTable({
       return
     }
     if (!target || !isHumanActionPhase) {
-      setRuleError(isHumanActionPhase ? OUTSIDE_DROP_MESSAGE : REORDER_ONLY_DROP_MESSAGE)
+      rejectAction(isHumanActionPhase ? OUTSIDE_DROP_MESSAGE : REORDER_ONLY_DROP_MESSAGE)
       return
     }
     const teamId = game.players.find(({ id }) => id === humanPlayerId)!.teamId
     switch (target.kind) {
       case 'discard':
         if (payload.length !== 1) {
-          setRuleError(MULTI_CARD_DISCARD_MESSAGE)
+          rejectAction(MULTI_CARD_DISCARD_MESSAGE)
           return
         }
         commitAction(() => discardCard(game, humanPlayerId, payload[0]!), { type: 'discard' }, payload)
@@ -524,6 +568,7 @@ export function GameTable({
             </label>
           ))}
         </fieldset>
+        {audioControls}
         {onLeaveMatch && (
           <button type="button" className="button button--new button--compact" onClick={leaveMatch}>Nuova partita</button>
         )}

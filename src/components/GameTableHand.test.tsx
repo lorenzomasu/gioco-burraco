@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SoundContext } from '../audio/SoundContext'
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card, Rank, Suit } from '../game/cards/types'
 import { dealInitialState } from '../game/engine/startGame'
@@ -739,5 +740,24 @@ describe('GameTable direct manipulation and M30 motion', () => {
     render(<GameTable initialState={withHumanTurn(unsortedHand, 'action')} />)
     dragToBoundary(handButton(sortCardsForDisplay(unsortedHand)[0]!), 3)
     expect(animated).toEqual([])
+  })
+
+  it('requests the M31 invalid sound for a structural drop refusal and none for a reorder', () => {
+    const requests: string[][] = []
+    render(
+      <SoundContext value={(cues) => {
+        requests.push([...cues])
+      }}
+      >
+        <GameTable initialState={withHumanTurn(unsortedHand, 'action')} />
+      </SoundContext>,
+    )
+    dragToBoundary(handButton(sortCardsForDisplay(unsortedHand)[0]!), 3)
+    expect(requests).toEqual([])
+
+    dragTo(handButton(unsortedHand[0]!), null)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(OUTSIDE_DROP_MESSAGE)
+    expect(requests).toEqual([['invalid']])
   })
 })

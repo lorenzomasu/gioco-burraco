@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { SoundContext } from './audio/SoundContext'
+import { createSoundController, createWebAudioBackend, type SoundBackend } from './audio/soundEffects'
+import { AudioControls } from './components/AudioControls'
 import { GameTable, type BotPlaybackSpeed } from './components/GameTable'
 import { StartScreen } from './components/StartScreen'
 import type { MatchState, RoundFactory } from './game/match'
@@ -9,6 +12,11 @@ import {
   saveMatch,
   type MatchSaveLoadResult,
 } from './shell/matchPersistence'
+import {
+  loadAudioPreferences,
+  saveAudioPreferences,
+  type AudioPreferences,
+} from './shell/audioPreferences'
 import { createSetupRoundFactory, type MatchSetup } from './shell/matchSetup'
 
 type AppProps = Readonly<{
@@ -16,6 +24,10 @@ type AppProps = Readonly<{
   createRoundFactory?: (setup: MatchSetup) => RoundFactory
   /** Browser-local storage for the active-match save; `null` when unavailable. */
   storage?: Storage | null
+  /** Sound output seam; production synthesizes locally with Web Audio. */
+  createSoundBackend?: () => SoundBackend | null
+  /** Which input may unlock audio; browsers only allow trusted user gestures. */
+  isAudioActivation?: (event: Event) => boolean
 }>
 
 /**
@@ -47,9 +59,13 @@ const loadNotice = (result: MatchSaveLoadResult): string | null => {
   return null
 }
 
+const isTrustedGesture = (event: Event) => event.isTrusted
+
 export default function App({
   createRoundFactory = (setup) => createSetupRoundFactory(setup),
   storage = getBrowserStorage(),
+  createSoundBackend = createWebAudioBackend,
+  isAudioActivation = isTrustedGesture,
 }: AppProps) {
   const [initial] = useState(() => {
     const loaded = loadMatchSave(storage)
@@ -64,6 +80,35 @@ export default function App({
   const [lastPlayerName, setLastPlayerName] = useState(initial.name)
   const [notice, setNotice] = useState<string | null>(initial.notice)
   const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
+  const [audioPreferences, setAudioPreferences] = useState<AudioPreferences>(() => loadAudioPreferences(storage))
+  // One presentation-only sound service for the application's lifetime.
+  const [sound] = useState(() => createSoundController(createSoundBackend, audioPreferences))
+  const [playSounds] = useState(() => sound.play)
+
+  // Audio becomes eligible only on the first trusted user gesture; earlier presentation
+  // events (for example a restored bot turn) stay silent and are never replayed.
+  useEffect(() => {
+    if (sound.isActive()) return
+    const activate = (event: Event) => {
+      if (!isAudioActivation(event)) return
+      sound.activate()
+      removeListeners()
+    }
+    const events = ['pointerdown', 'keydown'] as const
+    const removeListeners = () => {
+      for (const type of events) window.removeEventListener(type, activate, true)
+    }
+    for (const type of events) window.addEventListener(type, activate, true)
+    return removeListeners
+  }, [sound, isAudioActivation])
+
+  const changeAudioPreferences = (next: AudioPreferences) => {
+    setAudioPreferences(next)
+    sound.setPreferences(next)
+    // A preference write failure needs no notice; the match save is never involved.
+    saveAudioPreferences(storage, next)
+  }
+  const audioControls = <AudioControls preferences={audioPreferences} onChange={changeAudioPreferences} />
 
   if (screen.kind === 'onboarding') {
     return (
@@ -91,7 +136,7 @@ export default function App({
   }
 
   return (
-    <>
+    <SoundContext value={playSounds}>
       {notice && <p className="storage-notice storage-notice--match" role="status">{notice}</p>}
       <GameTable
         initialMatch={screen.initialMatch}
@@ -106,7 +151,8 @@ export default function App({
         }}
         playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
+        audioControls={audioControls}
       />
-    </>
+    </SoundContext>
   )
 }

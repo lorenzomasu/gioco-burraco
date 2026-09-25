@@ -19,7 +19,8 @@ React components render state, collect player intent, and invoke the game engine
 - `src/game/match` — four-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
 - `src/game/bot` — deterministic bot candidate generation, ranking, and turn execution.
 - `src/components` — React UI for human and bot-controlled seats.
-- `src/shell` — application-shell helpers that turn onboarding choices into match configuration and persist the one active local match.
+- `src/shell` — application-shell helpers that turn onboarding choices into match configuration, persist the one active local match and store the separate sound preferences.
+- `src/audio` — the presentation-only sound service (locally synthesized effects) and its React context.
 
 Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`. Browser
 end-to-end tests of the built application live in `e2e/` as `*.spec.ts`. `scripts/`
@@ -374,6 +375,34 @@ never enter `GameState`, `MatchState` or the local save.
   the layer in CSS; a missing or failing Web Animations API leaves the static committed
   table. The M24 cues and the newly reached Burraco/pozzetto accents stay static-safe
   under the existing reduced-motion policy.
+
+### Sound effects
+
+Sound is optional presentation feedback owned by the application shell
+(`src/audio/soundEffects.ts`, `src/audio/SoundContext.ts`, `src/components/tableSound.ts`).
+It never enters `src/game`, `GameState`, `MatchState` or the match save.
+
+- Provenance: committed-action sounds come only from the same M30 `TableFeedback` cue, once
+  per committed session change (mounting, restoring, a fresh round and re-renders are
+  silent); card selection and refused actions (`GameRuleError` or a structural drop
+  refusal) request UI-only sounds. Sound names carry no card or hidden data.
+- Priority: one primary action sound plus at most one accent — match completion, round
+  completion, a new/changed Burraco, a taken pozzetto — and a turn cue only when no accent
+  applies; the human's returning turn has its own cue. Fast playback drops ordinary
+  bot-to-bot turn cues. «Completa subito» has no intermediate cues, so only one final accent
+  (completion or the human turn) may sound for the final state. There is no queue.
+- Non-gating: requests are fire-and-forget; no commit, bot timer, focus change, save or
+  playback delay waits for or depends on them, and every backend failure is swallowed.
+- Activation: the shell creates the Web Audio output lazily on the first trusted pointer or
+  keyboard gesture; requests before it (for example a restored bot turn) are dropped, never
+  replayed, and activating plays nothing by itself. Cues are synthesized locally: no asset,
+  network request or runtime dependency.
+- Preferences: `muted` and `volume` (`0..1`) live in `src/shell/audioPreferences.ts` under
+  their own versioned key `gioco-burraco:audio-preferences`, never `MATCH_SAVE_STORAGE_KEY`.
+  Corrupt, unsupported or unreadable data falls back to sound on at 60%; a failed write is
+  silent and never affects the match save. `AudioControls` is a reusable native checkbox
+  and slider. Reduced motion does not mute sound, and every state stays expressed in text
+  and visuals without it.
 
 ### Hand order and direct manipulation
 

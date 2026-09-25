@@ -101,6 +101,41 @@ button { font: inherit; }
   font-weight: 700;
 }
 
+/* M31 reusable sound preferences: native controls, state stated in text. */
+.audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #cfe0d8;
+  font-size: .74rem;
+}
+.audio-controls legend {
+  float: left;
+  margin-right: .25rem;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.audio-controls__mute {
+  min-height: 2.75rem;
+  padding: .3rem .6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: .7rem;
+  cursor: pointer;
+}
+.audio-controls input { margin: 0; accent-color: #f6c760; }
+.audio-controls input[type='range'] { width: 6.5rem; min-height: 2.75rem; }
+.audio-controls input:focus-visible { outline: 3px solid #f6c760; outline-offset: 2px; }
+.audio-controls__value { min-width: 2.6rem; font-variant-numeric: tabular-nums; }
+
 .round-indicator {
   padding: .2rem .6rem;
   border: 1px solid rgba(246, 199, 96, .35);
