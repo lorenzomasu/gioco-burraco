@@ -8,3 +8,6 @@ playwright-report/
 .env
 .env.*
 .DS_Store
+
+# M39 iOS spike web bundle (copied into the native shell by `cap sync ios`)
+dist-ios-spike/

@@ -1,0 +1,17 @@
+{
+  "appId": "com.lorenzomasu.burraco.spike",
+  "appName": "Burraco Spike",
+  "webDir": "dist-ios-spike",
+  "backgroundColor": "#071c17",
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "backgroundColor": "#071c17"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "overlaysWebView": true
+    }
+  }
+}

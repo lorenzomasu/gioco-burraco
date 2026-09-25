@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "dev:ios-spike": "vite --mode ios-spike",
+    "build:ios-spike": "tsc -b && vite build --mode ios-spike",
+    "ios:sync": "npm run build:ios-spike && cap sync ios",
+    "ios:open": "cap open ios",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
@@ -17,10 +21,15 @@
     "node": ">=22.23.2"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/status-bar": "^8.0.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
