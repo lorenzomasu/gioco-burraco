@@ -8,7 +8,13 @@ import type { Card, Rank, Suit } from '../game/cards/types'
 import { dealInitialState } from '../game/engine/startGame'
 import type { InProgressGameState } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import { BOT_PLAYBACK_DELAYS_MS, BOT_SIGNIFICANT_STEP_DELAYS_MS, GameTable } from './GameTable'
+
+/**
+ * Commits exactly one pending normal bot step, whichever cadence applies: the longer
+ * significant-change delay is shorter than two ordinary delays.
+ */
+const ONE_NORMAL_STEP_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const deck = createBurracoDeck()
 const card = (rank: Rank, suit: Suit, deckNumber: 1 | 2 = 1): Card =>
@@ -126,16 +132,16 @@ describe('GameTable M31 sound requests', () => {
     expect(requests).toEqual([['discard', 'turn']])
 
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
     })
     expect(requests.at(-1)).toEqual(['draw'])
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
     })
     expect(requests.at(-1)).toEqual(['discard', 'turn'])
     for (let step = 0; step < 4; step += 1) {
       act(() => {
-        vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+        vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
       })
     }
     expect(requests.at(-1)).toEqual(['discard', 'human-turn'])
@@ -145,7 +151,7 @@ describe('GameTable M31 sound requests', () => {
   it('sounds a bot meld with its pozzetto accent', () => {
     render(withSound(<GameTable initialState={botPozzettoState()} />))
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
     })
     expect(requests).toEqual([['play', 'pozzetto']])
   })

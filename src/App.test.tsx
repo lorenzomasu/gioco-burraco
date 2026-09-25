@@ -9,7 +9,12 @@ import { dealInitialState } from './game/engine/startGame'
 import { updateCurrentRound, type MatchState, type RoundFactory, type RoundFactoryContext } from './game/match'
 import type { InProgressGameState, PlayerId } from './game/state/types'
 import { cardLabel } from './components/cardPresentation'
-import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, LEAVE_MATCH_CONFIRMATION } from './components/GameTable'
+import {
+  BOT_PLAYBACK_DELAYS_MS,
+  BOT_SIGNIFICANT_STEP_DELAYS_MS,
+  BOT_STEP_DELAY_MS,
+  LEAVE_MATCH_CONFIRMATION,
+} from './components/GameTable'
 import { MATCH_SAVE_STORAGE_KEY, type MatchSaveEnvelope } from './shell/matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from './shell/matchSetup'
 import { createMemoryStorage } from './tests/memoryStorage'
@@ -112,6 +117,9 @@ const turnBanner = () => screen.getByText('Turno di').parentElement!
 const drawPileButton = () => screen.getByRole('button', { name: /^Pesca dal tallone/ })
 /** The bot speed radio inside the open shared Settings dialog. */
 const speedRadio = (label: 'Normale' | 'Veloce') => within(settingsDialog()!).getByRole('radio', { name: label })
+
+/** The normal delay after a player hand-off (for example the human's discard). */
+const HANDOFF_DELAY_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const advance = (ms: number) => {
   act(() => {
@@ -223,7 +231,7 @@ describe('App shell onboarding', () => {
     render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
     discardKingOfHearts()
-    advance(BOT_STEP_DELAY_MS)
+    advance(HANDOFF_DELAY_MS)
     expect(timelineTypes()).toEqual(['draw-stock'])
     const pileBefore = drawPileButton().getAttribute('aria-label')
 
@@ -566,7 +574,7 @@ describe('App local save and resume', () => {
       status: 'in-progress',
       turn: { currentPlayerId: 'player-2', phase: 'mustDraw' },
     })
-    advance(BOT_STEP_DELAY_MS - 1)
+    advance(HANDOFF_DELAY_MS - 1)
     expect(storedSave().match.currentRound.round).toMatchObject({ turn: { phase: 'mustDraw' } })
 
     advance(1)

@@ -7,7 +7,12 @@ import { startMatch, type MatchState } from '../game/match'
 import { MATCH_SAVE_STORAGE_KEY } from '../shell/matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from '../shell/matchSetup'
 import { createMemoryStorage } from '../tests/memoryStorage'
-import { BOT_AUTOMATION_FAILURE_MESSAGE, BOT_PLAYBACK_DELAYS_MS, GameTable } from './GameTable'
+import {
+  BOT_AUTOMATION_FAILURE_MESSAGE,
+  BOT_PLAYBACK_DELAYS_MS,
+  BOT_SIGNIFICANT_STEP_DELAYS_MS,
+  GameTable,
+} from './GameTable'
 import { leaveConfirmed } from '../tests/shellDialogs'
 
 /**
@@ -42,6 +47,12 @@ const failOnCall = (onCall: number, error: Error = new BotAutomationError('Bot p
 
 const seededFactory = (setup: MatchSetup) => createSetupRoundFactory(setup, createSeededRandom(25))
 const seededMatch = (): MatchState => startMatch(seededFactory({ humanPlayerName: 'Lorenzo' }))
+
+/**
+ * Commits exactly one pending normal bot step, whichever cadence applies to it: the longer
+ * significant-change delay is shorter than two ordinary delays.
+ */
+const ONE_NORMAL_STEP_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const advance = (ms: number) => {
   act(() => {
@@ -96,13 +107,13 @@ describe('GameTable bot automation failure', () => {
     humanDrawAndDiscard()
     failOnCall(2)
 
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expect(timelineItems()).toHaveLength(1)
     const committed = onMatchChange.mock.calls.at(-1)![0] as MatchState
     const tallone = drawPileButton().getAttribute('aria-label')
     const activeName = turnBanner().querySelector('strong')!.textContent
 
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expectAutomationFailureShown()
     expect(timelineItems()).toHaveLength(1)
     expect(drawPileButton()).toHaveAttribute('aria-label', tallone)
@@ -125,7 +136,7 @@ describe('GameTable bot automation failure', () => {
     const notifications = onMatchChange.mock.calls.length
     failOnCall(1)
 
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expectAutomationFailureShown()
     expect(timelineItems()).toHaveLength(0)
     expect(onMatchChange.mock.calls.length).toBe(notifications)
@@ -166,7 +177,7 @@ describe('GameTable bot automation failure', () => {
     render(<GameTable initialMatch={seededMatch()} />)
     humanDrawAndDiscard()
     failOnCall(1)
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expectAutomationFailureShown()
     const callsAfterFailure = chainStepSpy.mock.calls.length
 
@@ -184,7 +195,7 @@ describe('GameTable bot automation failure', () => {
     const { unmount } = render(<GameTable initialMatch={seededMatch()} />)
     humanDrawAndDiscard()
     failOnCall(1)
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expectAutomationFailureShown()
 
     unmount()
@@ -193,7 +204,7 @@ describe('GameTable bot automation failure', () => {
   })
 
   it.each([
-    ['delayed playback', () => advance(BOT_PLAYBACK_DELAYS_MS.normal)],
+    ['delayed playback', () => advance(ONE_NORMAL_STEP_MS)],
     ['Completa subito', () => fireEvent.click(completeNowButton()!)],
   ] as const)('does not convert a non-automation defect from %s into the bot error', (_, run) => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -229,7 +240,7 @@ describe('App recovery after a bot automation failure', () => {
     const savedAfterDiscard = storage.getItem(MATCH_SAVE_STORAGE_KEY)
     failOnCall(1)
 
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expectAutomationFailureShown()
     // The error neither discards nor rewrites the active save.
     expect(storage.getItem(MATCH_SAVE_STORAGE_KEY)).toBe(savedAfterDiscard)
@@ -244,7 +255,7 @@ describe('App recovery after a bot automation failure', () => {
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(automationAlert()).not.toBeInTheDocument()
     humanDrawAndDiscard()
-    advance(BOT_PLAYBACK_DELAYS_MS.normal)
+    advance(ONE_NORMAL_STEP_MS)
     expect(timelineItems()).toHaveLength(1)
     expect(automationAlert()).not.toBeInTheDocument()
   })

@@ -250,10 +250,10 @@ button { font: inherit; }
 }
 
 /*
- * M27 tabletop composition. The human sits at the bottom, the teammate on the left and the
- * opponents on top and on the right (visual mapping only). The table dominates the view:
- * opponents' melds face their side, the public piles sit in the middle and the human's
- * team melds are next to the hand.
+ * M27 tabletop composition, M33.1 seating: the human sits at the bottom, the teammate
+ * opposite on top and the opponents left/right in clockwise turn order (visual mapping
+ * only). The table dominates the view: the public piles sit in the middle, the opponents'
+ * melds on the far side and the human's team melds next to the hand.
  */
 .table-surface {
   width: min(1480px, 100%);
@@ -301,10 +301,21 @@ button { font: inherit; }
   transition: border-color .2s ease, box-shadow .2s ease;
 }
 
+/*
+ * M33.1: the current player is locatable at a glance on the table itself: a gold seat with
+ * a steady halo and a filled avatar, plus the «Di turno» text marker (never colour alone).
+ */
 .player-seat--active {
   border-color: #f6c760;
-  background: linear-gradient(160deg, rgba(246, 199, 96, .1), transparent 60%), rgba(5, 30, 23, .8);
-  box-shadow: 0 0 0 3px rgba(246, 199, 96, .16), 0 10px 25px rgba(0, 0, 0, .16);
+  background: linear-gradient(160deg, rgba(246, 199, 96, .3), rgba(246, 199, 96, .08) 70%), rgba(5, 30, 23, .92);
+  box-shadow: 0 0 0 3px rgba(246, 199, 96, .5), 0 0 26px 6px rgba(246, 199, 96, .32), 0 10px 25px rgba(0, 0, 0, .16);
+  animation: seat-halo 1.8s ease-in-out infinite alternate;
+}
+.player-seat--active .player-seat__avatar { background: #f6c760; box-shadow: 0 0 0 3px rgba(246, 199, 96, .35); }
+.player-seat--active .player-seat__details strong { color: #fff6dc; }
+@keyframes seat-halo {
+  from { box-shadow: 0 0 0 3px rgba(246, 199, 96, .5), 0 0 18px 3px rgba(246, 199, 96, .22), 0 10px 25px rgba(0, 0, 0, .16); }
+  to { box-shadow: 0 0 0 3px rgba(246, 199, 96, .6), 0 0 30px 8px rgba(246, 199, 96, .38), 0 10px 25px rgba(0, 0, 0, .16); }
 }
 
 /* Current-turn marker in text, so the active seat is not signalled by colour alone. */
@@ -633,17 +644,18 @@ button { font: inherit; }
   text-align: center;
 }
 
+/* M33.1: a soft zone of the felt rather than a framed panel. */
 .meld-area {
   position: relative;
   min-width: 0;
-  padding: .6rem .75rem;
-  border: 1px solid rgba(255, 255, 255, .12);
+  padding: .5rem .6rem;
+  border: 1px solid transparent;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .03), transparent 4rem), rgba(5, 37, 28, .48);
+  background: rgba(0, 0, 0, .12);
   transition: border-color .2s ease, box-shadow .2s ease;
 }
 
-.meld-area--active { border-color: #f6c760; box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .2), 0 8px 22px rgba(0, 0, 0, .14); }
+.meld-area--active { border-color: rgba(246, 199, 96, .7); box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .15); }
 .meld-area__header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem; }
 .meld-area__states { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .35rem; }
 .meld-area h2 { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1rem; }
@@ -663,29 +675,65 @@ button { font: inherit; }
 .pozzetto-status__icon { font-weight: 900; }
 .meld-area__empty { margin: .5rem 0 .25rem; color: #b9cfc5; font-size: .8rem; text-align: center; }
 
-/* Melds tile across the table width; long lists scroll inside their own area. */
-.meld-list {
-  max-height: 20rem;
-  margin-top: .5rem;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-  align-content: start;
-  gap: .5rem;
-  overflow: auto;
+/*
+ * M33.1 melds are board state, never scroll content: every meld and card of both teams is
+ * rendered at once. `data-density` (from the meld and card counts) and the width choose
+ * the tile width, card size and overlap; a long sequence wraps onto another row instead of
+ * scrolling. Each overlapped card still exposes its rank/suit corner.
+ */
+.meld-area {
+  --meld-min: 15rem;
+  --meld-gap: .5rem;
+  --meld-card-w: 2.9rem;
+  --meld-card-h: 4rem;
+  /* Visible strip of an overlapped card: always wider than its rank/suit corner. */
+  --meld-card-strip: 1.45rem;
+  --meld-pip: 1.25rem;
+  --meld-corner: .66rem;
 }
 
-/* The extension control sits beside the meld label to keep each meld short. */
+.meld-area[data-density='compact'] {
+  --meld-min: 9.5rem;
+  --meld-gap: .4rem;
+  --meld-card-w: 2.6rem;
+  --meld-card-h: 3.6rem;
+  --meld-card-strip: 1.32rem;
+  --meld-pip: 1.1rem;
+  --meld-corner: .64rem;
+}
+
+.meld-area[data-density='dense'] {
+  --meld-min: 6.75rem;
+  --meld-gap: .3rem;
+  --meld-card-w: 2.35rem;
+  --meld-card-h: 3.2rem;
+  --meld-card-strip: 1.22rem;
+  --meld-pip: .95rem;
+  --meld-corner: .62rem;
+}
+
+.meld-list {
+  margin-top: .45rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--meld-min)), 1fr));
+  align-content: start;
+  gap: var(--meld-gap);
+}
+
+/* The extension control sits beside the cards on a wide meld, on the label row otherwise. */
 .meld {
   position: relative;
   min-width: 0;
-  padding: .4rem .5rem .2rem;
+  padding: .35rem .45rem .25rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+  align-content: start;
   column-gap: .4rem;
   border: 1px solid rgba(255, 255, 255, .06);
   border-radius: .7rem;
   background: rgba(0, 0, 0, .14);
+  container: meld / inline-size;
 }
 
 /* A Burraco reads as an achievement: tinted frame per classification, text badge stays authoritative. */
@@ -728,13 +776,66 @@ button { font: inherit; }
 .burraco-badge__kind { font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; }
 .burraco-badge--semi-clean { background: #c8d8dd; }
 .burraco-badge--dirty { color: #f7eee3; background: #9b5a48; }
-.meld__cards { grid-column: 1; min-width: 0; padding: .25rem .2rem .45rem; display: flex; overflow-x: auto; }
-.meld__cards .playing-card + .playing-card { margin-left: -1.45rem; }
+.meld__cards {
+  grid-column: 1;
+  min-width: 0;
+  /* The strip offset keeps the first card of every wrapped row inside the meld. */
+  padding: .2rem .15rem .3rem calc(.15rem + var(--meld-card-w) - var(--meld-card-strip));
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: .3rem;
+}
+.meld__cards .playing-card { margin-left: calc(var(--meld-card-strip) - var(--meld-card-w)); }
 /* Meld cards are a smaller table size; rank and suit stay in the readable corner. */
-.meld__cards .playing-card--compact { width: 2.9rem; height: 4rem; }
-.meld__cards .playing-card--compact .playing-card__pip { font-size: 1.25rem; }
-/* A wildcard/pinella annotation stays fully readable instead of being covered. */
+.meld__cards .playing-card--compact { width: var(--meld-card-w); height: var(--meld-card-h); }
+.meld__cards .playing-card--compact .playing-card__pip { font-size: var(--meld-pip); }
+.meld__cards .playing-card--compact .playing-card__corner { top: .2rem; left: .2rem; font-size: var(--meld-corner); }
+/* A wildcard/pinella annotation stays fully readable: its card is wider and never covered. */
+.meld__cards .playing-card--annotated { width: calc(var(--meld-card-w) + .55rem); }
 .meld__cards .playing-card--annotated + .playing-card { margin-left: .2rem; }
+.meld__cards .playing-card__annotation { font-size: .56rem; line-height: 1.05; }
+
+/* A long meld takes a whole row of the grid so its cards wrap as little as possible. */
+.meld[data-long] { grid-column: 1 / -1; }
+/* Dense tiles keep the type word for assistive technology and drop it visually. */
+.meld-area[data-density='dense'] .meld__type {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * Narrow tiles: label and extension control share the first row, the Burraco badge takes
+ * its own row and the cards span the tile. The control keeps its 44 px touch height and its
+ * full accessible name («Aggiungi alla calata N»); only its visible text shortens.
+ */
+@container meld (max-width: 16rem) {
+  .meld__meta { display: contents; }
+  .meld__label { grid-column: 1; grid-row: 1; align-self: center; }
+  .meld__index { white-space: nowrap; }
+  .meld .burraco-badge {
+    max-width: 100%;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    margin-bottom: .2rem;
+    padding-inline: .4rem;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .meld > .button { grid-column: 2; grid-row: 1; padding-inline: .5rem; }
+  .meld__cards { grid-column: 1 / -1; grid-row: 3; }
+  .meld__add-target { display: none; }
+}
+
+@container meld (max-width: 9.5rem) {
+  .meld > .button { min-width: 2.75rem; padding-inline: .3rem; font-size: 1rem; }
+  .meld > .button::before { content: '＋'; }
+  .meld__add-text { display: none; }
+}
 
 .playing-card {
   position: relative;
@@ -834,10 +935,17 @@ button.playing-card--selected:hover { transform: translateY(-.65rem); }
   grid-template-areas: 'hand header' 'hand actions' 'tools actions' 'error error';
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   column-gap: 1rem;
-  border: 1px solid rgba(246, 199, 96, .32);
+  border: 1px solid rgba(255, 255, 255, .1);
   border-radius: 1.2rem;
-  background: rgba(4, 27, 21, .84);
+  background: rgba(4, 27, 21, .72);
   box-shadow: 0 -6px 30px rgba(0, 0, 0, .15);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+/* M33.1: the human's own turn gets the same gold emphasis as an active seat. */
+.active-player--turn {
+  border-color: #f6c760;
+  box-shadow: 0 0 0 2px rgba(246, 199, 96, .35), 0 0 26px 4px rgba(246, 199, 96, .2), 0 -6px 30px rgba(0, 0, 0, .15);
 }
 
 .active-player__header { grid-area: header; min-width: 0; margin-bottom: .4rem; display: flex; flex-direction: column; align-items: flex-start; gap: .3rem; }
@@ -1318,7 +1426,8 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
  * opponent's side, the public piles between them; each meld area scrolls on its own.
  */
 @media (min-width: 1200px) and (min-height: 640px) {
-  .table-surface { height: calc(100dvh - 4.25rem); min-height: 36rem; }
+  /* The table fills the screen and grows (the page scrolls) rather than hiding melds. */
+  .table-surface { min-height: max(calc(100dvh - 4.25rem), 36rem); }
   .table-center {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -1328,7 +1437,7 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .table-center > .meld-area:first-child { grid-area: opp; }
   .table-center > .meld-area:last-child { grid-area: own; }
   .table-center > .meld-area { min-height: 0; display: flex; flex-direction: column; }
-  .table-center > .meld-area .meld-list { flex: 1 1 auto; min-height: 0; max-height: none; margin-top: .4rem; }
+  .table-center > .meld-area .meld-list { margin-top: .4rem; }
   .table-hub {
     grid-area: hub;
     /* Wide enough for an overlapping discard spread; the meld columns keep the rest. */
@@ -1347,10 +1456,6 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .player-seat__avatar { width: 2.1rem; flex-basis: 2.1rem; font-size: 1rem; }
   .meld-area__header { flex-direction: column; align-items: flex-start; }
   .meld-area__states { justify-content: flex-start; }
-  /* Narrow meld columns keep the extension control on the label row. */
-  .meld__meta { grid-column: 1; }
-  .meld > .button { grid-row: 1; }
-  .meld__cards { grid-column: 1 / -1; }
 }
 
 @media (max-width: 1000px) {
@@ -1376,7 +1481,6 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 
 @media (max-width: 760px) {
   .game-shell { padding: .5rem .5rem 1rem; }
-  .meld__cards .playing-card--compact { width: 3.3rem; height: 4.5rem; }
   .game-header__actions { margin-left: 0; flex: 1 1 100%; justify-content: flex-start; }
   .table-surface {
     min-height: 0;
@@ -1420,11 +1524,19 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
     background: transparent;
     box-shadow: none;
   }
-  .table-hub { padding: .25rem 0; }
-  .turn-status { flex-basis: 100%; }
-  /* No nested vertical scroll on mobile: the page scrolls, meld rows still scroll sideways. */
-  .meld-list { max-height: none; overflow: visible; grid-template-columns: minmax(0, 1fr); }
-  .active-player { padding: .75rem; }
+  .table-hub { padding: .15rem 0; gap: .45rem; }
+  .turn-status { flex-basis: 100%; gap: .25rem; }
+  .turn-banner { padding: .35rem .6rem; gap: .45rem; }
+  .turn-guidance { font-size: .7rem; color: #bcd2c8; }
+  /* M33.1: one-line meld headers and lighter persistent help keep the board state first. */
+  .meld-area { padding: .4rem .45rem; }
+  .meld-area__header { align-items: center; }
+  .meld-area__header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .4rem; }
+  .meld-area h2 { font-size: .92rem; }
+  .new-meld-target { margin-top: .35rem; padding: .3rem .5rem; }
+  .new-meld-target__help { font-size: .64rem; }
+  .active-player { padding: .5rem .5rem .6rem; }
+  .table-surface { box-shadow: 0 12px 40px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(246, 199, 96, .08); }
   .action-bar { flex-wrap: wrap; }
   .selection-summary { width: 100%; }
 }
@@ -1438,7 +1550,10 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   .game-header .button--ghost { order: 1; }
   .match-score { order: 2; flex: 1 1 100%; }
   .pile-zone { gap: .25rem; }
-  .pile-control { min-width: 6.4rem; }
+  .pile-control { min-width: 5.6rem; }
+  /* Smaller stock artwork: the piles stay recognisable while the board keeps its height. */
+  .card-back { width: 3.7rem; height: 5.15rem; }
+  .card-back span { font-size: 1.3rem; }
   .pozzetti-counter { max-width: 4rem; }
   .playing-card { width: 4.25rem; height: 5.9rem; }
   .playing-card--compact { width: 3.3rem; height: 4.5rem; }
@@ -1592,7 +1707,7 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 }
 
 [data-drop-state='active'] > .drop-label { border-style: solid; color: #102019; background: #f6c760; }
-/* Melds sit in a scrolling list: their outline and label stay inside the meld box. */
+/* Melds sit in a dense grid: their outline and label stay inside the meld box. */
 .meld[data-drop-state] { outline-offset: -2px; }
 .meld > .drop-label { top: auto; bottom: .2rem; transform: translateX(-50%); }
 

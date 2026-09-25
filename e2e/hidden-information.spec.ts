@@ -9,7 +9,7 @@ import type { GameState } from '../src/game/state/types'
 import { createSetupRoundFactory } from '../src/shell/matchSetup'
 import {
   E2E_SEED,
-  NORMAL_BOT_DELAY_MS,
+  NORMAL_HANDOFF_DELAY_MS,
   PLAYER_NAME,
   discardPileCards,
   drawAndDiscard,
@@ -72,7 +72,7 @@ test('opponent and partner hands stay hidden while the match is active', async (
   await expect(discardPileCards(page).last()).toBeVisible()
   await expectHiddenCardsNotRendered(page, afterHuman, everPublic)
 
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS)
   await expect(timelineEntries(page)).toHaveCount(1)
   await expectHiddenCardsNotRendered(page, afterBotStep, everPublic)
 })

@@ -7,7 +7,13 @@ import { dealInitialState } from '../game/engine/startGame'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable, MOTION_FLIGHT_MS } from './GameTable'
+import { BOT_PLAYBACK_DELAYS_MS, BOT_SIGNIFICANT_STEP_DELAYS_MS, GameTable, MOTION_FLIGHT_MS } from './GameTable'
+
+/**
+ * Commits exactly one pending normal bot step, whichever cadence applies: the longer
+ * significant-change delay is shorter than two ordinary delays.
+ */
+const ONE_NORMAL_STEP_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const deck = createBurracoDeck()
 const card = (rank: Rank, suit: Suit, deckNumber: 1 | 2 = 1): Card =>
@@ -160,7 +166,7 @@ const sourceTop = (proxy: HTMLElement) => Number.parseFloat(proxy.style.top) + 1
 const lastTranslate = (animation: FakeAnimation) => animation.keyframes.at(-1)!.transform
 const select = (target: Card) => fireEvent.click(screen.getByRole('button', { name: cardLabel(target) }))
 const advanceOneStep = () => act(() => {
-  vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+  vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
 })
 
 describe('GameTable M30 motion layer', () => {

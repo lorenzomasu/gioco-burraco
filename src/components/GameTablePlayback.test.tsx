@@ -21,10 +21,17 @@ import {
   type MatchState,
   type RoundFactory,
 } from '../game/match'
-import { validateMeld, type ValidatedMeld } from '../game/melds'
+import { classifyBurraco, validateMeld, type ValidatedMeld } from '../game/melds'
 import type { GameState, InProgressGameState, PlayerId } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import {
+  BOT_PLAYBACK_DELAYS_MS,
+  BOT_SIGNIFICANT_STEP_DELAYS_MS,
+  BOT_STEP_DELAY_MS,
+  botPlaybackDelay,
+  GameTable,
+} from './GameTable'
+import type { TableFeedback } from './tableFeedback'
 import { cancelLeave, leaveConfirmed, requestLeave } from '../tests/shellDialogs'
 
 /**
@@ -134,9 +141,18 @@ const botClosureState = (): InProgressGameState => {
   }
 }
 
+/**
+ * Exactly one pending step per speed: at normal speed the longer significant-change delay
+ * is still shorter than two ordinary delays, so it commits one step whichever cadence applies.
+ */
+const ONE_STEP_MS: Readonly<Record<'normal' | 'fast', number>> = {
+  normal: BOT_SIGNIFICANT_STEP_DELAYS_MS.normal,
+  fast: BOT_PLAYBACK_DELAYS_MS.fast,
+}
+
 const advanceOneStep = () => {
   act(() => {
-    vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+    vi.advanceTimersByTime(ONE_STEP_MS.normal)
   })
 }
 
@@ -410,8 +426,8 @@ describe('GameTable bot turn playback', () => {
       <GameTable initialState={chainState()} createGame={createGame} onLeaveMatch={onLeaveMatch} />,
     )
     discardKingOfHearts()
-    // The first bot step is just about to fire when the match is left.
-    advance(BOT_STEP_DELAY_MS - 1)
+    // The first bot step (after the human hand-off) is just about to fire when the match is left.
+    advance(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal - 1)
     expect(vi.getTimerCount()).toBe(1)
     chainStepSpy.mockClear()
 
@@ -700,6 +716,23 @@ const stepTrace = (
   return { steps, state: current, events: steps.flatMap(({ events }) => events) }
 }
 
+/**
+ * Independent restatement of the M33.1 pacing classification from public facts only: a
+ * meld play/extension, a discard, a player hand-off, a pozzetto acquisition or a newly
+ * reached/changed Burraco makes the following normal step wait the longer delay.
+ */
+const isSignificantStep = (before: GameState, after: GameState, events: readonly BotPublicActionEvent[]): boolean => {
+  if (events.some(({ type }) => type === 'play-meld' || type === 'extend-meld' || type === 'discard' || type === 'take-pozzetto')) {
+    return true
+  }
+  if (before.round.status === 'in-progress' && after.round.status === 'in-progress'
+    && before.round.turn.currentPlayerId !== after.round.turn.currentPlayerId) return true
+  return after.teams.some((team) => team.melds.some((meld, index) => {
+    const previous = before.teams.find(({ id }) => id === team.id)!.melds[index]
+    return classifyBurraco(meld) !== 'none' && classifyBurraco(meld) !== (previous ? classifyBurraco(previous) : 'none')
+  }))
+}
+
 const speedRadio = (label: 'Normale' | 'Veloce') => screen.getByRole('radio', { name: label })
 
 const completeNowButton = () => screen.queryByRole('button', { name: 'Completa subito' })
@@ -748,7 +781,7 @@ const finishPlayback = (mode: PlaybackMode) => {
   if (mode === 'immediate') {
     fireEvent.click(completeNowButton()!)
   } else {
-    for (let step = 0; step < 100 && vi.getTimerCount() > 0; step += 1) advance(BOT_PLAYBACK_DELAYS_MS[mode])
+    for (let step = 0; step < 100 && vi.getTimerCount() > 0; step += 1) advance(ONE_STEP_MS[mode])
   }
   expect(vi.getTimerCount()).toBe(0)
 }
@@ -767,8 +800,9 @@ describe('GameTable bot playback speed', () => {
     vi.useRealTimers()
   })
 
-  it('offers exactly two speeds from one delay mapping, defaulting to normal at 550 ms', () => {
-    expect(BOT_PLAYBACK_DELAYS_MS).toEqual({ normal: 550, fast: 150 })
+  it('offers exactly two speeds from one delay mapping, defaulting to the slower normal cadence', () => {
+    expect(BOT_PLAYBACK_DELAYS_MS).toEqual({ normal: 900, fast: 150 })
+    expect(BOT_SIGNIFICANT_STEP_DELAYS_MS).toEqual({ normal: 1200, fast: 150 })
     expect(BOT_STEP_DELAY_MS).toBe(BOT_PLAYBACK_DELAYS_MS.normal)
     render(<GameTable initialState={pendingBotState()} />)
 
@@ -777,7 +811,8 @@ describe('GameTable bot playback speed', () => {
     expect(speedRadio('Normale')).toBeChecked()
     expect(speedRadio('Veloce')).not.toBeChecked()
 
-    advance(549)
+    // A mounted pending bot (no previous cue) waits the ordinary cadence of at least 900 ms.
+    advance(899)
     expect(timelineItems()).toHaveLength(0)
     advance(1)
     expect(timelineTypes()).toEqual(['draw-stock'])
@@ -803,20 +838,28 @@ describe('GameTable bot playback speed', () => {
   })
 
   it.each(['normal', 'fast'] as const)('commits exactly one step per %s delay', (speed) => {
-    const delay = BOT_PLAYBACK_DELAYS_MS[speed]
     const state = chainState()
-    const expected = stepTrace(discardCard(state, 'player-1', card('king', 'hearts').id))
+    const afterHuman = discardCard(state, 'player-1', card('king', 'hearts').id)
+    const expected = stepTrace(afterHuman)
     render(<GameTable initialState={state} />)
     selectMode(speed)
     discardKingOfHearts()
 
     let committedEvents = 0
+    let before: GameState = afterHuman
+    // The human discard is itself a hand-off.
+    let significant = true
     for (const step of expected.steps) {
+      const delay = speed === 'fast'
+        ? BOT_PLAYBACK_DELAYS_MS.fast
+        : significant ? BOT_SIGNIFICANT_STEP_DELAYS_MS.normal : BOT_PLAYBACK_DELAYS_MS.normal
       advance(delay - 1)
       expect(timelineItems()).toHaveLength(committedEvents)
       advance(1)
       committedEvents += step.events.length
       expect(timelineItems()).toHaveLength(committedEvents)
+      significant = isSignificantStep(before, step.state, step.events)
+      before = step.state
     }
 
     expectTimelineMatches(expected.events)
@@ -838,13 +881,14 @@ describe('GameTable bot playback speed', () => {
     expect(timelineItems()).toHaveLength(0)
     advance(1)
     expect(timelineTypes()).toEqual(['draw-stock'])
-    // The cancelled normal timer would have fired here, 550 ms after it was scheduled.
+    // Only the rescheduled fast cadence remains: one pending step, none fired early.
+    expect(vi.getTimerCount()).toBe(1)
     advance(100)
     expect(timelineTypes()).toEqual(['draw-stock'])
     expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 5 carte rimaste')
   })
 
-  it('reschedules a partly elapsed fast step to 550 ms after switching to normal', () => {
+  it('reschedules a partly elapsed fast step to 900 ms after switching to normal', () => {
     render(<GameTable initialState={pendingBotState()} />)
     fireEvent.click(speedRadio('Veloce'))
     advance(100)
@@ -854,7 +898,7 @@ describe('GameTable bot playback speed', () => {
     expect(timelineItems()).toHaveLength(0)
     expect(vi.getTimerCount()).toBe(1)
     // The cancelled fast timer would have fired 50 ms after the change.
-    advance(549)
+    advance(899)
     expect(timelineItems()).toHaveLength(0)
     expect(drawPileButton()).toHaveAccessibleName('Pesca dal tallone, 6 carte rimaste')
     advance(1)
@@ -922,7 +966,7 @@ describe('GameTable bot playback speed', () => {
       <GameTable initialState={pendingBotState()} playbackSpeed="normal" onPlaybackSpeedChange={onPlaybackSpeedChange} />,
     )
     expect(speedRadio('Normale')).toBeChecked()
-    advance(549)
+    advance(899)
     expect(timelineItems()).toHaveLength(1)
     advance(1)
     expect(timelineItems().length).toBeGreaterThan(1)
@@ -1166,7 +1210,7 @@ describe('GameTable playback safety, reset and hidden information', () => {
       } else {
         for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) {
           attemptHumanActions()
-          advance(BOT_PLAYBACK_DELAYS_MS[mode])
+          advance(ONE_STEP_MS[mode])
         }
       }
 
@@ -1195,7 +1239,7 @@ describe('GameTable playback safety, reset and hidden information', () => {
         fireEvent.click(completeNowButton()!)
       } else {
         for (const step of expected.steps) {
-          advance(BOT_PLAYBACK_DELAYS_MS[mode])
+          advance(ONE_STEP_MS[mode])
           expectHiddenNotRendered(step.state)
         }
       }
@@ -1209,4 +1253,129 @@ describe('GameTable playback safety, reset and hidden information', () => {
       expectTimelineMatches(expected.events)
     },
   )
+})
+
+describe('GameTable followable normal cadence (M33.1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  const cue = (overrides: Partial<TableFeedback>): TableFeedback => ({
+    sequence: 1,
+    cycle: 'a',
+    action: null,
+    cardCount: 0,
+    receivedCardIds: [],
+    actorId: 'player-2',
+    turnChange: null,
+    pozzettoTeamIds: [],
+    burracoMelds: [],
+    ...overrides,
+  })
+
+  /** Asserts that nothing commits one millisecond early and one step commits on time. */
+  const expectNextStepAfter = (ms: number, expectedTypes: readonly string[]) => {
+    const before = timelineItems().length
+    advance(ms - 1)
+    expect(timelineItems()).toHaveLength(before)
+    advance(1)
+    expect(timelineTypes().slice(before)).toEqual(expectedTypes)
+  }
+
+  it('classifies pacing only from the committed public cue', () => {
+    expect(BOT_PLAYBACK_DELAYS_MS.normal).toBeGreaterThanOrEqual(900)
+    expect(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal).toBeGreaterThanOrEqual(1200)
+    const ordinary = BOT_PLAYBACK_DELAYS_MS.normal
+    const significant = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
+    // No cue: a mounted, restored or fresh-round pending bot.
+    expect(botPlaybackDelay('normal', null)).toBe(ordinary)
+    expect(botPlaybackDelay('normal', cue({ action: { type: 'draw-stock' }, turnChange: 'phase' }))).toBe(ordinary)
+    expect(botPlaybackDelay('normal', cue({ action: { type: 'collect-discard-pile' }, turnChange: 'phase' })))
+      .toBe(ordinary)
+    expect(botPlaybackDelay('normal', cue({ action: { type: 'play-meld', teamId: 'team-2', meldIndex: 0 } })))
+      .toBe(significant)
+    expect(botPlaybackDelay('normal', cue({ action: { type: 'extend-meld', teamId: 'team-2', meldIndex: 0 } })))
+      .toBe(significant)
+    expect(botPlaybackDelay('normal', cue({ action: { type: 'discard' }, turnChange: 'player' }))).toBe(significant)
+    // A human hand-off (no bot actor) counts as well.
+    expect(botPlaybackDelay('normal', cue({ actorId: null, turnChange: 'player' }))).toBe(significant)
+    expect(botPlaybackDelay('normal', cue({ pozzettoTeamIds: ['team-2'] }))).toBe(significant)
+    expect(botPlaybackDelay('normal', cue({ burracoMelds: [{ teamId: 'team-2', meldIndex: 0 }] }))).toBe(significant)
+    // Fast keeps its single short cadence whatever the cue.
+    for (const feedback of [null, cue({ action: { type: 'discard' }, turnChange: 'player' })]) {
+      expect(botPlaybackDelay('fast', feedback)).toBe(BOT_PLAYBACK_DELAYS_MS.fast)
+    }
+  })
+
+  it('waits the hand-off delay before the first bot action, then paces draw, meld and discard', () => {
+    render(<GameTable initialState={chainState()} />)
+    discardKingOfHearts()
+
+    // Control leaves the human: the first automated action waits at least 900 ms (here 1200).
+    expectNextStepAfter(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal, ['draw-stock'])
+    // After an ordinary draw the next step waits the ordinary cadence.
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.normal, ['play-meld'])
+    // After a public meld the discard waits the longer delay.
+    expectNextStepAfter(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal, ['discard'])
+    expect(turnBanner()).toHaveTextContent('Partner')
+    // After the discard/hand-off the next bot also waits the longer delay.
+    expectNextStepAfter(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal, ['draw-stock'])
+    expect(timelineItems()[3]).toHaveTextContent(/^Partner /)
+  })
+
+  it('waits the longer delay after a pozzetto acquisition', () => {
+    const base = chainState()
+    const state: InProgressGameState = {
+      ...base,
+      players: base.players.map((player) => player.id === 'player-2'
+        ? { ...player, hand: [card('ten', 'clubs'), card('ten', 'diamonds'), card('ten', 'hearts')] }
+        : player),
+      round: {
+        status: 'in-progress',
+        turn: { currentPlayerId: 'player-2', phase: 'action', acquisition: { source: 'drawPile', cardIds: [] } },
+      },
+    }
+    render(<GameTable initialState={state} />)
+
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.normal, ['play-meld', 'take-pozzetto'])
+    const next = timelineItems().length
+    advance(BOT_SIGNIFICANT_STEP_DELAYS_MS.normal - 1)
+    expect(timelineItems()).toHaveLength(next)
+    advance(1)
+    expect(timelineItems().length).toBeGreaterThan(next)
+  })
+
+  it('keeps the fast cadence and immediate completion unchanged and leaves no stale timer', () => {
+    const { unmount } = render(<GameTable initialState={chainState()} playbackSpeed="fast" />)
+    discardKingOfHearts()
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.fast, ['draw-stock'])
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.fast, ['play-meld'])
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.fast, ['discard'])
+
+    fireEvent.click(completeNowButton()!)
+    expect(turnBanner()).toHaveTextContent('You')
+    flushFocusSelectionChange()
+    expect(vi.getTimerCount()).toBe(0)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('reschedules a pending hand-off step with the full new delay when the speed changes', () => {
+    render(<GameTable initialState={chainState()} />)
+    discardKingOfHearts()
+    advance(1000)
+    fireEvent.click(speedRadio('Veloce'))
+    expect(vi.getTimerCount()).toBe(1)
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.fast, ['draw-stock'])
+
+    fireEvent.click(speedRadio('Normale'))
+    expect(vi.getTimerCount()).toBe(1)
+    expectNextStepAfter(BOT_PLAYBACK_DELAYS_MS.normal, ['play-meld'])
+  })
 })

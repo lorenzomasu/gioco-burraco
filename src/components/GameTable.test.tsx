@@ -9,7 +9,10 @@ import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
 import { cancelLeave, leaveConfirmed, leaveDialog, requestLeave } from '../tests/shellDialogs'
 import { cardLabel, sortCardsForDisplay } from './cardPresentation'
-import { BOT_STEP_DELAY_MS, GameTable, LEAVE_MATCH_CONFIRMATION } from './GameTable'
+import { BOT_SIGNIFICANT_STEP_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable, LEAVE_MATCH_CONFIRMATION } from './GameTable'
+
+/** The normal delay after a player hand-off (for example the human's discard). */
+const HANDOFF_DELAY_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const deck = createBurracoDeck()
 
@@ -17,7 +20,7 @@ const deck = createBurracoDeck()
 const playPendingBots = () => {
   for (let step = 0; step < 500 && vi.getTimerCount() > 0; step += 1) {
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersToNextTimer()
     })
   }
   expect(vi.getTimerCount()).toBe(0)
@@ -419,7 +422,7 @@ describe('GameTable', () => {
     fireEvent.click(screen.getByRole('button', { name: cardLabel(state.players[0]!.hand[0]!) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(HANDOFF_DELAY_MS)
     })
     const timeline = screen.getByRole('region', { name: 'Cronologia bot' })
     expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
@@ -732,7 +735,7 @@ describe('GameTable accessibility and interaction semantics', () => {
     fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(HANDOFF_DELAY_MS)
     })
 
     const firstItems = within(log).getAllByRole('listitem')
@@ -872,7 +875,7 @@ describe('GameTable lifecycle focus', () => {
     fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(HANDOFF_DELAY_MS)
     })
 
     expect(within(screen.getByRole('log', { name: 'Cronologia bot' })).getAllByRole('listitem').length)
@@ -897,17 +900,20 @@ describe('GameTable tabletop composition (M27)', () => {
   const historyLog = () => screen.getByRole('log', { name: 'Cronologia bot' })
   const turnBanner = () => screen.getByText('Turno di').closest('[aria-live]')!
 
-  it('seats the teammate left and the opponents top/right from team membership without changing domain seating', () => {
+  it('seats the teammate opposite and the opponents left/right in clockwise turn order without changing domain seating', () => {
     const state = dealInitialState(deck)
     render(<GameTable initialState={state} />)
 
-    expect(seat('Partner')).toHaveAttribute('data-seat', 'left')
+    expect(seat('Partner')).toHaveAttribute('data-seat', 'top')
     expect(seat('Partner')).toHaveTextContent('Compagno · Squadra 1')
-    // The opponent who plays right after the human sits on the right, the other on top.
-    expect(seat('North')).toHaveAttribute('data-seat', 'right')
+    // The opponent who plays right after the human sits on the left, the other on the right.
+    expect(seat('North')).toHaveAttribute('data-seat', 'left')
     expect(seat('North')).toHaveTextContent('Avversario · Squadra 2')
-    expect(seat('South')).toHaveAttribute('data-seat', 'top')
+    expect(seat('South')).toHaveAttribute('data-seat', 'right')
     expect(seat('South')).toHaveTextContent('Avversario · Squadra 2')
+    // Document order follows the clockwise turn order from the human: left, top, right.
+    expect(screen.getAllByRole('region', { name: /^Giocatore / }).map((region) => region.dataset.seat))
+      .toEqual(['left', 'top', 'right'])
     expect(screen.getByRole('region', { name: 'Mano di You' })).toHaveTextContent('Tu · Squadra 1')
     expect(screen.getByRole('region', { name: 'Calate squadra 1' })).toHaveTextContent('La tua squadra')
     expect(screen.getByRole('region', { name: 'Calate squadra 2' })).toHaveTextContent('Avversari')
@@ -932,7 +938,42 @@ describe('GameTable tabletop composition (M27)', () => {
     expect(turnBanner()).toHaveTextContent('North')
     expect(turnBanner()).toHaveTextContent('Avversario · Squadra 2')
     expect(seat('North')).toHaveAttribute('aria-current', 'true')
-    expect(seat('North')).toHaveAttribute('data-seat', 'right')
+    expect(seat('North')).toHaveAttribute('data-seat', 'left')
+  })
+
+  it('moves the active-turn emphasis from the human to each bot seat and back (M33.1)', () => {
+    render(<GameTable initialState={automaticSequenceState()} />)
+    const hand = screen.getByRole('region', { name: 'Mano di You' })
+    const activeSeats = () => screen.getAllByRole('region', { name: /^Giocatore / })
+      .filter((region) => region.getAttribute('aria-current') === 'true')
+    expect(hand).toHaveClass('active-player--turn')
+    expect(activeSeats()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
+    expect(hand).not.toHaveClass('active-player--turn')
+    expect(activeSeats()).toEqual([seat('North')])
+    expect(seat('North')).toHaveClass('player-seat--active')
+    expect(seat('North')).toHaveTextContent('Di turno')
+
+    const seen = new Set<string>()
+    for (let step = 0; step < 50 && vi.getTimerCount() > 0; step += 1) {
+      act(() => {
+        vi.advanceTimersToNextTimer()
+      })
+      const active = activeSeats()
+      // Exactly one place on the table carries the turn, matching the announced player.
+      expect(active.length + Number(hand.classList.contains('active-player--turn'))).toBe(1)
+      if (active[0]) {
+        seen.add(active[0].dataset.seat!)
+        expect(turnBanner()).toHaveTextContent(active[0].getAttribute('aria-label')!.replace('Giocatore ', ''))
+      }
+    }
+    // The turn travelled clockwise through left (North) and the teammate on top (Partner).
+    expect(seen.has('left')).toBe(true)
+    expect(seen.has('top')).toBe(true)
+    expect(turnBanner()).toHaveTextContent('You')
+    expect(hand).toHaveClass('active-player--turn')
   })
 
   it('offers an operable history disclosure that keeps the mounted log in the accessibility tree', () => {
@@ -970,7 +1011,7 @@ describe('GameTable tabletop composition (M27)', () => {
     fireEvent.click(screen.getByRole('button', { name: cardLabel(card('king', 'hearts')) }))
     fireEvent.click(screen.getByRole('button', { name: 'Scarta e passa' }))
     act(() => {
-      vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+      vi.advanceTimersByTime(HANDOFF_DELAY_MS)
     })
     const firstItems = within(log).getAllByRole('listitem')
     expect(firstItems).toHaveLength(1)

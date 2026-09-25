@@ -102,7 +102,15 @@ and are never stored in `GameState` or `MatchState`; replacing the session cance
 pending playback step.
 
 Playback speed (`normal` / `fast`) is transient React presentation state. The game
-table owns the single authoritative speed → delay mapping (normal 550 ms, fast 150 ms).
+table owns the single authoritative delay function (`botPlaybackDelay`). Normal playback
+has a variable, followable cadence (M33.1): 900 ms before an ordinary step and 1200 ms
+after a significant public change — a meld play or extension, a discard or player
+hand-off (the human's own discard included), a newly reached/changed Burraco or a pozzetto
+acquisition. The classification reads only the committed `TableFeedback` cue of the
+previous change (public facts), never bot internals; a session without a cue (mounted,
+restored or fresh round) uses the ordinary delay. Fast playback keeps 150 ms for every
+step. Timing only schedules presentation: engine commits, bot legality and the save are
+unchanged.
 The application shell owns the preference, so it survives new rounds and new matches
 started from onboarding while the application stays mounted; a standalone table keeps
 its own. It is never persisted. Changing speed only cancels and reschedules the
@@ -317,16 +325,31 @@ These presentation contracts are transient React concerns; none of them is store
 
 ### Table composition
 
-The active match is a tabletop: the human's hand and actions sit at the bottom, the
-teammate on the left, and the two opponents on top and on the right — the opponent who
-plays right after the human sits on the right. The mapping is derived from `teamId`
-relative to the human and is visual only: player IDs, teams and turn order are never
-changed, and each seat states its relation («Compagno» / «Avversario») and team in text.
-The human's team melds are on the teammate's side and the opponents' melds on the
-opponents' side, with the stock, pozzetti count, discard pile and the turn status
-between them. On wide desktop viewports the table fits the screen and each meld area
-scrolls locally; narrower layouts keep the same grouping in document order (seats,
-history, opponents' melds, public area, own melds, hand). The application header is a
+The active match is a tabletop that follows the clockwise turn order (M33.1): the human's
+hand and actions sit at the bottom, the opponent who plays right after the human on the
+left, the teammate opposite on top and the remaining opponent on the right. The mapping
+is derived from the player order and `teamId` relative to the human and is visual only:
+player IDs, teams and turn order are never changed, and each seat states its relation
+(«Compagno» / «Avversario») and team in text; seats are in clockwise document order. The
+current player is emphasised where they sit — a gold seat with a halo and the «Di turno»
+text marker, or the same emphasis on the human's hand area — while the polite turn banner
+stays the authoritative announcement. The opponents' melds are on the far side and the
+human's team melds next to the hand, with the stock, pozzetti count, discard pile and the
+turn status between them; on wide desktop viewports they form three columns. Narrower
+layouts keep the same grouping in document order (seats, history, opponents' melds,
+public area, own melds, hand).
+
+Public melds are board state, never scroll content (M33.1): neither the meld list nor a
+meld's card row scrolls or clips. `meldDensity` chooses a team area's density
+(`roomy` / `compact` / `dense`) from public meld and card counts only; CSS then adapts
+tile width, card size and overlap to the available width, wraps a long sequence onto
+another row, gives a meld of eight or more cards a whole grid row, and keeps every
+overlapped card's rank/suit corner visible and wildcard/pinella annotations uncovered.
+Burraco labels stay text; in dense tiles the meld type word is visually hidden but
+remains in the document. Narrow meld tiles shorten the visible extension label while its
+accessible name and 44 px target are unchanged. When content exceeds the viewport the
+page grows (document scroll) instead of hiding melds; there is never document-level
+horizontal overflow. The application header is a
 slim bar for the round indicator, a compact settled match score («La tua squadra» /
 «Avversari», from `calculateCumulativeScores`, never a partial-round score), the «Come si
 gioca» and «Impostazioni» entries and «Nuova partita»; «Completa subito» sits with the
@@ -399,7 +422,8 @@ never enter `GameState`, `MatchState` or the local save.
 - Timing and lifecycle: flights use the Web Animations API on transform/opacity. A new
   cue cancels the running flights (no queue); a cleared cue (fresh session, «Completa
   subito»), the completed-round view and unmount cancel and remove them. A bot flight is
-  kept within 80% of the current playback delay and playback never waits for it.
+  kept within 80% of the ordinary delay of the current speed (so within every delay of
+  that speed) and playback never waits for it.
 - Reduced motion (`prefers-reduced-motion: reduce`) skips every flight in script and hides
   the layer in CSS; a missing or failing Web Animations API leaves the static committed
   table. The M24 cues and the newly reached Burraco/pozzetto accents stay static-safe

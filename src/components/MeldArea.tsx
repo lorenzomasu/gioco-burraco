@@ -25,6 +25,25 @@ const placementAnnotation = (placement: MeldCardPlacement): string | undefined =
   return undefined
 }
 
+/** A meld at least this long spans a whole row of its team's meld grid. */
+const LONG_MELD_CARDS = 8
+
+/** Presentation density of a team's public melds; every meld and card is always rendered. */
+export type MeldDensity = 'roomy' | 'compact' | 'dense'
+
+/**
+ * Chooses the meld-area density from public counts only (M33.1). More or longer melds get
+ * smaller, more overlapped cards and narrower tiles instead of an internal scroll; the
+ * remaining width adaptation is CSS.
+ */
+export const meldDensity = (melds: Team['melds']): MeldDensity => {
+  const cardCount = melds.reduce((total, meld) => total + meld.cards.length, 0)
+  const longest = Math.max(0, ...melds.map((meld) => meld.cards.length))
+  if (melds.length >= 7 || cardCount >= 36) return 'dense'
+  if (melds.length >= 4 || cardCount >= 18 || longest >= 10) return 'compact'
+  return 'roomy'
+}
+
 type MeldAreaProps = Readonly<{
   team: Team
   /** Text relation of the team to the human (for example «La tua squadra»). */
@@ -76,6 +95,7 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
     <section
       className={`meld-area${activeTeam ? ' meld-area--active' : ''}`}
       aria-label={`Calate squadra ${teamNumber}`}
+      data-density={meldDensity(team.melds)}
       {...cueAttributes(feedback, tookPozzetto && 'pozzetto')}
     >
       <header className="meld-area__header">
@@ -133,6 +153,7 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
                 key={`${team.id}-meld-${meldIndex}`}
                 aria-label={`Calata ${meldIndex + 1} squadra ${teamNumber}`}
                 data-burraco={classification !== 'none' ? classification : undefined}
+                data-long={meld.cards.length >= LONG_MELD_CARDS ? '' : undefined}
                 data-motion-anchor={`meld-${team.id}-${meldIndex}`}
                 data-burraco-emphasis={isNewBurraco(meldIndex) ? feedback?.cycle : undefined}
                 {...cueAttributes(feedback, cuedMeldIndex === meldIndex && meldCue)}
@@ -143,7 +164,7 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
                 <div className="meld__meta">
                   <span className="meld__label">
                     <span className="meld__index">Calata {meldIndex + 1}</span>
-                    <span>{meld.type === 'group' ? 'Combinazione' : 'Sequenza'}</span>
+                    <span className="meld__type">{meld.type === 'group' ? 'Combinazione' : 'Sequenza'}</span>
                   </span>
                   {classification !== 'none' && (
                     // Keyed by classification so a newly reached or changed Burraco replays
@@ -176,7 +197,7 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
                     disabled={!canExtend}
                     aria-label={`Aggiungi alla calata ${meldIndex + 1} della squadra ${teamNumber}`}
                   >
-                    Aggiungi alla calata
+                    <span className="meld__add-text">Aggiungi<span className="meld__add-target"> alla calata</span></span>
                   </button>
                 )}
                 {/* Pointer affordance only; «Aggiungi alla calata» stays the accessible control. */}

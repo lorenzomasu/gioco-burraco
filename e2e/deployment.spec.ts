@@ -13,6 +13,23 @@ const SMOKE_SCRIPT = fileURLToPath(new URL('../scripts/deployed-smoke.mjs', impo
 const PAGES_ORIGIN = 'http://pages.invalid'
 const PROJECT_PATH = '/gioco-burraco/'
 
+const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
+/** The current product release (M33.1 patch). */
+const RELEASE_VERSION = '1.1.1'
+
+test('package metadata and release documents agree on the current release version', async () => {
+  const read = (file: string) => readFile(path.join(ROOT_DIR, file), 'utf8')
+  const packageJson = JSON.parse(await read('package.json'))
+  const lock = JSON.parse(await read('package-lock.json'))
+
+  expect(packageJson.version).toBe(RELEASE_VERSION)
+  expect(lock.version).toBe(RELEASE_VERSION)
+  expect(lock.packages[''].version).toBe(RELEASE_VERSION)
+  expect(await read('README.md')).toContain(`Current release: **v${RELEASE_VERSION}**.`)
+  const currentRows = (await read('docs/RELEASE.md')).split('\n').filter((line) => line.includes('(current)'))
+  expect(currentRows).toEqual([expect.stringContaining(`| \`v${RELEASE_VERSION}\` / \`${RELEASE_VERSION}\` |`)])
+})
+
 test('the built index references its assets relative to the page, never the origin root', async () => {
   const html = await readFile(path.join(DIST_DIR, 'index.html'), 'utf8')
   const references = [...html.matchAll(/\s(?:src|href)="([^"]+)"/g)].map((match) => match[1])

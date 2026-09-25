@@ -8,7 +8,13 @@ import type { MatchState } from '../game/match'
 import { classifyBurraco, validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState, TeamId } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
-import { BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import { BOT_SIGNIFICANT_STEP_DELAYS_MS, GameTable } from './GameTable'
+
+/**
+ * Commits exactly one pending normal bot step, whichever cadence applies: the longer
+ * significant-change delay is shorter than two ordinary delays.
+ */
+const ONE_NORMAL_STEP_MS = BOT_SIGNIFICANT_STEP_DELAYS_MS.normal
 
 const deck = createBurracoDeck()
 
@@ -129,7 +135,7 @@ const teamArea = (team: 1 | 2) => screen.getByRole('region', { name: `Calate squ
 const meld = (index: number, team: 1 | 2) => screen.getByRole('article', { name: `Calata ${index} squadra ${team}` })
 const turnBanner = () => screen.getByText('Turno di').closest('.turn-banner')!
 const advanceOneStep = () => act(() => {
-  vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
+  vi.advanceTimersByTime(ONE_NORMAL_STEP_MS)
 })
 
 describe('GameTable M24 visual feedback', () => {

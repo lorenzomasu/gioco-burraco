@@ -7,7 +7,7 @@ import {
   expect,
   historyToggle,
   humanHandCards,
-  NORMAL_BOT_DELAY_MS,
+  NORMAL_HANDOFF_DELAY_MS,
   roundIndicator,
   startNewMatch,
   test,
@@ -51,8 +51,11 @@ test('a human turn hands control to the bots and back to a playable human turn',
   await expect(turnBanner(page)).not.toContainText(PLAYER_NAME)
   await expect(drawPileButton(page)).toBeDisabled()
 
-  // One presentation delay commits exactly one public bot action through the real timer.
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  // The first bot action waits the full normal hand-off delay, then commits exactly one
+  // public action through the real timer.
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS - 1)
+  await expect(timelineEntries(page)).toHaveCount(0)
+  await page.clock.runFor(1)
   await expect(timelineEntries(page)).toHaveCount(1)
   await expect(timelineEntries(page).first()).toHaveText(/pesca dal tallone|raccoglie il monte degli scarti/)
 

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import {
-  NORMAL_BOT_DELAY_MS,
+  NORMAL_HANDOFF_DELAY_MS,
   PLAYER_NAME,
   discardButton,
   drawPileButton,
@@ -93,7 +93,7 @@ test('a bot step flies toward the acting seat without delaying the committed ste
   await humanHandCards(page).first().click()
   await discardButton(page).click()
 
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS)
 
   const botFlight = (await flights(page)).at(-1)!
   expect(botFlight.flight).toMatch(/^(stock|discard)>seat$/)
@@ -184,7 +184,7 @@ test('«Completa subito» cancels an in-flight bot flight without rolling back t
   await humanHandCards(page).first().click()
   await discardButton(page).click()
 
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS)
   await expect(page.locator('.motion-layer .motion-proxy[data-motion-flight$=">seat"]')).toHaveCount(1)
   expect((await heldPlayStates(page)).at(-1)).toBe('paused')
 

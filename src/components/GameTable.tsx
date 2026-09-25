@@ -90,11 +90,46 @@ const humanHand = (game: GameState) => game.players.find(({ id }) => id === huma
 /** Transient presentation preference for bot playback; never part of game or match state. */
 export type BotPlaybackSpeed = 'normal' | 'fast'
 
-/** The single authoritative presentation delay between committed bot steps, per speed. */
+/**
+ * The ordinary presentation delay before the next committed bot step, per speed. Normal
+ * playback is slow enough to follow one public action at a time (M33.1).
+ */
 export const BOT_PLAYBACK_DELAYS_MS: Readonly<Record<BotPlaybackSpeed, number>> = {
-  normal: 550,
+  normal: 900,
   fast: 150,
 }
+
+/**
+ * The longer delay after a significant public change (a meld play or extension, a discard
+ * or player hand-off, a newly reached Burraco or a pozzetto acquisition). Fast playback
+ * keeps its short cadence.
+ */
+export const BOT_SIGNIFICANT_STEP_DELAYS_MS: Readonly<Record<BotPlaybackSpeed, number>> = {
+  normal: 1200,
+  fast: 150,
+}
+
+/**
+ * Whether the latest committed change is significant for pacing. It reads only the
+ * presentation cue already derived from committed public facts, never bot internals.
+ */
+const isSignificantChange = (feedback: TableFeedback | null): boolean =>
+  feedback !== null && (
+    feedback.action?.type === 'play-meld'
+    || feedback.action?.type === 'extend-meld'
+    || feedback.action?.type === 'discard'
+    || feedback.turnChange === 'player'
+    || feedback.pozzettoTeamIds.length > 0
+    || feedback.burracoMelds.length > 0
+  )
+
+/**
+ * The single authoritative presentation delay before the next committed bot step: the
+ * ordinary cadence, or the longer one after a significant change. With no cue (a mounted,
+ * restored or fresh round) the ordinary cadence applies.
+ */
+export const botPlaybackDelay = (speed: BotPlaybackSpeed, feedback: TableFeedback | null): number =>
+  isSignificantChange(feedback) ? BOT_SIGNIFICANT_STEP_DELAYS_MS[speed] : BOT_PLAYBACK_DELAYS_MS[speed]
 
 /**
  * Longest decorative card flight. A bot flight is also kept inside its playback delay, so
@@ -116,7 +151,7 @@ const unionRect = (elements: readonly Element[]): MotionRect | null => {
   return { left, top, width: right - left, height: bottom - top }
 }
 
-/** The default (normal) presentation delay between committed bot steps. */
+/** The default (normal) ordinary presentation delay between committed bot steps. */
 export const BOT_STEP_DELAY_MS = BOT_PLAYBACK_DELAYS_MS.normal
 
 /** In-app confirmation text shown before an in-progress match is discarded. */
@@ -229,9 +264,10 @@ const completeBotPlayback = (session: GameTableSession): GameTableSession => {
 }
 
 /**
- * Visual-only seat mapping around the human, who sits at the bottom: the teammate on the
- * left, the opponent who plays next on the right and the other opponent on top. Player
- * IDs, teams and turn order are never changed by it.
+ * Visual-only seat mapping around the human, who sits at the bottom, following the
+ * existing clockwise turn order: the opponent who plays next on the left, the teammate
+ * opposite on top and the remaining opponent on the right. Player IDs, teams and turn
+ * order are never changed by it.
  */
 const tableSeats = (players: readonly Player[], human: Player) => {
   const humanIndex = playerOrder.indexOf(human.id)
@@ -241,7 +277,7 @@ const tableSeats = (players: readonly Player[], human: Player) => {
   const teammate = othersInTurnOrder.find((player) => player.teamId === human.teamId)
   const opponents = othersInTurnOrder.filter((player) => player.teamId !== human.teamId)
   if (!teammate || opponents.length !== 2) throw new Error('Unexpected table seating.')
-  return { left: teammate, right: opponents[0]!, top: opponents[1]! }
+  return { left: opponents[0]!, top: teammate, right: opponents[1]! }
 }
 
 type TurnGuidanceContext = Readonly<{
@@ -392,7 +428,7 @@ export function GameTable({
       setSession((current) => current === scheduledSession
         ? guardBotAutomation(current, advanceBotPlayback)
         : current)
-    }, BOT_PLAYBACK_DELAYS_MS[playbackSpeed])
+    }, botPlaybackDelay(playbackSpeed, session.feedback))
     // A speed change cancels the pending step and reschedules it with the new delay.
     return () => clearTimeout(timer)
   }, [session, playbackSpeed, confirmingLeave])
@@ -815,8 +851,9 @@ export function GameTable({
     <main className="game-shell" data-hand-dragging={drag ? '' : undefined} inert={confirmingLeave}>
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
-        {seat(seats.top, 'top')}
+        {/* Clockwise from the human: next player on the left, teammate opposite, then right. */}
         {seat(seats.left, 'left')}
+        {seat(seats.top, 'top')}
         {seat(seats.right, 'right')}
 
         <div className="table-history">{history}</div>
@@ -910,7 +947,7 @@ export function GameTable({
 
         <section
           ref={handSectionRef}
-          className="active-player"
+          className={`active-player${isHumanTurn ? ' active-player--turn' : ''}`}
           aria-label={`Mano di ${humanPlayer.name}`}
           {...cueAttributes(feedback, feedback?.turnChange === 'player' && isHumanTurn && 'turn')}
         >

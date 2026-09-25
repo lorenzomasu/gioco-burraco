@@ -60,8 +60,11 @@ export const test = base.extend<Fixtures>({
 
 export { expect }
 
-/** The committed bot playback delay at the default `Normale` speed (`BOT_PLAYBACK_DELAYS_MS.normal`). */
-export const NORMAL_BOT_DELAY_MS = 550
+/**
+ * The M33.1 `Normale` delay before the first bot step after the human's discard hand-off
+ * (`BOT_SIGNIFICANT_STEP_DELAYS_MS.normal`); ordinary steps wait `BOT_PLAYBACK_DELAYS_MS.normal`.
+ */
+export const NORMAL_HANDOFF_DELAY_MS = 1200
 
 export const PLAYER_NAME = 'Lorenzo'
 

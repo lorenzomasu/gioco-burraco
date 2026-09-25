@@ -3,7 +3,7 @@ import { cardLabel, sortCardsForDisplay } from '../src/components/cardPresentati
 import { LEAVE_MATCH_CONFIRMATION } from '../src/components/GameTable'
 import {
   leaveDialog,
-  NORMAL_BOT_DELAY_MS,
+  NORMAL_HANDOFF_DELAY_MS,
   PLAYER_NAME,
   completeNowButton,
   discardPileCards,
@@ -71,7 +71,7 @@ test('committed progress survives a reload and play continues', async ({ page })
 test('a reload during bot playback resumes the pending chain from the committed match', async ({ page }) => {
   await startNewMatch(page)
   await drawAndDiscard(page)
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS)
   await expect(timelineEntries(page)).toHaveCount(1)
   await expect.poll(() => savedTurnOwner(page)).not.toBe('player-1')
   const pendingTallone = await drawPileButton(page).getAttribute('aria-label')
@@ -99,7 +99,7 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
   await startNewMatch(page)
   await drawAndDiscard(page)
   // The first bot step is scheduled but has not fired yet.
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS - 50)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS - 50)
   await expect(completeNowButton(page)).toBeVisible()
   await expect(timelineEntries(page)).toHaveCount(0)
   expect(await readActiveSave(page)).not.toBeNull()
@@ -107,7 +107,7 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
   await newMatchButton(page).click()
   await expect(leaveDialog(page)).toContainText(LEAVE_MATCH_CONFIRMATION)
   // The open confirmation holds the pending bot step.
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS * 2)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS * 2)
   await expect(timelineEntries(page)).toHaveCount(0)
   await leaveDialog(page).getByRole('button', { name: 'Abbandona partita' }).click()
 
@@ -116,7 +116,7 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
 
   // Explicitly advance well past the old pending step boundary: no stale callback may
   // mutate onboarding or write a save.
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS * 5)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS * 5)
   await expect(onboardingHeading(page)).toBeVisible()
   await expect(page.getByRole('region', { name: 'Tavolo di Burraco' })).toHaveCount(0)
   await expect(page.getByLabel('Il tuo nome')).toHaveValue(PLAYER_NAME)
@@ -128,6 +128,6 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
   await expect(timelineEntries(page)).toHaveCount(0)
   await expect(humanHandCards(page)).toHaveCount(11)
   await expect(drawPileButton(page)).toBeEnabled()
-  await page.clock.runFor(NORMAL_BOT_DELAY_MS * 5)
+  await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS * 5)
   await expect(timelineEntries(page)).toHaveCount(0)
 })

@@ -10,10 +10,10 @@ const north = players.find(({ id }) => id === 'player-2')!
 
 describe('PlayerSeat', () => {
   it('states the relation to the human and the team in text', () => {
-    render(<PlayerSeat player={partner} position="left" relation="teammate" bot />)
+    render(<PlayerSeat player={partner} position="top" relation="teammate" bot />)
     const seat = screen.getByRole('region', { name: 'Giocatore Partner' })
 
-    expect(seat).toHaveAttribute('data-seat', 'left')
+    expect(seat).toHaveAttribute('data-seat', 'top')
     expect(seat).toHaveTextContent('Partner · Bot')
     expect(seat).toHaveTextContent('Compagno · Squadra 1')
     expect(seat).not.toHaveAttribute('aria-current')
@@ -21,7 +21,7 @@ describe('PlayerSeat', () => {
   })
 
   it('marks the active opponent seat in text and with aria-current', () => {
-    render(<PlayerSeat player={north} position="right" relation="opponent" bot active />)
+    render(<PlayerSeat player={north} position="left" relation="opponent" bot active />)
     const seat = screen.getByRole('region', { name: 'Giocatore North' })
 
     expect(seat).toHaveTextContent('Avversario · Squadra 2')
