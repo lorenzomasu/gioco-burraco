@@ -499,17 +499,25 @@ button { font: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: .5rem;
-  margin-bottom: .25rem;
 }
 .guided-coach__title {
   margin: 0;
   color: #f6c760;
-  font-size: .78rem;
-  letter-spacing: .02em;
+  font-size: .7rem;
+  letter-spacing: .04em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+.guided-coach__dismiss { padding-block: .2rem; white-space: nowrap; }
+/* Precise pointers get a slimmer header; touch keeps the full 2.75rem target. */
+@media (pointer: fine) {
+  .guided-coach__dismiss { min-height: 1.75rem; }
 }
 .guided-coach p { margin: .2rem 0 0; }
 .guided-coach__now { font-weight: 600; }
+.guided-coach__details { margin-top: .2rem; color: #bcd2c8; }
+.guided-coach__details summary { cursor: pointer; font-size: .7rem; }
+.guided-coach__details summary:focus-visible { outline: 3px solid #f6c760; outline-offset: 2px; }
 .guided-coach__context { padding-left: .45rem; border-left: 2px solid #f6c760; }
 .guided-coach__unavailable { margin: .25rem 0 0; padding-left: 1rem; color: #bcd2c8; }
 .guided-coach__reminder { color: #bcd2c8; font-style: italic; }

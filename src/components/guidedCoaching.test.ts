@@ -24,8 +24,8 @@ const action = (overrides: Partial<CoachingFacts> = {}) =>
 
 describe('deriveCoaching (M36)', () => {
   it('explains the human acquisition step from the actual enabled pile controls', () => {
-    expect(deriveCoaching(facts()).now).toMatch(/pesca una carta dal tallone oppure raccogli tutto il monte/)
-    expect(deriveCoaching(facts({ canTakeDiscardPile: false })).now).toMatch(/il monte degli scarti è vuoto/)
+    expect(deriveCoaching(facts()).now).toMatch(/pesca dal tallone oppure raccogli tutto il monte degli scarti/)
+    expect(deriveCoaching(facts({ canTakeDiscardPile: false })).now).toMatch(/pesca dal tallone \(il monte degli scarti è vuoto\)/)
     expect(deriveCoaching(facts({ canDrawStock: false })).now).toMatch(/il tallone è vuoto, raccogli il monte/)
     const neither = deriveCoaching(facts({ canDrawStock: false, canTakeDiscardPile: false }))
     expect(neither.now).toBe('Tocca a te, ma al momento nessuna pesca è disponibile.')
@@ -39,35 +39,35 @@ describe('deriveCoaching (M36)', () => {
 
   it('explains the action phase with no selection, mentioning extension only with own melds', () => {
     const withoutMelds = deriveCoaching(action())
-    expect(withoutMelds.now).toMatch(/nuova calata con «Cala» oppure seleziona una sola carta per scartarla/)
-    expect(withoutMelds.now).not.toMatch(/calata della tua squadra/)
+    expect(withoutMelds.now).toMatch(/^Seleziona carte per provare «Cala», oppure una sola carta per «Scarta e passa»\.$/)
+    expect(withoutMelds.now).not.toMatch(/tua calata/)
     expect(withoutMelds.unavailable).toEqual([
       '«Cala» richiede almeno una carta selezionata.',
       '«Scarta e passa» richiede esattamente una carta selezionata.',
     ])
     expect(withoutMelds.reminder).toBe('La chiusura della smazzata avviene sempre con lo scarto finale.')
-    expect(deriveCoaching(action({ hasTeamMelds: true })).now).toMatch(/aggiungerle a una calata della tua squadra/)
+    expect(deriveCoaching(action({ hasTeamMelds: true })).now).toMatch(/aggiungerle a una tua calata/)
   })
 
   it('offers the discard for exactly one card without claiming a one-card meld is legal', () => {
     const coaching = deriveCoaching(action({ selectedCount: 1 }))
-    expect(coaching.now).toMatch(/puoi premere «Scarta e passa»/)
-    expect(coaching.now).toMatch(/decide il gioco se è valida/)
+    expect(coaching.now).toMatch(/^«Scarta e passa» scarta la carta selezionata e finisce il turno/)
+    expect(coaching.now).toMatch(/provare a calarla: decide il gioco\./)
     expect(coaching.unavailable).toEqual([])
     expect(deriveCoaching(action({ selectedCount: 1, hasTeamMelds: true })).now)
-      .toMatch(/aggiungerla a una calata della tua squadra/)
+      .toMatch(/aggiungerla a una tua calata/)
   })
 
   it('explains the discard contract for several selected cards without predicting the meld', () => {
     const coaching = deriveCoaching(action({ selectedCount: 3 }))
-    expect(coaching.now).toMatch(/^Con 3 carte selezionate puoi provare una nuova calata/)
+    expect(coaching.now).toMatch(/^Con 3 carte selezionate prova «Cala»/)
     expect(coaching.now).toMatch(/decide il gioco se è valida/)
     expect(coaching.unavailable).toEqual(['«Scarta e passa» richiede esattamente una carta selezionata.'])
   })
 
   it('keeps bot turns to the public flow and Completa subito', () => {
     const coaching = deriveCoaching(facts({ isBotPlaying: true, canDrawStock: false, canTakeDiscardPile: false }))
-    expect(coaching.now).toMatch(/I bot giocano da soli/)
+    expect(coaching.now).toMatch(/I bot giocano una mossa alla volta/)
     expect(coaching.now).toMatch(/«Completa subito»/)
     expect(coaching.unavailable).toEqual([])
     expect(coaching.reminder).toBeNull()
@@ -105,6 +105,22 @@ describe('deriveCoaching (M36)', () => {
     expect(own).toMatch(/pozzetto preso e almeno un Burraco/)
     expect(deriveCoaching(facts({ isBotPlaying: true, burracoReached: { ownTeam: false, opponentTeam: true } })).context)
       .toMatch(/Gli avversari hanno completato un Burraco/)
+  })
+
+  it('explains a pozzetto and a Burraco reached in the same committed cue for the same side', () => {
+    const both = { ownTeam: true, opponentTeam: false }
+    const own = deriveCoaching(action({ pozzettoTaken: both, burracoReached: both })).context
+    expect(own).toMatch(/^La tua squadra ha preso il pozzetto: è la vostra seconda mano/)
+    expect(own).toMatch(/Una calata della tua squadra è ora un Burraco/)
+
+    const opponentsBoth = { ownTeam: false, opponentTeam: true }
+    expect(deriveCoaching(facts({ isBotPlaying: true, pozzettoTaken: opponentsBoth, burracoReached: opponentsBoth })).context)
+      .toBe('Gli avversari hanno preso il loro pozzetto. Gli avversari hanno completato un Burraco: il badge sulla loro calata ne indica il tipo.')
+
+    // Single events keep their exact existing copy.
+    expect(deriveCoaching(action({ pozzettoTaken: both })).context)
+      .toBe('La tua squadra ha preso il pozzetto: è la vostra seconda mano e il gioco continua normalmente.')
+    expect(deriveCoaching(action({ burracoReached: both })).context).not.toMatch(/ha preso il pozzetto/)
   })
 
   it('lets a fresh engine rejection take precedence over an older event', () => {

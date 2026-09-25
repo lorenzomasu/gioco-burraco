@@ -63,39 +63,41 @@ const SELECT_ONE_TO_DISCARD = '«Scarta e passa» richiede esattamente una carta
 const CLOSING_REMINDER = 'La chiusura della smazzata avviene sempre con lo scarto finale.'
 
 const acquisitionNow = ({ canDrawStock, canTakeDiscardPile }: CoachingFacts): string => {
-  if (canDrawStock && canTakeDiscardPile) {
-    return 'Tocca a te. Primo passo: pesca una carta dal tallone oppure raccogli tutto il monte degli scarti.'
-  }
-  if (canDrawStock) return 'Tocca a te. Primo passo: pesca una carta dal tallone; il monte degli scarti è vuoto.'
-  if (canTakeDiscardPile) return 'Tocca a te. Primo passo: il tallone è vuoto, raccogli il monte degli scarti.'
+  if (canDrawStock && canTakeDiscardPile) return 'Tocca a te: pesca dal tallone oppure raccogli tutto il monte degli scarti.'
+  if (canDrawStock) return 'Tocca a te: pesca dal tallone (il monte degli scarti è vuoto).'
+  if (canTakeDiscardPile) return 'Tocca a te: il tallone è vuoto, raccogli il monte degli scarti.'
   return 'Tocca a te, ma al momento nessuna pesca è disponibile.'
 }
 
 const actionNow = ({ selectedCount, hasTeamMelds }: CoachingFacts): string => {
   if (selectedCount === 0) {
-    const extend = hasTeamMelds ? ', aggiungerle a una calata della tua squadra' : ''
-    return `Seleziona le carte per provare una nuova calata con «Cala»${extend} oppure seleziona una sola carta per scartarla e finire il turno.`
+    const extend = hasTeamMelds ? ' o aggiungerle a una tua calata' : ''
+    return `Seleziona carte per provare «Cala»${extend}, oppure una sola carta per «Scarta e passa».`
   }
   if (selectedCount === 1) {
-    const extend = hasTeamMelds ? ' o aggiungerla a una calata della tua squadra' : ''
-    return `Con una carta selezionata puoi premere «Scarta e passa» per finire il turno. Puoi anche provare a calarla${extend}: decide il gioco se è valida.`
+    const extend = hasTeamMelds ? ' o aggiungerla a una tua calata' : ''
+    return `«Scarta e passa» scarta la carta selezionata e finisce il turno. Puoi anche provare a calarla${extend}: decide il gioco.`
   }
-  const extend = hasTeamMelds ? ' o aggiungerle a una calata della tua squadra' : ''
-  return `Con ${selectedCount} carte selezionate puoi provare una nuova calata con «Cala»${extend}: decide il gioco se è valida.`
+  const extend = hasTeamMelds ? ' o aggiungile a una tua calata' : ''
+  return `Con ${selectedCount} carte selezionate prova «Cala»${extend}: decide il gioco se è valida.`
 }
 
+const OWN_POZZETTO = 'La tua squadra ha preso il pozzetto: è la vostra seconda mano e il gioco continua normalmente.'
+const OWN_BURRACO =
+  'Una calata della tua squadra è ora un Burraco: il badge sulla calata ne indica il tipo. Con il pozzetto preso e almeno un Burraco potrete chiudere con lo scarto finale.'
+const OPPONENT_POZZETTO = 'Gli avversari hanno preso il loro pozzetto.'
+const OPPONENT_BURRACO = 'Gli avversari hanno completato un Burraco: il badge sulla loro calata ne indica il tipo.'
+
+/**
+ * One committed cue can carry both events for the same side (a meld that reaches Burraco
+ * with the last cards of the first hand, then the pozzetto): both are then explained.
+ */
 const eventContext = ({ pozzettoTaken, burracoReached }: CoachingFacts): string | null => {
-  if (pozzettoTaken.ownTeam) {
-    return 'La tua squadra ha preso il pozzetto: è la vostra seconda mano e il gioco continua normalmente.'
-  }
-  if (burracoReached.ownTeam) {
-    return 'Una calata della tua squadra è ora un Burraco: il badge sulla calata ne indica il tipo. Con il pozzetto preso e almeno un Burraco potrete chiudere con lo scarto finale.'
-  }
-  if (pozzettoTaken.opponentTeam) return 'Gli avversari hanno preso il loro pozzetto.'
-  if (burracoReached.opponentTeam) {
-    return 'Gli avversari hanno completato un Burraco: il badge sulla loro calata ne indica il tipo.'
-  }
-  return null
+  const own = [pozzettoTaken.ownTeam && OWN_POZZETTO, burracoReached.ownTeam && OWN_BURRACO].filter(Boolean)
+  if (own.length > 0) return own.join(' ')
+  const opponent = [pozzettoTaken.opponentTeam && OPPONENT_POZZETTO, burracoReached.opponentTeam && OPPONENT_BURRACO]
+    .filter(Boolean)
+  return opponent.length > 0 ? opponent.join(' ') : null
 }
 
 /**
@@ -115,7 +117,7 @@ export const deriveCoaching = (facts: CoachingFacts): Coaching => {
   const rejection = facts.rejectionCode ? REJECTION_COACHING[facts.rejectionCode] ?? null : null
   if (facts.isBotPlaying) {
     return {
-      now: 'I bot giocano da soli una mossa alla volta: segui le loro mosse pubbliche sul tavolo e nella cronologia, oppure usa «Completa subito».',
+      now: 'I bot giocano una mossa alla volta: seguili sul tavolo e nella cronologia, oppure usa «Completa subito».',
       unavailable: [],
       context: eventContext(facts),
       reminder: null,

@@ -297,7 +297,9 @@ match's `roundCount`. It is transient UI: it
   engine stays the only legality authority and no hidden-information boundary changes.
 - Surface: with guidance enabled, `GuidedCoach` replaces the one-line turn guidance in the
   turn-status area as a named, non-modal region (no `aria-live`, no focus movement, no
-  inert or blocking layer) with a keyboard-operable «Nascondi guida». With guidance disabled,
+  inert or blocking layer) with a keyboard-operable «Nascondi guida». Structural
+  unavailability reasons and the closing reminder sit in a closed native `<details>` so the
+  coach stays compact and the hand remains in the first desktop viewport. With guidance disabled,
   or on a standalone table without the prop, the existing compact guidance is unchanged.
   The rule-error alert remains the immediate rejection feedback; the round-result and
   final-result views show no coach.

@@ -105,11 +105,16 @@ describe('GameTable contextual coach (M36)', () => {
 
     const region = coach()!
     expect(within(region).getByRole('heading', { name: 'Guida contestuale' })).toBeInTheDocument()
-    expect(region).toHaveTextContent('pesca una carta dal tallone oppure raccogli tutto il monte degli scarti')
+    expect(region).toHaveTextContent('pesca dal tallone oppure raccogli tutto il monte degli scarti')
     expect(region.closest('[aria-live], [role="status"], [role="alert"]')).toBeNull()
     expect(region.querySelector('[aria-live]')).toBeNull()
     // It replaces the compact line instead of duplicating it.
     expect(document.querySelector('.turn-guidance')).toBeNull()
+    // Unavailable-control reasons stay in a closed native disclosure, keeping the coach compact.
+    const details = region.querySelector('details')!
+    expect(details).not.toHaveAttribute('open')
+    expect(within(region).getByText('Comandi disattivati e chiusura').tagName).toBe('SUMMARY')
+    expect(details).toHaveTextContent('«Cala» e «Scarta e passa» si attivano solo dopo')
 
     const dismiss = within(region).getByRole('button', { name: 'Nascondi guida' })
     dismiss.focus()
@@ -135,7 +140,7 @@ describe('GameTable contextual coach (M36)', () => {
   it('derives acquisition coaching from the actual pile controls and leaves them unchanged', () => {
     guided(drawPhaseState([]))
 
-    expect(coach()).toHaveTextContent('pesca una carta dal tallone; il monte degli scarti è vuoto')
+    expect(coach()).toHaveTextContent('pesca dal tallone (il monte degli scarti è vuoto)')
     expect(coach()).toHaveTextContent('«Cala» e «Scarta e passa» si attivano solo dopo')
     expect(screen.getByRole('button', { name: /^Pesca dal tallone/ })).toBeEnabled()
     expect(screen.getByRole('button', { name: /^Raccogli tutto il monte degli scarti/ })).toBeDisabled()
@@ -143,7 +148,7 @@ describe('GameTable contextual coach (M36)', () => {
     expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: /^Pesca dal tallone/ }))
-    expect(coach()).toHaveTextContent('Seleziona le carte per provare una nuova calata')
+    expect(coach()).toHaveTextContent('Seleziona carte per provare «Cala»')
   })
 
   it('tracks the UI selection count without changing the Cala/Scarta e passa contracts', () => {
@@ -157,13 +162,13 @@ describe('GameTable contextual coach (M36)', () => {
     expect(discardButton).toBeDisabled()
 
     select(hand[0]!)
-    expect(coach()).toHaveTextContent('Con una carta selezionata puoi premere «Scarta e passa»')
+    expect(coach()).toHaveTextContent('«Scarta e passa» scarta la carta selezionata')
     expect(coach()).not.toHaveTextContent('richiede')
     expect(meldButton).toBeEnabled()
     expect(discardButton).toBeEnabled()
 
     select(hand[1]!)
-    expect(coach()).toHaveTextContent('Con 2 carte selezionate puoi provare una nuova calata')
+    expect(coach()).toHaveTextContent('Con 2 carte selezionate prova «Cala»')
     expect(coach()).toHaveTextContent('«Scarta e passa» richiede esattamente una carta selezionata.')
     expect(meldButton).toBeEnabled()
     expect(discardButton).toBeDisabled()
@@ -217,7 +222,7 @@ describe('GameTable contextual coach (M36)', () => {
   it('explains an opponent pozzetto during bot playback without hidden identities and keeps Completa subito', () => {
     const state = botPozzettoState()
     guided(state)
-    expect(coach()).toHaveTextContent('I bot giocano da soli')
+    expect(coach()).toHaveTextContent('I bot giocano una mossa alla volta')
     expect(screen.getByRole('button', { name: 'Completa subito' })).toBeEnabled()
 
     act(() => {
@@ -249,6 +254,22 @@ describe('GameTable contextual coach (M36)', () => {
     expect(coach()).toHaveTextContent('Una calata della tua squadra è ora un Burraco')
     expect(within(screen.getByRole('article', { name: 'Calata 1 squadra 1' })).getByText(/Burraco/))
       .toBeInTheDocument()
+  })
+
+  it('explains both a Burraco and the pozzetto reached with the last cards of the first hand', () => {
+    const sixClubs = validatedMeld([
+      card('three', 'clubs'), card('four', 'clubs'), card('five', 'clubs'),
+      card('six', 'clubs'), card('seven', 'clubs'), card('eight', 'clubs'),
+    ])
+    const nine = card('nine', 'clubs')
+    guided(actionState([nine], { melds: [sixClubs] }))
+
+    select(nine)
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' }))
+
+    expect(screen.getByRole('region', { name: 'Calate squadra 1' })).toHaveTextContent('Pozzetto preso')
+    expect(coach()).toHaveTextContent('La tua squadra ha preso il pozzetto')
+    expect(coach()).toHaveTextContent('Una calata della tua squadra è ora un Burraco')
   })
 
   it('does not steal focus on phase or selection changes', () => {
