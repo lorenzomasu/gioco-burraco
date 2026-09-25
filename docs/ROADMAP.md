@@ -439,11 +439,37 @@ These are presentation/interaction corrections to the released v1.1 product. The
 
 After `v1.1.1`, continue with the v1.2 sequence below.
 
+# V1.1.2 — Flexible wildcard repositioning corrective release
+
+## Why this patch exists
+
+Post-v1.1.1 playtesting exposed a product-rule mismatch rather than a UI defect. The current engine follows the stricter FIBUR-style history rule for an already-active sequence wildcard: once the wildcard represents a rank, an extension may move it only when the exact natural card for its previous rank is added.
+
+For this game, adopt the more permissive digital/casual variant requested by the product owner: an already-played wildcard may be reinterpreted within the **same sequence** whenever the full resulting set of physical cards is still a valid sequence. The wildcard never returns to the hand and never moves to another meld.
+
+## Corrective milestone
+
+`M33.2 Flexible Wildcard Repositioning` → release `v1.1.2`.
+
+### M33.2 — Flexible Wildcard Repositioning
+
+**Outcome:** make sequence extension legality depend on the validity of the resulting sequence rather than locking an already-active wildcard to its previous represented rank. Example: `Jolly=4♦, 5♦, 6♦, 7♦, 8♦` + `10♦` becomes the valid sequence `5♦, 6♦, 7♦, 8♦, Jolly=9♦, 10♦`.
+
+This is an explicit product variant from the stricter rule currently documented in M15. It applies only to reinterpretation inside the same stored sequence. Physical card identity, one-active-wildcard limits, suit/sequence validation, group rules, hidden information, scoring and all other gameplay invariants remain unchanged.
+
+**Dependency:** released `v1.1.1` baseline at `76a85445a31afe1bee9af217ea1b7006ccf4be24`.
+
+**Release role:** standalone rule-critical corrective delivery and patch release. After independent review and exact-SHA PR/CI merge, the post-merge production workflow and deployed smoke must be green before tagging that exact SHA as `v1.1.2`.
+
+**Boundary:** no configurable match length, bot-difficulty, tutorial, PWA or unrelated UI work belongs here.
+
+After `v1.1.2`, continue with the v1.2 sequence below.
+
 # V1.2 — Single-player depth & installable app
 
 ## Product outcome and boundary
 
-V1.1 established the table interaction model, full discard visibility, direct manipulation, motion, sound, responsive polish and release hardening. The v1.1.1 corrective patch then fixes post-release table-flow, meld-density and bot-pacing issues before new product scope begins. V1.2 should add meaningful replayability and make the browser client behave more like an installable app without opening the much larger online/backend scope.
+V1.1 established the table interaction model, full discard visibility, direct manipulation, motion, sound, responsive polish and release hardening. The v1.1.1 corrective patch fixes post-release table-flow, meld-density and bot-pacing issues. The v1.1.2 corrective patch then adopts the product's flexible same-sequence wildcard-repositioning rule before new v1.2 scope begins. V1.2 should add meaningful replayability and make the browser client behave more like an installable app without opening the much larger online/backend scope.
 
 Keep the rules baseline, deterministic engine, physical-card identity, hidden-information guarantees, one-human/three-bot team structure and static-client deployment model. New setup options must be explicit product choices rather than silent rule changes. Online multiplayer, accounts, cloud sync, leaderboards and a full replay system remain outside this cycle.
 
@@ -463,7 +489,7 @@ M34, M35 and M37 cross boundaries that justify standalone review gates. M36 is p
 
 The milestone specification must resolve the exact supported presets from the current rules/product model rather than invent arbitrary values. Generalize match lifecycle, completion/progress presentation and tests only as far as required by those presets. Persist the chosen configuration safely and define backward compatibility for existing v1.1 local saves.
 
-**Dependency:** released v1.1.1 corrective baseline.
+**Dependency:** released v1.1.2 corrective baseline.
 
 **Risk boundary:** match lifecycle and persistence. Deliver standalone.
 
