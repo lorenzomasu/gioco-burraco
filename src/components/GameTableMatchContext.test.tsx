@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { createBurracoDeck } from '../game/cards/deck'
 import { dealInitialState } from '../game/engine/startGame'
-import type { MatchState, SettledRoundResult } from '../game/match'
+import type { MatchRoundCount, MatchState, SettledRoundResult } from '../game/match'
 import type { CompletedGameState, InProgressGameState, TeamId } from '../game/state/types'
 import { GameTable } from './GameTable'
 
@@ -50,6 +50,7 @@ describe('GameTable M32 match context', () => {
 
   it('shows only settled cumulative points, oriented to the human team', () => {
     const match: MatchState = {
+      roundCount: 4,
       status: 'in-progress',
       currentRoundNumber: 3,
       currentRound: humanTurn(),
@@ -67,6 +68,7 @@ describe('GameTable M32 match context', () => {
   it('separates round result, match progress and one next-round action between smazzate', () => {
     const createGame = vi.fn(humanTurn)
     const match: MatchState = {
+      roundCount: 4,
       status: 'in-progress',
       currentRoundNumber: 1,
       currentRound: completedRound(),
@@ -91,6 +93,7 @@ describe('GameTable M32 match context', () => {
   })
 
   const finalMatch = (team1: number, team2: number): MatchState => ({
+    roundCount: 4,
     status: 'completed',
     currentRoundNumber: 4,
     currentRound: completedRound(),
@@ -117,4 +120,60 @@ describe('GameTable M32 match context', () => {
     expect(onLeaveMatch).toHaveBeenCalledOnce()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
+
+  it.each([2, 3] as const)('derives the header, progress and next-round action from a %i-smazzate match', (roundCount) => {
+    const createGame = vi.fn(humanTurn)
+    const match: MatchState = {
+      roundCount,
+      status: 'in-progress',
+      currentRoundNumber: 1,
+      currentRound: completedRound(),
+      roundResults: [settled(1, 150, 90)],
+    }
+    render(<GameTable initialMatch={match} createGame={createGame} />)
+
+    expect(screen.getByText(`Smazzata 1/${roundCount}`)).toBeInTheDocument()
+    const summary = screen.getByRole('region', { name: 'Punteggio cumulativo' })
+    expect(summary).toHaveTextContent(`Smazzata 1 di ${roundCount} conclusa`)
+    expect(summary.querySelectorAll('.round-track__step')).toHaveLength(roundCount)
+    expect(summary.querySelectorAll('.round-track__step--done')).toHaveLength(1)
+    expect(within(summary).getAllByRole('button')).toHaveLength(1)
+
+    fireEvent.click(within(summary).getByRole('button', { name: 'Inizia smazzata 2' }))
+    expect(createGame).toHaveBeenCalledExactlyOnceWith({ roundNumber: 2, startingPlayerId: 'player-2' })
+    expect(screen.getByText(`Smazzata 2/${roundCount}`)).toBeInTheDocument()
+  })
+
+  it('starts a fresh match with the requested length', () => {
+    render(<GameTable createGame={humanTurn} roundCount={3} />)
+    expect(screen.getByText('Smazzata 1/3')).toBeInTheDocument()
+  })
+
+  const terminalMatch = (roundCount: MatchRoundCount, team1: number): MatchState => ({
+    roundCount,
+    status: 'completed',
+    currentRoundNumber: roundCount,
+    currentRound: completedRound(),
+    roundResults: Array.from({ length: roundCount }, (_, index) =>
+      settled((index + 1) as 1 | 2 | 3 | 4, index === 0 ? team1 : 0, 0)),
+  })
+
+  it.each([
+    [2, 'Smazzata 2/2', ['19 VP', '1 VP']],
+    [3, 'Smazzata 3/3', ['17 VP', '3 VP']],
+    [4, 'Smazzata 4/4', ['15 VP', '5 VP']],
+  ] as const)(
+    'shows the final result of a %i-smazzate match with its own VP table and no further round',
+    (roundCount, header, victoryPoints) => {
+      render(<GameTable initialMatch={terminalMatch(roundCount, 1000)} onLeaveMatch={vi.fn()} />)
+
+      expect(screen.getByText(header)).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Risultato finale' })).toBeInTheDocument()
+      expect(screen.getByText('Match Points')).toHaveTextContent('1000')
+      const vp = within(screen.getByLabelText('Victory Points')).getAllByText(/VP$/).map(({ textContent }) => textContent)
+      expect(vp).toEqual(victoryPoints)
+      expect(screen.queryByRole('button', { name: /^Inizia smazzata/ })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Gioca ancora' })).toBeInTheDocument()
+    },
+  )
 })

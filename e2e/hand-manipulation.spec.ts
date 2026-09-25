@@ -51,7 +51,7 @@ const fixtureHand = [
  * so the envelope passes the real M22 validation.
  */
 const directManipulationMatch = (): MatchState => {
-  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME }, createSeededRandom(E2E_SEED)))
+  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME, roundCount: 4 }, createSeededRandom(E2E_SEED)))
   const round = match.currentRound
   const reserved = new Set([...fixtureHand, ...eights, ...nines].map(({ id }) => id))
   const pool = [

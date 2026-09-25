@@ -12,8 +12,8 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
       <section aria-labelledby="help-match">
         <h3 id="help-match">La partita</h3>
         <p>
-          Giochi in coppia con un bot compagno contro due bot avversari. La partita dura quattro
-          smazzate e vince la squadra con il punteggio cumulativo più alto. La partita in corso è
+          Giochi in coppia con un bot compagno contro due bot avversari. La partita dura 2, 3 o 4
+          smazzate, a scelta all'inizio (4 se non la cambi), e vince la squadra con il punteggio cumulativo più alto. La partita in corso è
           salvata in questo browser e riprende automaticamente quando riapri la pagina.
         </p>
       </section>

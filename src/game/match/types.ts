@@ -1,8 +1,18 @@
 import type { RoundScore } from '../scoring'
 import type { CompletedRoundState, GameState, InProgressGameState, PlayerId, TeamId } from '../state/types'
 
-export const MATCH_ROUND_COUNT = 4
+/** The supported match lengths (smazzate per match): the single finite source of truth. */
+export const MATCH_ROUND_COUNTS = [2, 3, 4] as const
 
+export type MatchRoundCount = (typeof MATCH_ROUND_COUNTS)[number]
+
+/** A match started without an explicit length keeps the original four-smazzate format. */
+export const DEFAULT_MATCH_ROUND_COUNT: MatchRoundCount = 4
+
+export const isMatchRoundCount = (value: unknown): value is MatchRoundCount =>
+  (MATCH_ROUND_COUNTS as readonly unknown[]).includes(value)
+
+/** Bounded by the longest supported length; the configured `roundCount` is the real limit. */
 export type MatchRoundNumber = 1 | 2 | 3 | 4
 
 export type SettledRoundResult = Readonly<{
@@ -12,6 +22,8 @@ export type SettledRoundResult = Readonly<{
 }>
 
 export type MatchState = Readonly<{
+  /** Configured number of smazzate, fixed when the match starts. */
+  roundCount: MatchRoundCount
   status: 'in-progress' | 'completed'
   currentRoundNumber: MatchRoundNumber
   currentRound: GameState

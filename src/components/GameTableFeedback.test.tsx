@@ -402,6 +402,7 @@ describe('Burraco and result presentation', () => {
       },
     })
     return {
+      roundCount: 4,
       status: 'completed',
       currentRoundNumber: 4,
       currentRound: emptyCompletedRound(),

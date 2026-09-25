@@ -144,7 +144,7 @@ const expectOnboarding = () => {
   expect(nameInput()).toBeInTheDocument()
   expect(table()).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Nuova partita' })).not.toBeInTheDocument()
-  expect(screen.queryByText(/^Smazzata \d\/4$/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/^Smazzata \d\/\d$/)).not.toBeInTheDocument()
 }
 
 const discardKingOfHearts = () => {
@@ -181,7 +181,7 @@ describe('App shell onboarding', () => {
     const setup = screen.getByRole('list', { name: 'Configurazione della partita' })
     expect(within(setup).getByText('1 giocatore umano')).toBeInTheDocument()
     expect(within(setup).getByText('3 bot')).toBeInTheDocument()
-    expect(within(setup).getByText('4 smazzate')).toBeInTheDocument()
+    expect(within(setup).getByText('2, 3 o 4 smazzate')).toBeInTheDocument()
   })
 
   it('cannot start with an empty or whitespace-only name', () => {
@@ -206,7 +206,7 @@ describe('App shell onboarding', () => {
 
     startWith('  Lorenzo  ')
 
-    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo' })
+    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4 })
     expect(created).toHaveLength(1)
     expect(created[0]!.context).toEqual({ roundNumber: 1, startingPlayerId: 'player-1' })
     expect(created[0]!.state.players.map(({ id, name, teamId }) => ({ id, name, teamId }))).toEqual([
@@ -271,7 +271,7 @@ describe('App shell onboarding', () => {
 
     startWith('Giulia')
 
-    expect(setups).toEqual([{ humanPlayerName: 'Lorenzo' }, { humanPlayerName: 'Giulia' }])
+    expect(setups).toEqual([{ humanPlayerName: 'Lorenzo', roundCount: 4 }, { humanPlayerName: 'Giulia', roundCount: 4 }])
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(timelineItems()).toHaveLength(0)
     expect(turnBanner()).toHaveTextContent('North')
@@ -409,7 +409,7 @@ describe('App shell completed-match restart', () => {
 
     startWith('Giulia')
 
-    expect(createRoundFactory).toHaveBeenLastCalledWith({ humanPlayerName: 'Giulia' })
+    expect(createRoundFactory).toHaveBeenLastCalledWith({ humanPlayerName: 'Giulia', roundCount: 4 })
     expect(created.at(-1)!.context).toEqual({ roundNumber: 1, startingPlayerId: 'player-1' })
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Mano di Giulia' })).toBeInTheDocument()
@@ -473,7 +473,7 @@ describe('App local save and resume', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('saves the started match as one version-1 envelope with only the setup and match', () => {
+  it('saves the started match as one version-2 envelope with only the setup and match', () => {
     const { created, createRoundFactory } = seededNamedFactories()
     render(<App createRoundFactory={createRoundFactory} />)
 
@@ -482,9 +482,10 @@ describe('App local save and resume', () => {
     const raw = storedRaw()!
     const save = JSON.parse(raw)
     expect(Object.keys(save)).toEqual(['version', 'setup', 'match'])
-    expect(save.version).toBe(1)
-    expect(save.setup).toEqual({ humanPlayerName: 'Lorenzo' })
+    expect(save.version).toBe(2)
+    expect(save.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
     expect(save.match).toEqual({
+      roundCount: 4,
       status: 'in-progress',
       currentRoundNumber: 1,
       currentRound: created[0]!.state,
@@ -528,7 +529,7 @@ describe('App local save and resume', () => {
     const second = seededNamedFactories(99)
     render(<App createRoundFactory={second.createRoundFactory} />)
 
-    expect(second.createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo' })
+    expect(second.createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4 })
     expect(second.created).toHaveLength(0)
     expect(storedSave()).toEqual(saved)
     expect(table()).toBeInTheDocument()
@@ -637,7 +638,7 @@ describe('App local save and resume', () => {
     expect(second.created[0]!.state.players.find(({ id }) => id === 'player-1')!.name).toBe('Lorenzo')
     expect(screen.getByText('Smazzata 2/4')).toBeInTheDocument()
     const next = storedSave()
-    expect(next.setup).toEqual({ humanPlayerName: 'Lorenzo' })
+    expect(next.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
     expect(next.match.currentRoundNumber).toBe(2)
     expect(next.match.roundResults).toEqual(saved.match.roundResults)
   })
@@ -682,9 +683,9 @@ describe('App local save and resume', () => {
 
   it.each([
     ['invalid JSON', () => '{"version":1,'],
-    ['an unsupported version', () => JSON.stringify({ ...storedSave(), version: 2 })],
+    ['an unsupported version', () => JSON.stringify({ ...storedSave(), version: 3 })],
     ['a setup inconsistent with the saved player', () =>
-      JSON.stringify({ ...storedSave(), setup: { humanPlayerName: 'Giulia' } })],
+      JSON.stringify({ ...storedSave(), setup: { humanPlayerName: 'Giulia', roundCount: 4 } })],
     ['a structurally invalid match', () => {
       const save = storedSave()
       return JSON.stringify({ ...save, match: { ...save.match, currentRound: { players: [] } } })
@@ -707,7 +708,7 @@ describe('App local save and resume', () => {
 
     startWith('Giulia')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(storedSave().setup).toEqual({ humanPlayerName: 'Giulia' })
+    expect(storedSave().setup).toEqual({ humanPlayerName: 'Giulia', roundCount: 4 })
   })
 
   it('falls back to onboarding when storage cannot be read or a corrupt save cannot be removed', () => {
@@ -852,5 +853,111 @@ describe('App lifecycle focus', () => {
     expect(notice).toHaveTextContent(SAVE_FAILED_NOTICE)
     expect(notice.compareDocumentPosition(table()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Nuova partita' })).toBeEnabled()
+  })
+})
+
+describe('App configurable match length', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  const lengthGroup = () => screen.getByRole('group', { name: 'Durata della partita' })
+  const lengthRadio = (roundCount: number) =>
+    within(lengthGroup()).getByRole('radio', { name: `${roundCount} smazzate` })
+
+  it('offers exactly 2, 3 and 4 smazzate with 4 selected by default', () => {
+    render(<App />)
+
+    expect(within(lengthGroup()).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['2', '3', '4'])
+    expect(lengthRadio(4)).toBeChecked()
+    expect(lengthRadio(2)).not.toBeChecked()
+    expect(lengthRadio(3)).not.toBeChecked()
+  })
+
+  it.each([2, 3] as const)('starts and saves a selected %i-smazzate match', (roundCount) => {
+    const { createRoundFactory } = seededNamedFactories()
+    render(<App createRoundFactory={createRoundFactory} />)
+
+    fireEvent.click(lengthRadio(roundCount))
+    expect(lengthRadio(roundCount)).toBeChecked()
+    expect(lengthRadio(4)).not.toBeChecked()
+    startWith(' Lorenzo ')
+
+    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount })
+    expect(screen.getByText(`Smazzata 1/${roundCount}`)).toBeInTheDocument()
+    const saved = storedSave()
+    expect(saved.version).toBe(2)
+    expect(saved.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount })
+    expect(saved.match.roundCount).toBe(roundCount)
+  })
+
+  it('ends a 2-smazzate match on round 2, clears the save and keeps the choice for the next match', () => {
+    const { created, createRoundFactory } = shortNamedFactories()
+    render(<App createRoundFactory={createRoundFactory} />)
+    fireEvent.click(lengthRadio(2))
+    startWith('Lorenzo')
+
+    playToRoundSummary('Lorenzo')
+    expect(screen.getByText('Smazzata 1 di 2 conclusa')).toBeInTheDocument()
+    expect(storedSave().match).toMatchObject({ roundCount: 2, currentRoundNumber: 1 })
+
+    playToFinalResult('Lorenzo')
+
+    expect(created.map(({ context }) => context)).toEqual([
+      { roundNumber: 1, startingPlayerId: 'player-1' },
+      { roundNumber: 2, startingPlayerId: 'player-2' },
+    ])
+    expect(screen.getByText('Smazzata 2/2')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Inizia smazzata/ })).not.toBeInTheDocument()
+    expect(storedRaw()).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gioca ancora' }))
+    expectOnboarding()
+    expect(lengthRadio(2)).toBeChecked()
+  })
+
+  it('resumes a 3-smazzate save with its own total in the notice, header and next round', () => {
+    const first = shortNamedFactories({ keepFullDeck: true })
+    const { unmount } = render(<App createRoundFactory={first.createRoundFactory} />)
+    fireEvent.click(lengthRadio(3))
+    startWith('Lorenzo')
+    playToRoundSummary('Lorenzo')
+    unmount()
+
+    const second = shortNamedFactories({ keepFullDeck: true })
+    render(<App createRoundFactory={second.createRoundFactory} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Partita ripresa · Smazzata 1/3')
+    expect(screen.getByText('Smazzata 1/3')).toBeInTheDocument()
+    expect(screen.getByText('Smazzata 1 di 3 conclusa')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Inizia smazzata 2' }))
+    expect(screen.getByText('Smazzata 2/3')).toBeInTheDocument()
+    expect(storedSave().match).toMatchObject({ roundCount: 3, currentRoundNumber: 2 })
+  })
+
+  it('restores a released version-1 save as four smazzate and rewrites it as version 2', () => {
+    const { createRoundFactory } = seededNamedFactories()
+    const { unmount } = render(<App createRoundFactory={createRoundFactory} />)
+    startWith('Lorenzo')
+    const current = storedSave()
+    unmount()
+    const { roundCount: _setupLength, ...legacySetup } = current.setup
+    const { roundCount: _matchLength, ...legacyMatch } = current.match
+    window.localStorage.setItem(
+      MATCH_SAVE_STORAGE_KEY,
+      JSON.stringify({ version: 1, setup: legacySetup, match: legacyMatch }),
+    )
+
+    render(<App createRoundFactory={createRoundFactory} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Partita ripresa · Smazzata 1/4')
+    expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
+    expect(storedSave()).toEqual(current)
   })
 })

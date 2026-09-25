@@ -14,11 +14,12 @@ import { discardCard, drawCard, takeDiscardPile } from '../game/engine/turn'
 import {
   advanceMatch,
   calculateCumulativeScores,
+  DEFAULT_MATCH_ROUND_COUNT,
   getFinalMatchOutcome,
-  MATCH_ROUND_COUNT,
   startMatch,
   synchronizeMatch,
   updateCurrentRound,
+  type MatchRoundCount,
   type MatchState,
   type RoundFactory,
 } from '../game/match'
@@ -56,6 +57,8 @@ type GameTableProps = Readonly<{
   initialMatch?: MatchState
   initialState?: GameState
   createGame?: RoundFactory
+  /** Length of a freshly started match; a provided `initialMatch` keeps its own. */
+  roundCount?: MatchRoundCount
   /**
    * Leaves the mounted match (the app shell returns to onboarding). The match actions
    * are offered only when the owner provides it.
@@ -340,6 +343,7 @@ export function GameTable({
   initialMatch,
   initialState,
   createGame,
+  roundCount = DEFAULT_MATCH_ROUND_COUNT,
   onLeaveMatch,
   playbackSpeed: controlledPlaybackSpeed,
   onPlaybackSpeedChange,
@@ -350,12 +354,13 @@ export function GameTable({
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
       ? {
+          roundCount,
           status: 'in-progress',
           currentRoundNumber: 1,
           currentRound: initialState,
           roundResults: [],
         }
-      : startMatch(createGame))
+      : startMatch(createGame, roundCount))
     return freshSession(startingMatch)
   })
   const [selectedCardIds, setSelectedCardIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -635,7 +640,7 @@ export function GameTable({
         <span className="brand__mark" aria-hidden="true">B</span>
         <strong>Burraco</strong>
       </div>
-      <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
+      <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{match.roundCount}</strong>
       {game.round.status === 'in-progress' && (
         <div className="match-score" role="group" aria-label="Punteggio della partita">
           {orientedScores.map((teamScore) => (
@@ -691,11 +696,11 @@ export function GameTable({
           <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} headingRef={resultHeadingRef} />
           <section className="match-summary" aria-labelledby="match-summary-title">
             <span className="round-complete__eyebrow">
-              {outcome ? 'Partita conclusa' : `Smazzata ${match.currentRoundNumber} di ${MATCH_ROUND_COUNT} conclusa`}
+              {outcome ? 'Partita conclusa' : `Smazzata ${match.currentRoundNumber} di ${match.roundCount} conclusa`}
             </span>
             {/* Decorative progress; the eyebrow and the header state the round in text. */}
             <span className="round-track" aria-hidden="true">
-              {Array.from({ length: MATCH_ROUND_COUNT }, (_, index) => (
+              {Array.from({ length: match.roundCount }, (_, index) => (
                 <span
                   key={index}
                   className={`round-track__step${index < match.currentRoundNumber ? ' round-track__step--done' : ''}`}

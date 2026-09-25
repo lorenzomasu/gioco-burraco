@@ -67,6 +67,7 @@ describe('GameTable match-outcome authority', () => {
 
   it('renders final Match Points, VP and leader exactly as returned by the match domain', () => {
     const initialMatch: MatchState = {
+      roundCount: 4,
       status: 'completed',
       currentRoundNumber: 4,
       currentRound: completedRound(),

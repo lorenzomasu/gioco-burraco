@@ -10,13 +10,22 @@ import {
   createMatchRoundFactory,
   getFinalMatchOutcome,
   getRoundStartingPlayerId,
+  isFinalRound,
   MatchLifecycleError,
   settleCompletedRound,
   startMatch,
   synchronizeMatch,
   updateCurrentRound,
 } from './lifecycle'
-import type { MatchState, RoundFactory, SettledRoundResult } from './types'
+import {
+  DEFAULT_MATCH_ROUND_COUNT,
+  isMatchRoundCount,
+  MATCH_ROUND_COUNTS,
+  type MatchRoundCount,
+  type MatchState,
+  type RoundFactory,
+  type SettledRoundResult,
+} from './types'
 
 const deck = createBurracoDeck()
 const freshRound = () => dealInitialState(deck)
@@ -80,6 +89,7 @@ describe('four-round match lifecycle', () => {
 
     expect(factory).toHaveBeenCalledOnce()
     expect(match).toMatchObject({
+      roundCount: 4,
       status: 'in-progress',
       currentRoundNumber: 1,
       roundResults: [],
@@ -165,6 +175,7 @@ describe('four-round match lifecycle', () => {
       scoreResult(4, -50, -150),
     ]
     const match: MatchState = {
+      roundCount: 4,
       status: 'completed',
       currentRoundNumber: 4,
       currentRound: completedRound(freshRound()),
@@ -187,6 +198,7 @@ describe('four-round match lifecycle', () => {
 
   it('represents exact cumulative equality as a tie', () => {
     const match: MatchState = {
+      roundCount: 4,
       status: 'completed',
       currentRoundNumber: 4,
       currentRound: completedRound(freshRound()),
@@ -223,7 +235,7 @@ describe('four-round match lifecycle', () => {
       currentRoundNumber: 4,
     })
     expect(completedMatch.roundResults).toHaveLength(4)
-    expect(() => advanceMatch(completedMatch, factory)).toThrowError('cannot advance to a fifth round')
+    expect(() => advanceMatch(completedMatch, factory)).toThrowError('beyond its configured final round')
     expect(factory).toHaveBeenCalledTimes(4)
   })
 })
@@ -269,7 +281,7 @@ describe('round starter rotation', () => {
       status: 'in-progress',
       turn: { currentPlayerId, phase: 'mustDraw' },
     })))
-    expect(Object.keys(match).sort()).toEqual(['currentRound', 'currentRoundNumber', 'roundResults', 'status'])
+    expect(Object.keys(match).sort()).toEqual(['currentRound', 'currentRoundNumber', 'roundCount', 'roundResults', 'status'])
   })
 
   it('does not call the factory or skip a starter when a transition is rejected', () => {
@@ -293,7 +305,7 @@ describe('round starter rotation', () => {
 
     const fourth = completeAndAdvance(third, factory)
     const completedMatch = updateCurrentRound(fourth, completedRound(fourth.currentRound))
-    expect(() => advanceMatch(completedMatch, factory)).toThrowError('fifth round')
+    expect(() => advanceMatch(completedMatch, factory)).toThrowError('beyond its configured final round')
     expect(factory).toHaveBeenCalledTimes(3)
   })
 
@@ -389,4 +401,99 @@ describe('configured match round factory', () => {
       }).toEqual(expected)
     }
   })
+})
+
+describe('configured match length', () => {
+  const completeAndAdvance = (match: MatchState, factory: RoundFactory): MatchState =>
+    advanceMatch(updateCurrentRound(match, completedRound(match.currentRound)), factory)
+
+  it('supports exactly 2, 3 and 4 smazzate with 4 as the default', () => {
+    expect(MATCH_ROUND_COUNTS).toEqual([2, 3, 4])
+    expect(DEFAULT_MATCH_ROUND_COUNT).toBe(4)
+    expect([1, 2, 3, 4, 5, '4', null].map(isMatchRoundCount)).toEqual([false, true, true, true, false, false, false])
+    expect(startMatch(freshRound).roundCount).toBe(4)
+  })
+
+  it('rejects an unsupported length without creating a round', () => {
+    const factory = vi.fn(freshRound)
+
+    for (const invalid of [0, 1, 5, 2.5]) {
+      expect(() => startMatch(factory, invalid as MatchRoundCount)).toThrowError(RangeError)
+    }
+    expect(factory).not.toHaveBeenCalled()
+  })
+
+  it.each(MATCH_ROUND_COUNTS)(
+    'plays a %i-smazzate match to its terminal round with the starter prefix and no further round',
+    (roundCount) => {
+      const factory = vi.fn(contextAwareRound)
+      let match = startMatch(factory, roundCount)
+      const snapshots: MatchState[] = []
+
+      expect(match).toMatchObject({ roundCount, currentRoundNumber: 1, status: 'in-progress' })
+      for (let roundNumber = 2; roundNumber <= roundCount; roundNumber += 1) {
+        expect(isFinalRound(match)).toBe(false)
+        const settled = updateCurrentRound(match, completedRound(match.currentRound))
+        expect(settled.status).toBe('in-progress')
+        snapshots.push(settled)
+        match = advanceMatch(settled, factory)
+        expect(match).toMatchObject({ roundCount, currentRoundNumber: roundNumber })
+        expect(match.roundResults).toBe(settled.roundResults)
+      }
+
+      expect(isFinalRound(match)).toBe(true)
+      const completedMatch = updateCurrentRound(match, completedRound(match.currentRound, 'draw-pile-exhausted'))
+
+      expect(completedMatch).toMatchObject({ roundCount, status: 'completed', currentRoundNumber: roundCount })
+      expect(completedMatch.roundResults.map(({ roundNumber }) => roundNumber))
+        .toEqual(Array.from({ length: roundCount }, (_, index) => index + 1))
+      expect(settleCompletedRound(completedMatch)).toBe(completedMatch)
+      expect(synchronizeMatch(completedMatch)).toBe(completedMatch)
+      expect(() => updateCurrentRound(completedMatch, freshRound())).toThrowError(MatchLifecycleError)
+      expect(() => advanceMatch(completedMatch, factory)).toThrowError('beyond its configured final round')
+      expect(factory.mock.calls.map(([context]) => context)).toEqual(
+        (['player-1', 'player-2', 'player-3', 'player-4'] as const)
+          .slice(0, roundCount)
+          .map((startingPlayerId, index) => ({ roundNumber: index + 1, startingPlayerId })),
+      )
+      // Earlier snapshots are never mutated by later transitions.
+      snapshots.forEach((snapshot, index) => expect(snapshot.roundResults).toHaveLength(index + 1))
+    },
+  )
+
+  it('refuses to advance a settled terminal round even if its status was not yet completed', () => {
+    const factory = vi.fn(freshRound)
+    const second = completeAndAdvance(startMatch(factory, 2), factory)
+    const settledSecond = settleCompletedRound({ ...second, currentRound: completedRound(second.currentRound) })
+
+    expect(() => advanceMatch({ ...settledSecond, status: 'in-progress' }, factory))
+      .toThrowError('beyond its configured final round')
+    expect(factory).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    [2, [scoreResult(1, 300, -100), scoreResult(2, -200, 500)], [100, 400], 300, 'team-2', [7, 13]],
+    [3, [scoreResult(1, 300, -100), scoreResult(2, -200, 500), scoreResult(3, 100, 50)], [200, 450], 250, 'team-2', [8, 12]],
+  ] as const)(
+    'derives cumulative totals, Match Points and VP from the %i-smazzate history and table',
+    (roundCount, roundResults, totals, matchPoints, leader, victoryPoints) => {
+      const match: MatchState = {
+        roundCount,
+        status: 'completed',
+        currentRoundNumber: roundCount,
+        currentRound: completedRound(freshRound()),
+        roundResults,
+      }
+
+      expect(calculateCumulativeScores(match).map(({ total }) => total)).toEqual(totals)
+      expect(getFinalMatchOutcome(match)).toMatchObject({
+        matchPoints,
+        leadingTeamId: leader,
+        victoryPoints: [
+          { teamId: 'team-1', victoryPoints: victoryPoints[0] },
+          { teamId: 'team-2', victoryPoints: victoryPoints[1] },
+        ],
+      })
+    },
+  )
 })

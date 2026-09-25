@@ -78,7 +78,7 @@ export const collectDiscardPileButton = (page: Page): Locator =>
 export const completeNowButton = (page: Page): Locator => page.getByRole('button', { name: 'Completa subito' })
 export const discardButton = (page: Page): Locator => page.getByRole('button', { name: 'Scarta e passa' })
 export const newMatchButton = (page: Page): Locator => page.getByRole('button', { name: 'Nuova partita' })
-export const roundIndicator = (page: Page): Locator => page.getByText(/^Smazzata \d\/4$/)
+export const roundIndicator = (page: Page): Locator => page.getByText(/^Smazzata \d\/[234]$/)
 export const humanHandCards = (page: Page, name = PLAYER_NAME): Locator =>
   page.getByRole('region', { name: `Mano di ${name}` }).getByLabel(`Carte di ${name}`).getByRole('button')
 export const timelineEntries = (page: Page): Locator =>
@@ -97,13 +97,19 @@ export const chooseBotSpeed = async (page: Page, label: 'Normale' | 'Veloce') =>
 export const leaveDialog = (page: Page): Locator => page.getByRole('alertdialog', { name: 'Abbandonare la partita?' })
 export const onboardingHeading = (page: Page): Locator => page.getByRole('heading', { level: 1, name: 'Burraco' })
 
-/** Opens a fresh application and starts smazzata 1 through the real onboarding form. */
-export const startNewMatch = async (page: Page, typedName = `  ${PLAYER_NAME}  `) => {
+/**
+ * Opens a fresh application and starts smazzata 1 through the real onboarding form, with
+ * the default four smazzate unless another supported length is chosen.
+ */
+export const startNewMatch = async (page: Page, typedName = `  ${PLAYER_NAME}  `, roundCount?: 2 | 3 | 4) => {
   await page.goto('/')
   await expect(onboardingHeading(page)).toBeVisible()
   await page.getByLabel('Il tuo nome').fill(typedName)
+  if (roundCount !== undefined) {
+    await page.getByRole('group', { name: 'Durata della partita' }).getByRole('radio', { name: `${roundCount} smazzate` }).check()
+  }
   await page.getByRole('button', { name: 'Inizia partita' }).click()
-  await expect(roundIndicator(page)).toHaveText('Smazzata 1/4')
+  await expect(roundIndicator(page)).toHaveText(`Smazzata 1/${roundCount ?? 4}`)
 }
 
 /** The human's simple, always-legal turn: draw from the tallone, then discard the first hand card. */
@@ -115,7 +121,7 @@ export const drawAndDiscard = async (page: Page) => {
 }
 
 /**
- * Opens a known committed match through the real M22 boundary: a version-1 envelope
+ * Opens a known committed match through the real M22 boundary: a current-version envelope
  * produced by the app's own serializer is placed in browser storage and the page reloads.
  */
 export const openSavedMatch = async (page: Page, match: MatchState, humanPlayerName = PLAYER_NAME) => {
@@ -123,10 +129,10 @@ export const openSavedMatch = async (page: Page, match: MatchState, humanPlayerN
   await expect(onboardingHeading(page)).toBeVisible()
   await page.evaluate(
     ([key, raw]) => window.localStorage.setItem(key, raw),
-    [MATCH_SAVE_STORAGE_KEY, serializeMatchSave({ humanPlayerName }, match)] as const,
+    [MATCH_SAVE_STORAGE_KEY, serializeMatchSave({ humanPlayerName, roundCount: match.roundCount }, match)] as const,
   )
   await page.reload()
-  await expect(roundIndicator(page)).toHaveText(`Smazzata ${match.currentRoundNumber}/4`)
+  await expect(roundIndicator(page)).toHaveText(`Smazzata ${match.currentRoundNumber}/${match.roundCount}`)
 }
 
 /** Reads the active local save through the page's real browser storage. */

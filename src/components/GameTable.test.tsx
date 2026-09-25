@@ -623,6 +623,7 @@ describe('GameTable', () => {
     (actionName) => {
       const finalRound = emptyCompletedRound()
       const initialMatch: MatchState = {
+        roundCount: 4,
         status: 'in-progress',
         currentRoundNumber: 4,
         currentRound: finalRound,

@@ -48,7 +48,7 @@ const expectHiddenCardsNotRendered = async (page: Page, state: GameState, everPu
 }
 
 test('opponent and partner hands stay hidden while the match is active', async ({ page }) => {
-  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME }, createSeededRandom(E2E_SEED)))
+  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME, roundCount: 4 }, createSeededRandom(E2E_SEED)))
   const initial = match.currentRound
   const everPublic = new Set<string>()
   await openSavedMatch(page, match)

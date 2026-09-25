@@ -2,14 +2,17 @@ import type { RandomSource } from '../cards/shuffle'
 import { startGame, type RoundSetupOptions } from '../engine/startGame'
 import { calculateRoundScore } from '../scoring'
 import type { CompletedGameState, GameState, PlayerId, TeamId } from '../state/types'
-import { calculateFourRoundOutcome } from './victoryPoints'
-import type {
-  MatchOutcome,
-  MatchRoundNumber,
-  MatchState,
-  RoundFactory,
-  SettledRoundResult,
-  TeamCumulativeScore,
+import { calculateMatchOutcome } from './victoryPoints'
+import {
+  DEFAULT_MATCH_ROUND_COUNT,
+  isMatchRoundCount,
+  type MatchOutcome,
+  type MatchRoundCount,
+  type MatchRoundNumber,
+  type MatchState,
+  type RoundFactory,
+  type SettledRoundResult,
+  type TeamCumulativeScore,
 } from './types'
 
 export const MATCH_LIFECYCLE_ERROR_CODES = [
@@ -60,12 +63,24 @@ export const createMatchRound: RoundFactory = createMatchRoundFactory()
 const createRound = (roundFactory: RoundFactory, roundNumber: MatchRoundNumber) =>
   roundFactory({ roundNumber, startingPlayerId: getRoundStartingPlayerId(roundNumber) })
 
-export const startMatch = (roundFactory: RoundFactory = createMatchRound): MatchState => ({
-  status: 'in-progress',
-  currentRoundNumber: 1,
-  currentRound: createRound(roundFactory, 1),
-  roundResults: [],
-})
+export const startMatch = (
+  roundFactory: RoundFactory = createMatchRound,
+  roundCount: MatchRoundCount = DEFAULT_MATCH_ROUND_COUNT,
+): MatchState => {
+  if (!isMatchRoundCount(roundCount)) {
+    throw new RangeError('A match must last 2, 3 or 4 smazzate.')
+  }
+  return {
+    roundCount,
+    status: 'in-progress',
+    currentRoundNumber: 1,
+    currentRound: createRound(roundFactory, 1),
+    roundResults: [],
+  }
+}
+
+/** Whether the current round is the configured final smazzata of the match. */
+export const isFinalRound = (match: MatchState): boolean => match.currentRoundNumber >= match.roundCount
 
 const hasSettledCurrentRound = (match: MatchState): boolean =>
   match.roundResults.some(({ roundNumber }) => roundNumber === match.currentRoundNumber)
@@ -90,7 +105,7 @@ export const settleCompletedRound = (match: MatchState): MatchState => {
 
   return {
     ...match,
-    status: match.currentRoundNumber === 4 ? 'completed' : 'in-progress',
+    status: isFinalRound(match) ? 'completed' : 'in-progress',
     roundResults,
   }
 }
@@ -112,8 +127,8 @@ export const advanceMatch = (
   match: MatchState,
   roundFactory: RoundFactory = createMatchRound,
 ): MatchState => {
-  if (match.status === 'completed' || match.currentRoundNumber === 4) {
-    throw new MatchLifecycleError('MATCH_COMPLETED', 'A four-round match cannot advance to a fifth round.')
+  if (match.status === 'completed' || isFinalRound(match)) {
+    throw new MatchLifecycleError('MATCH_COMPLETED', 'A match cannot advance beyond its configured final round.')
   }
   if (match.currentRound.round.status === 'in-progress') {
     throw new MatchLifecycleError('ROUND_IN_PROGRESS', 'An in-progress round cannot advance.')
@@ -147,7 +162,7 @@ export const calculateCumulativeScores = (match: MatchState): readonly TeamCumul
 
 export const getFinalMatchOutcome = (match: MatchState): MatchOutcome => {
   if (match.status !== 'completed') {
-    throw new MatchLifecycleError('ROUND_IN_PROGRESS', 'The final outcome is available only after round four.')
+    throw new MatchLifecycleError('ROUND_IN_PROGRESS', 'The final outcome is available only after the final round.')
   }
-  return calculateFourRoundOutcome(calculateCumulativeScores(match))
+  return calculateMatchOutcome(calculateCumulativeScores(match), match.roundCount)
 }

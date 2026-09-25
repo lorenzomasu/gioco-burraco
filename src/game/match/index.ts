@@ -5,6 +5,7 @@ export {
   createMatchRoundFactory,
   getFinalMatchOutcome,
   getRoundStartingPlayerId,
+  isFinalRound,
   MATCH_LIFECYCLE_ERROR_CODES,
   MatchLifecycleError,
   settleCompletedRound,
@@ -13,10 +14,11 @@ export {
   updateCurrentRound,
 } from './lifecycle'
 export type { MatchRoundFactoryOptions } from './lifecycle'
-export { calculateFourRoundOutcome } from './victoryPoints'
-export { MATCH_ROUND_COUNT } from './types'
+export { calculateMatchOutcome } from './victoryPoints'
+export { DEFAULT_MATCH_ROUND_COUNT, isMatchRoundCount, MATCH_ROUND_COUNTS } from './types'
 export type {
   MatchOutcome,
+  MatchRoundCount,
   MatchRoundNumber,
   MatchState,
   RoundFactory,

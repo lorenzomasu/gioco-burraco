@@ -31,13 +31,14 @@ const humanTurnRound = (setup: MatchSetup): InProgressGameState => ({
 const humanFactory = (setup: MatchSetup): RoundFactory => () => humanTurnRound(setup)
 
 const savedStorage = (match: MatchState = {
+  roundCount: 4,
   status: 'in-progress',
   currentRoundNumber: 1,
   currentRound: pendingBotRound(),
   roundResults: [],
 }) => {
   const storage = createMemoryStorage()
-  expect(saveMatch({ humanPlayerName: 'Ada' }, match, storage)).toBe(true)
+  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4 }, match, storage)).toBe(true)
   return storage
 }
 
@@ -125,7 +126,7 @@ describe('App M32 Help', () => {
     for (const anchor of [
       /tallone/, /monte degli scarti/, /«Cala»/, /«Aggiungi alla calata»/, /«Scarta e passa»/,
       /trascinare/, /Pulsanti e tastiera/, /pozzetto/, /Burraco/, /«Completa subito»/,
-      /quattro\s+smazzate/, /salvata in questo browser/,
+      /2, 3 o 4\s+smazzate/, /salvata in questo browser/,
     ]) {
       expect(help).toHaveTextContent(anchor)
     }

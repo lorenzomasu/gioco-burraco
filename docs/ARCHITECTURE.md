@@ -16,7 +16,7 @@ React components render state, collect player intent, and invoke the game engine
 - `src/game/engine` — deterministic game commands and state transitions.
 - `src/game/melds` — pure meld validation and Burraco classification.
 - `src/game/scoring` — pure round-scoring logic.
-- `src/game/match` — four-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
+- `src/game/match` — configurable 2/3/4-round match lifecycle, settled round history, cumulative totals, Match Points, and Victory Points.
 - `src/game/bot` — deterministic bot candidate generation, ranking, and turn execution.
 - `src/components` — React UI for human and bot-controlled seats.
 - `src/shell` — application-shell helpers that turn onboarding choices into match configuration, persist the one active local match and store the separate sound preferences.
@@ -150,15 +150,26 @@ not discarded because of it. Any other exception is a defect and still propagate
 ## Match lifecycle
 
 `GameState` remains the complete state of exactly one smazzata. The match layer owns
-the current round number, current `GameState`, chronological settled-result history,
-and the terminal state of the fixed four-smazzate match.
+the configured match length, the current round number, current `GameState`,
+chronological settled-result history, and the terminal state of the match.
+
+The supported lengths are exactly 2, 3 and 4 smazzate (`MATCH_ROUND_COUNTS`,
+`MatchRoundCount`), with `DEFAULT_MATCH_ROUND_COUNT = 4`. `startMatch(factory,
+roundCount)` stores the length immutably as `MatchState.roundCount`; a match started
+without one keeps four smazzate. Settlement, advancement and the final outcome read the
+terminal round from that field (`isFinalRound`), never from React. The length never
+enters `GameState` and does not change dealing, card identity, seats or hidden
+information.
 
 Completed rounds are settled exactly once through `calculateRoundScore`. Cumulative
 team totals are derived from the immutable score snapshots in match history rather
 than stored as a second mutable total. Match Points, the leading team or exact tie,
-and the four-smazzate Victory Points allocation are also pure derived domain values.
+and the Victory Points allocation are also pure derived domain values:
+`calculateMatchOutcome` selects the official F.I.Bur. 2026 table for the match's own
+`roundCount`.
 
-Only the match layer may advance to a fresh `GameState`, and round four is terminal.
+Only the match layer may advance to a fresh `GameState`, and the configured final round
+(2, 3 or 4) is terminal.
 React may render match state and invoke match operations, but it must not implement
 settlement, cumulative scoring, VP thresholds, or lifecycle decisions itself.
 
@@ -190,10 +201,13 @@ round-start path.
 ## Application shell
 
 `App` is the application shell. It owns transient screen selection (onboarding or one
-mounted match), the onboarding name, the bot-speed preference, the sound preferences and
+mounted match), the onboarding name and match-length choice, the bot-speed preference, the sound preferences and
 the app-level overlays. Onboarding trims the
-human name and refuses an empty one; starting a match turns it into a round factory via
-`src/shell/matchSetup.ts` and mounts `GameTable` with it. No game or match decision is
+human name and refuses an empty one, and offers a native radio group «Durata della
+partita» (2, 3 or 4 smazzate, 4 preselected; the last choice is retained only while the
+application stays mounted); starting a match turns it into a round factory via
+`src/shell/matchSetup.ts` and mounts `GameTable` with it and with the setup's
+`roundCount`. No game or match decision is
 made by the shell: the match layer still owns the lifecycle, starter schedule,
 settlement and outcome.
 
@@ -222,7 +236,8 @@ and timers never enter `src/game` or the save.
   mounted but `inert`. Opening or using them never touches `GameState`, `MatchState` or
   the match save.
 - A valid restored save still mounts the match directly and additionally shows a
-  dismissible `role="status"` «Partita ripresa · Smazzata N/4». It is transient UI: it
+  dismissible `role="status"` «Partita ripresa · Smazzata N/X», where X is the restored
+match's `roundCount`. It is transient UI: it
   never moves focus, never writes the save and disappears when the match is left; a
   storage notice takes its place when present.
 
@@ -236,9 +251,17 @@ versions, `window` or React.
 The wire format is an explicit versioned JSON envelope stored under the single key
 `MATCH_SAVE_STORAGE_KEY` (`gioco-burraco:active-match`):
 
-- `version` — `MATCH_SAVE_SCHEMA_VERSION`, currently `1`;
-- `setup` — the M21 `MatchSetup` (`humanPlayerName` only);
-- `match` — the authoritative committed `MatchState`, stored as-is.
+- `version` — `MATCH_SAVE_SCHEMA_VERSION`, currently `2` (M34);
+- `setup` — the `MatchSetup` (`humanPlayerName` and `roundCount`);
+- `match` — the authoritative committed `MatchState` (including its `roundCount`),
+  stored as-is.
+
+The only other accepted version is the released legacy version 1 (pre-M34, no length
+fields), which always meant four smazzate. `normalizeMatchSave` gives its setup and match
+`roundCount: 4` and then applies the full current validation; a version-1 save that
+already carries a length field, or fails any check, is rejected. The first ordinary
+save notification after restoring (the initial `onMatchChange`) rewrites it as version 2;
+the writer never emits version 1.
 
 Nothing derived (cumulative totals, Match/Victory Points, Burraco classification) is
 stored. Transient machinery is never serialized: the round factory and its random
@@ -254,9 +277,10 @@ not fired has not produced a save. The shell writes the envelope for an active m
 and removes it once the match is completed; a confirmed `Nuova partita` also removes it
 (a cancelled one changes nothing).
 
-Stored content is `unknown` until validated. `loadMatchSave` accepts only a version-1
-envelope with a trimmed non-empty setup name and an `in-progress` match whose round
-number, fixed seats and teams, and turn/round state are structurally valid, and whose
+Stored content is `unknown` until validated. `loadMatchSave` accepts only a current
+(or normalized legacy) envelope with a trimmed non-empty setup name, a supported length
+equal in setup and match, and an `in-progress` match whose round number does not exceed
+its length (a completed final round is stale), whose fixed seats and teams, and turn/round state are structurally valid, and whose
 `player-1` name matches the setup. It also enforces locally verifiable domain
 invariants by reusing the engine's deterministic primitives rather than a second rules
 implementation:
@@ -365,7 +389,8 @@ slim bar for the round indicator, a compact settled match score («La tua squadr
 «Avversari», from `calculateCumulativeScores`, never a partial-round score), the «Come si
 gioca» and «Impostazioni» entries and «Nuova partita»; «Completa subito» sits with the
 turn status while bots are playing. Between smazzate the result explains why the round
-ended, its score, the oriented cumulative score and progress, with one primary action;
+ended, its score, the oriented cumulative score and progress («Smazzata N di X
+conclusa» and a track of X steps, X being `match.roundCount`), with one primary action;
 the final view states win, loss or tie only from `getFinalMatchOutcome` relative to the
 human's team, with the existing Match and Victory Points.
 

@@ -4,7 +4,7 @@ import { createBurracoDeck } from '../game/cards/deck'
 import { createSeededRandom } from '../game/cards/shuffle'
 import type { Card, Rank, Suit } from '../game/cards/types'
 import { drawCard } from '../game/engine/turn'
-import { advanceMatch, startMatch, updateCurrentRound, type MatchState } from '../game/match'
+import { advanceMatch, startMatch, updateCurrentRound, type MatchRoundCount, type MatchState } from '../game/match'
 import { validateMeld, validateMeldExtension, type ValidatedMeld } from '../game/melds'
 import type { GameState, InProgressGameState } from '../game/state/types'
 import { createMemoryStorage } from '../tests/memoryStorage'
@@ -20,7 +20,7 @@ import {
 } from './matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from './matchSetup'
 
-const setup: MatchSetup = { humanPlayerName: 'Lorenzo' }
+const setup: MatchSetup = { humanPlayerName: 'Lorenzo', roundCount: 4 }
 
 /** Plays whole turns for every seat (the human seat included) with the deterministic bot. */
 const playTurns = (state: GameState, turns: number): GameState => {
@@ -62,17 +62,40 @@ const withShortStock = (state: InProgressGameState): InProgressGameState => {
   }
 }
 
-/** Round 1 completed by draw-pile exhaustion and settled: the between-round state. */
-const betweenRoundMatch = (): MatchState => {
-  const match = startMatch(createSetupRoundFactory(setup, createSeededRandom(5)))
+/** Completes the current fresh round quickly (short stock) and settles it. */
+const completeCurrentRound = (match: MatchState): MatchState => {
   const short = withShortStock(match.currentRound as InProgressGameState)
   const completed = playTurns(short, 20)
   if (completed.round.status !== 'completed') throw new Error('Fixture round did not end.')
   return updateCurrentRound(match, completed)
 }
 
+/** Round 1 completed by draw-pile exhaustion and settled: the between-round state. */
+const betweenRoundMatch = (): MatchState =>
+  completeCurrentRound(startMatch(createSetupRoundFactory(setup, createSeededRandom(5))))
+
+/**
+ * A real match of the given length at `roundNumber`, either freshly dealt or completed
+ * and settled (the between-round state).
+ */
+const matchAt = (roundCount: MatchRoundCount, roundNumber: number, completed: boolean): MatchState => {
+  const factory = createSetupRoundFactory({ ...setup, roundCount }, createSeededRandom(5))
+  let match = startMatch(factory, roundCount)
+  while (match.currentRoundNumber < roundNumber) match = advanceMatch(completeCurrentRound(match), factory)
+  return completed ? completeCurrentRound(match) : match
+}
+
 /** Parsed wire object, so tests can corrupt individual fields. */
-const wire = (match: MatchState = activeMatch()): Record<string, any> => JSON.parse(serializeMatchSave(setup, match))
+const wire = (match: MatchState = activeMatch()): Record<string, any> =>
+  JSON.parse(serializeMatchSave({ ...setup, roundCount: match.roundCount }, match))
+
+/** The released pre-M34 version-1 wire shape: no length in the setup or the match. */
+const legacyWire = (match: MatchState = activeMatch()): Record<string, any> => {
+  const current = wire(match)
+  delete current.setup.roundCount
+  delete current.match.roundCount
+  return { ...current, version: 1 }
+}
 
 const parseWire = (value: unknown) => parseMatchSave(JSON.stringify(value))
 
@@ -98,17 +121,19 @@ const throwingStorage = (overrides: Partial<Record<'getItem' | 'setItem' | 'remo
 }
 
 describe('match save wire format', () => {
-  it('uses one explicit version-1 envelope holding only the setup and the match', () => {
-    expect(MATCH_SAVE_SCHEMA_VERSION).toBe(1)
+  it('uses one explicit version-2 envelope holding only the setup and the match', () => {
+    expect(MATCH_SAVE_SCHEMA_VERSION).toBe(2)
     const match = activeMatch()
-    const extendedSetup = { humanPlayerName: 'Lorenzo', ignored: () => 1 } as unknown as MatchSetup
+    const extendedSetup = { humanPlayerName: 'Lorenzo', roundCount: 4, ignored: () => 1 } as unknown as MatchSetup
 
     const envelope = JSON.parse(serializeMatchSave(extendedSetup, match))
 
     expect(Object.keys(envelope)).toEqual(['version', 'setup', 'match'])
-    expect(envelope.version).toBe(1)
-    expect(envelope.setup).toEqual({ humanPlayerName: 'Lorenzo' })
-    expect(Object.keys(envelope.match).sort()).toEqual(['currentRound', 'currentRoundNumber', 'roundResults', 'status'])
+    expect(envelope.version).toBe(2)
+    expect(envelope.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(Object.keys(envelope.match).sort())
+      .toEqual(['currentRound', 'currentRoundNumber', 'roundCount', 'roundResults', 'status'])
+    expect(envelope.match.roundCount).toBe(4)
   })
 
   it('round-trips an active match with melds, acquisition state and pozzetti without loss', () => {
@@ -118,7 +143,7 @@ describe('match save wire format', () => {
 
     const restored = parseMatchSave(serializeMatchSave(setup, match))
 
-    expect(restored).toEqual({ version: 1, setup, match })
+    expect(restored).toEqual({ version: 2, setup, match })
     const cardIds = (state: GameState) => [
       ...state.players.flatMap((player) => player.hand.map((card) => card.id)),
       ...state.teams.flatMap((team) => team.melds.flatMap((meld) => meld.cards.map(({ card }) => card.id))),
@@ -135,7 +160,149 @@ describe('match save wire format', () => {
     expect(match.roundResults).toHaveLength(1)
     expect(match.status).toBe('in-progress')
 
-    expect(parseMatchSave(serializeMatchSave(setup, match))).toEqual({ version: 1, setup, match })
+    expect(parseMatchSave(serializeMatchSave(setup, match))).toEqual({ version: 2, setup, match })
+  })
+})
+
+describe('configured match length in saves', () => {
+  it.each([2, 3, 4] as const)('writes and round-trips a %i-smazzate save without semantic loss', (roundCount) => {
+    const configuredSetup: MatchSetup = { ...setup, roundCount }
+    for (const match of [matchAt(roundCount, 1, false), matchAt(roundCount, 2, false), matchAt(roundCount, 1, true)]) {
+      const raw = serializeMatchSave(configuredSetup, match)
+      const envelope = JSON.parse(raw)
+
+      expect(envelope.version).toBe(2)
+      expect(envelope.setup.roundCount).toBe(roundCount)
+      expect(envelope.match.roundCount).toBe(roundCount)
+      expect(parseMatchSave(raw)).toEqual({ version: 2, setup: configuredSetup, match })
+    }
+  })
+
+  it('restores a between-round save of a shorter match with its length and allows only the next round', () => {
+    const storage = createMemoryStorage()
+    const between = matchAt(3, 2, true)
+    expect(saveMatch({ ...setup, roundCount: 3 }, between, storage)).toBe(true)
+
+    const loaded = loadMatchSave(storage)
+    if (loaded.status !== 'restored') throw new Error('Expected a restored save.')
+    const factory = createSetupRoundFactory(loaded.save.setup, createSeededRandom(5))
+    const third = advanceMatch(loaded.save.match, factory)
+
+    expect(loaded.save.match).toEqual(between)
+    expect(third).toMatchObject({ roundCount: 3, currentRoundNumber: 3 })
+    expect(completeCurrentRound(third).status).toBe('completed')
+  })
+
+  it.each([undefined, null, 1, 5, 0, '4', 2.5])('rejects the unsupported length %s', (roundCount) => {
+    const save = wire()
+    save.setup.roundCount = roundCount
+    save.match.roundCount = roundCount
+    expect(parseWire(save)).toBeNull()
+  })
+
+  it('rejects a length that is missing from only the setup or only the match', () => {
+    const withoutSetupLength = wire()
+    delete withoutSetupLength.setup.roundCount
+    const withoutMatchLength = wire()
+    delete withoutMatchLength.match.roundCount
+
+    expect(parseWire(withoutSetupLength)).toBeNull()
+    expect(parseWire(withoutMatchLength)).toBeNull()
+  })
+
+  it('rejects a setup length that disagrees with the match length', () => {
+    const save = wire(matchAt(3, 1, false))
+    for (const roundCount of [2, 4]) {
+      expect(parseWire({ ...save, setup: { ...save.setup, roundCount } })).toBeNull()
+    }
+  })
+
+  it('rejects a current round beyond the configured length', () => {
+    const save = wire(matchAt(4, 3, false))
+    const withLength = (roundCount: number) => ({
+      ...save,
+      setup: { ...save.setup, roundCount },
+      match: { ...save.match, roundCount },
+    })
+
+    expect(parseWire(withLength(3))).not.toBeNull()
+    expect(parseWire(withLength(2))).toBeNull()
+  })
+
+  it('treats a completed configured final round as stale, but not an earlier one', () => {
+    const between = wire(matchAt(3, 2, true))
+    expect(parseWire(between)).not.toBeNull()
+
+    const asTwoRounds = {
+      ...between,
+      setup: { ...between.setup, roundCount: 2 },
+      match: { ...between.match, roundCount: 2 },
+    }
+    expect(parseWire(asTwoRounds)).toBeNull()
+    expect(parseWire({ ...asTwoRounds, match: { ...asTwoRounds.match, status: 'completed' } })).toBeNull()
+  })
+})
+
+describe('legacy version-1 saves', () => {
+  it('restores a valid version-1 active save as a four-smazzate current save', () => {
+    const match = activeMatch()
+    expect(parseWire(legacyWire(match))).toEqual({ version: 2, setup, match })
+  })
+
+  it('restores a valid version-1 between-round save with its history as four smazzate', () => {
+    const match = advanceMatch(betweenRoundMatch(), createSetupRoundFactory(setup, createSeededRandom(9)))
+    const restored = parseWire(legacyWire(match))
+
+    expect(restored).toEqual({ version: 2, setup, match })
+    expect(restored!.match.roundCount).toBe(4)
+  })
+
+  it('writes only the current schema once a migrated save is saved again', () => {
+    const storage = createMemoryStorage()
+    storage.setItem(MATCH_SAVE_STORAGE_KEY, JSON.stringify(legacyWire()))
+
+    const loaded = loadMatchSave(storage)
+    if (loaded.status !== 'restored') throw new Error('Expected a restored legacy save.')
+    expect(saveMatch(loaded.save.setup, loaded.save.match, storage)).toBe(true)
+
+    const written = JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!)
+    expect(written.version).toBe(2)
+    expect(written.setup.roundCount).toBe(4)
+    expect(written.match.roundCount).toBe(4)
+  })
+
+  it.each<[string, (save: Record<string, any>) => void]>([
+    ['a card missing from the stock', (save) => save.match.currentRound.drawPile.pop()],
+    ['an invalid setup name', (save) => { save.setup.humanPlayerName = ' Lorenzo ' }],
+    ['a setup name inconsistent with player-1', (save) => { save.setup.humanPlayerName = 'Giulia' }],
+    ['a fifth round', (save) => { save.match.currentRoundNumber = 5 }],
+    ['a stray length in the setup', (save) => { save.setup.roundCount = 2 }],
+    ['a stray length in the match', (save) => { save.match.roundCount = 4 }],
+    ['a completed match', (save) => { save.match.status = 'completed' }],
+  ])('still rejects a version-1 save with %s', (_label, corrupt) => {
+    const save = legacyWire()
+    expect(parseWire(save)).not.toBeNull()
+    corrupt(save)
+    expect(parseWire(save)).toBeNull()
+  })
+
+  it('treats a version-1 save with a completed fourth round as stale', () => {
+    const between = legacyWire(betweenRoundMatch())
+    const result = between.match.roundResults[0]
+    const roundFour = {
+      ...between.match,
+      currentRoundNumber: 4,
+      roundResults: [1, 2, 3, 4].map((roundNumber) => ({ ...result, roundNumber })),
+    }
+    expect(parseWire({ ...between, match: roundFour })).toBeNull()
+  })
+
+  it('never reinterprets a version-1 save as a shorter match', () => {
+    const between = legacyWire(matchAt(4, 2, true))
+    const restored = parseWire(between)
+
+    expect(restored?.match).toMatchObject({ roundCount: 4, currentRoundNumber: 2, status: 'in-progress' })
+    expect(restored?.setup.roundCount).toBe(4)
   })
 })
 
@@ -146,8 +313,8 @@ describe('match save validation', () => {
     for (const root of [null, 1, 'save', [], true]) expect(parseWire(root)).toBeNull()
   })
 
-  it('rejects any version other than the supported one', () => {
-    for (const version of [0, 2, '1', null, undefined]) {
+  it('rejects any version other than the current one and the legacy version 1', () => {
+    for (const version of [0, 3, '2', '1', null, undefined]) {
       expect(parseWire({ ...wire(), version })).toBeNull()
     }
     const { version: _omitted, ...withoutVersion } = wire()
@@ -156,13 +323,13 @@ describe('match save validation', () => {
 
   it('rejects missing or invalid setup', () => {
     const base = wire()
-    for (const invalid of [undefined, null, {}, { humanPlayerName: '' }, { humanPlayerName: ' Lorenzo ' }, { humanPlayerName: 7 }]) {
+    for (const invalid of [undefined, null, {}, { humanPlayerName: '', roundCount: 4 }, { humanPlayerName: ' Lorenzo ', roundCount: 4 }, { humanPlayerName: 7, roundCount: 4 }]) {
       expect(parseWire({ ...base, setup: invalid })).toBeNull()
     }
   })
 
   it('rejects a setup name inconsistent with the saved player-1', () => {
-    expect(parseWire({ ...wire(), setup: { humanPlayerName: 'Giulia' } })).toBeNull()
+    expect(parseWire({ ...wire(), setup: { humanPlayerName: 'Giulia', roundCount: 4 } })).toBeNull()
   })
 
   it.each<[string, (save: Record<string, any>) => void]>([
@@ -230,7 +397,8 @@ describe('match save validation', () => {
   })
 
   it('is a real runtime guard, not a cast', () => {
-    expect(isMatchSaveEnvelope({ version: 1, setup, match: {} })).toBe(false)
+    expect(isMatchSaveEnvelope({ version: 2, setup, match: {} })).toBe(false)
+    expect(isMatchSaveEnvelope(legacyWire())).toBe(false)
     expect(isMatchSaveEnvelope(wire())).toBe(true)
   })
 })
@@ -483,8 +651,8 @@ describe('match save storage operations', () => {
     expect(saveMatch(setup, match, storage)).toBe(true)
 
     expect(storage.length).toBe(1)
-    expect(JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!).version).toBe(1)
-    expect(loadMatchSave(storage)).toEqual({ status: 'restored', save: { version: 1, setup, match } })
+    expect(JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!).version).toBe(2)
+    expect(loadMatchSave(storage)).toEqual({ status: 'restored', save: { version: 2, setup, match } })
   })
 
   it('reports no save when storage is empty', () => {
@@ -495,7 +663,8 @@ describe('match save storage operations', () => {
     const between = wire(betweenRoundMatch())
     for (const raw of [
       'not json',
-      JSON.stringify({ ...wire(), version: 2 }),
+      JSON.stringify({ ...wire(), version: 3 }),
+      JSON.stringify({ ...legacyWire(), version: 0 }),
       JSON.stringify({ ...between, match: { ...between.match, status: 'completed' } }),
     ]) {
       const storage = createMemoryStorage()

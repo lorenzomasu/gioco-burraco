@@ -101,6 +101,7 @@ export const denseMeldState = (): InProgressGameState => {
 }
 
 export const denseMeldMatch = (): MatchState => ({
+  roundCount: 4,
   status: 'in-progress',
   currentRoundNumber: 1,
   currentRound: denseMeldState(),

@@ -61,6 +61,7 @@ const withHumanTurn = (
 }
 
 const matchOf = (round: InProgressGameState): MatchState => ({
+  roundCount: 4,
   status: 'in-progress',
   currentRoundNumber: 1,
   currentRound: round,

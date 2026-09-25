@@ -38,7 +38,11 @@ test('committed progress survives a reload and play continues', async ({ page })
   await expect(drawPileButton(page)).toBeEnabled()
 
   const save = await readActiveSave(page)
-  expect(save).toMatchObject({ version: 1, setup: { humanPlayerName: PLAYER_NAME }, match: { status: 'in-progress' } })
+  expect(save).toMatchObject({
+    version: 2,
+    setup: { humanPlayerName: PLAYER_NAME, roundCount: 4 },
+    match: { roundCount: 4, status: 'in-progress' },
+  })
   expect(await savedTurnOwner(page)).toBe('player-1')
   const tallone = await drawPileButton(page).getAttribute('aria-label')
   const discards = await pileLabels(page)
@@ -66,6 +70,26 @@ test('committed progress survives a reload and play continues', async ({ page })
   await drawAndDiscard(page)
   await expect(completeNowButton(page)).toBeVisible()
   expect(await savedTurnOwner(page)).not.toBe('player-1')
+})
+
+test('a selected three-smazzate match survives a reload with the same total', async ({ page }) => {
+  await startNewMatch(page, PLAYER_NAME, 3)
+  await drawAndDiscard(page)
+  await completeNowButton(page).click()
+  await expect(drawPileButton(page)).toBeEnabled()
+  expect(await readActiveSave(page)).toMatchObject({
+    version: 2,
+    setup: { roundCount: 3 },
+    match: { roundCount: 3, currentRoundNumber: 1 },
+  })
+
+  await page.reload()
+
+  await expect(onboardingHeading(page)).toBeHidden()
+  await expect(roundIndicator(page)).toHaveText('Smazzata 1/3')
+  await expect(page.getByRole('status')).toHaveText(/Partita ripresa · Smazzata 1\/3/)
+  await drawAndDiscard(page)
+  expect(await readActiveSave(page)).toMatchObject({ match: { roundCount: 3 } })
 })
 
 test('a reload during bot playback resumes the pending chain from the committed match', async ({ page }) => {

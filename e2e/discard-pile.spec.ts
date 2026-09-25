@@ -26,7 +26,7 @@ const LONG_PILE_EXTRA_CARDS = 30
  * save passes the real M22 validation. The human is still in the draw phase.
  */
 const longPileMatch = (): MatchState => {
-  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME }, createSeededRandom(E2E_SEED)))
+  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME, roundCount: 4 }, createSeededRandom(E2E_SEED)))
   const round = match.currentRound
   return {
     ...match,

@@ -7,8 +7,8 @@ Current release: **v1.1.2**.
 ## What you play
 
 One local match of four players in two teams: you and a bot partner against two bot
-opponents. A match lasts four smazzate; scores are totalled across them and the match
-ends with a final result.
+opponents. A match lasts 2, 3 or 4 smazzate (chosen when it starts, 4 by default); scores
+are totalled across them and the match ends with a final result.
 
 The whole game runs in the browser. There is no account, server or network play.
 

@@ -24,6 +24,7 @@ const pendingBotRound = (): InProgressGameState => {
 }
 
 const savedMatch = (): MatchState => ({
+  roundCount: 4,
   status: 'in-progress',
   currentRoundNumber: 1,
   currentRound: pendingBotRound(),
@@ -58,7 +59,7 @@ afterEach(() => {
 
 const restoredStorage = () => {
   const storage = createMemoryStorage()
-  expect(saveMatch({ humanPlayerName: 'Ada' }, savedMatch(), storage)).toBe(true)
+  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4 }, savedMatch(), storage)).toBe(true)
   return storage
 }
 

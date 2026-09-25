@@ -18,7 +18,8 @@ implementazione.
   raccolta degli scarti (art. 9), jolly e pinelle (art. 10), sequenze (art. 11),
   combinazioni (art. 12), Burraco (art. 13), scarto della matta (art. 14), chiusure
   (art. 17), conteggio dei punti (art. 18), tabella dei Victory Points per quattro
-  smazzate e pozzetti (art. 23).
+  smazzate e pozzetti (art. 23). La milestone 34 ha aggiunto dalla stessa edizione
+  (sezione «Le tabelle») le tabelle dei Victory Points per due e tre smazzate.
 - Il controllo non ha richiesto modifiche al codice di gioco. Il comportamento
   implementato descritto in questo documento resta quello autorevole per la v1.
 - Dalla v1.1.2 (milestone 33.2) il riposizionamento di una matta già attiva all'interno
@@ -67,10 +68,11 @@ implementazione.
   turno: non modifica distribuzione, ordine o identità delle carte, pozzetti, scarto
   iniziale o tallone.
 - Una smazzata singola creata senza contesto di partita inizia con `player-1`.
-- Nella partita locale di quattro smazzate il giocatore di mano iniziale ruota
-  nell'ordine del tavolo: `player-1` nella prima smazzata, `player-2` nella seconda,
-  `player-3` nella terza e `player-4` nella quarta. Ogni nuova partita riparte dalla
-  prima smazzata con `player-1`.
+- Nella partita locale il giocatore di mano iniziale ruota nell'ordine del tavolo:
+  `player-1` nella prima smazzata, `player-2` nella seconda, `player-3` nella terza e
+  `player-4` nella quarta. Le partite su due o tre smazzate usano lo stesso schema,
+  troncato all'ultima smazzata prevista. Ogni nuova partita riparte dalla prima
+  smazzata con `player-1`.
 - Questa rotazione è l'astrazione digitale adottata dal prodotto: mazziere, taglio,
   preparazione dei pozzetti e gesti fisici della distribuzione non sono simulati.
 - Quando la smazzata inizia con un bot, i suoi turni vengono riprodotti con lo stesso
@@ -417,8 +419,8 @@ regolamentare del tallone nella milestone 13.
   `handPenalty`; non esiste una seconda penalità per quelle stesse carte.
 
 Il punteggio cumulativo, i Match Points e i Victory Points della partita locale su
-quattro smazzate sono descritti nella milestone 14. Non sono implementati punteggio
-da torneo, bonus e penalità arbitrali, timeout e stallo. La conclusione per
+due, tre o quattro smazzate sono descritti nelle milestone 14 e 34. Non sono
+implementati punteggio da torneo, bonus e penalità arbitrali, timeout e stallo. La conclusione per
 esaurimento del tallone è descritta nella milestone 13.
 
 ## Tavolo locale giocabile — milestone 10
@@ -562,23 +564,61 @@ non introduce né modifica regole ufficiali FIBUR.
 
 - Time out (art. 15), stallo (art. 16) e conclusione per decisione arbitrale.
 
-## Milestone 14 — Partita su quattro smazzate
+## Milestone 14 e 34 — Partita su due, tre o quattro smazzate
 
-- Una partita locale è composta da esattamente quattro smazzate. Ogni smazzata usa
-  un `GameState` completamente nuovo e conserva tutte le regole di preparazione,
-  turno, pozzetto, chiusura ed esaurimento già descritte.
+- Una partita locale è composta da due, tre o quattro smazzate, scelte all'avvio
+  della partita; quattro è il valore predefinito (milestone 34). Non esistono partite
+  su una smazzata, su cinque o più smazzate o di durata libera. La durata scelta resta
+  fissa per tutta la partita; per cambiarla si avvia una nuova partita.
+- Ogni smazzata usa un `GameState` completamente nuovo e conserva tutte le regole di
+  preparazione, turno, pozzetto, chiusura ed esaurimento già descritte; la durata
+  della partita non modifica nessuna regola della singola smazzata.
 - La smazzata conclusa viene conteggiata una sola volta tramite il punteggio della
   milestone 9. Il risultato storico conserva numero della smazzata, tipo di
   conclusione e breakdown immutabile del punteggio.
-- Dopo le smazzate 1, 2 e 3 il risultato resta visibile finché il giocatore avvia
-  esplicitamente la successiva. La quarta smazzata conclude la partita e non può
-  essere seguita da una quinta.
+- Dopo ogni smazzata che non è l'ultima prevista il risultato resta visibile finché il
+  giocatore avvia esplicitamente la successiva. L'ultima smazzata prevista (la seconda,
+  la terza o la quarta) conclude la partita e non può essere seguita da un'altra.
 - Il punteggio cumulativo di ciascuna squadra è la somma algebrica dei suoi totali
-  nelle quattro smazzate; i risultati negativi restano negativi. Non si sommano gli
+  nelle smazzate giocate; i risultati negativi restano negativi. Non si sommano gli
   scarti assoluti delle singole smazzate.
 - I Match Points sono il valore assoluto della differenza tra i due totali cumulativi.
   La squadra con il totale maggiore è in vantaggio; totali identici costituiscono una
   parità esatta.
+- I Victory Points usano la tabella ufficiale F.I.Bur. (Codice di Gara, gennaio 2026)
+  corrispondente alla durata della partita.
+
+### Victory Points per due smazzate
+
+| Match Points | Victory Points |
+| ---: | :--- |
+| 0–40 | 10–10 |
+| 45–120 | 11–9 |
+| 125–200 | 12–8 |
+| 205–300 | 13–7 |
+| 305–400 | 14–6 |
+| 405–500 | 15–5 |
+| 505–620 | 16–4 |
+| 625–740 | 17–3 |
+| 745–870 | 18–2 |
+| 875–1000 | 19–1 |
+| oltre 1000 | 20–0 |
+
+### Victory Points per tre smazzate
+
+| Match Points | Victory Points |
+| ---: | :--- |
+| 0–50 | 10–10 |
+| 55–150 | 11–9 |
+| 155–250 | 12–8 |
+| 255–350 | 13–7 |
+| 355–500 | 14–6 |
+| 505–650 | 15–5 |
+| 655–800 | 16–4 |
+| 805–1000 | 17–3 |
+| 1005–1250 | 18–2 |
+| 1255–1500 | 19–1 |
+| oltre 1500 | 20–0 |
 
 ### Victory Points per quattro smazzate
 
@@ -600,8 +640,8 @@ Oltre la fascia 10–10, il valore maggiore è assegnato alla squadra con il pun
 cumulativo più alto. I punteggi legali sono multipli di cinque, quindi gli intervalli
 ufficiali non lasciano valori raggiungibili senza classificazione.
 
-Restano rinviate le tabelle per due o tre smazzate, le tabelle e classifiche per
-tornei a squadre, gli abbinamenti, le procedure arbitrali e ogni gestione di evento.
+Restano fuori ambito le tabelle e classifiche per tornei a squadre, gli abbinamenti,
+le procedure arbitrali e ogni gestione di evento.
 
 ## Riproducibilità
 

@@ -1,7 +1,10 @@
+import type { Page } from '@playwright/test'
 import {
   completeNowButton,
   drawAndDiscard,
   expect,
+  PLAYER_NAME,
+  readActiveSave,
   roundIndicator,
   startNewMatch,
   test,
@@ -14,10 +17,8 @@ import {
  */
 const MAX_LIFECYCLE_ITERATIONS = 400
 
-test('one session plays all four smazzate through the real UI to the final result', async ({ page }) => {
-  test.setTimeout(180_000)
-  await startNewMatch(page)
-
+/** Plays the started match through the real UI to its final result; returns the completed rounds. */
+const playToFinalResult = async (page: Page, roundCount: number) => {
   const nextRoundButton = page.getByRole('button', { name: /^Inizia smazzata \d$/ })
   const playAgainButton = page.getByRole('button', { name: 'Gioca ancora' })
   const enabledDrawPile = page.getByRole('button', { name: /^Pesca dal tallone/, disabled: false })
@@ -26,7 +27,7 @@ test('one session plays all four smazzate through the real UI to the final resul
   let roundNumber = 1
 
   for (let iteration = 0; ; iteration += 1) {
-    expect(iteration, 'bounded four-smazzate lifecycle').toBeLessThan(MAX_LIFECYCLE_ITERATIONS)
+    expect(iteration, 'bounded match lifecycle').toBeLessThan(MAX_LIFECYCLE_ITERATIONS)
     // With the paused clock only the test's own actions change the table, so exactly one
     // of these states is current when the assertion resolves.
     await expect(
@@ -37,13 +38,13 @@ test('one session plays all four smazzate through the real UI to the final resul
 
     if (await nextRoundButton.isVisible()) {
       await expect(resultHeading).toBeVisible()
-      await expect(roundIndicator(page)).toHaveText(`Smazzata ${roundNumber}/4`)
-      await expect(page.getByText(`Smazzata ${roundNumber} di 4 conclusa`)).toBeVisible()
+      await expect(roundIndicator(page)).toHaveText(`Smazzata ${roundNumber}/${roundCount}`)
+      await expect(page.getByText(`Smazzata ${roundNumber} di ${roundCount} conclusa`)).toBeVisible()
       await expect(nextRoundButton).toHaveText(`Inizia smazzata ${roundNumber + 1}`)
       completedRounds.push(roundNumber)
       await nextRoundButton.click()
       roundNumber += 1
-      await expect(roundIndicator(page)).toHaveText(`Smazzata ${roundNumber}/4`)
+      await expect(roundIndicator(page)).toHaveText(`Smazzata ${roundNumber}/${roundCount}`)
       continue
     }
 
@@ -55,8 +56,6 @@ test('one session plays all four smazzate through the real UI to the final resul
     await drawAndDiscard(page)
   }
 
-  expect(completedRounds).toEqual([1, 2, 3])
-  await expect(roundIndicator(page)).toHaveText('Smazzata 4/4')
   await expect(resultHeading).toBeVisible()
   await expect(page.getByText('Partita conclusa')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Risultato finale' })).toBeVisible()
@@ -66,4 +65,22 @@ test('one session plays all four smazzate through the real UI to the final resul
   await expect(victoryPoints.getByText(/^\d+ VP$/)).toHaveCount(2)
   await expect(playAgainButton).toBeEnabled()
   await expect(page.getByRole('button', { name: /^Inizia smazzata/ })).toHaveCount(0)
+  return completedRounds
+}
+
+test('one session plays all four smazzate through the real UI to the final result', async ({ page }) => {
+  test.setTimeout(180_000)
+  await startNewMatch(page)
+
+  expect(await playToFinalResult(page, 4)).toEqual([1, 2, 3])
+  await expect(roundIndicator(page)).toHaveText('Smazzata 4/4')
+})
+
+test('a selected two-smazzate match ends on its second round instead of continuing to four', async ({ page }) => {
+  test.setTimeout(120_000)
+  await startNewMatch(page, PLAYER_NAME, 2)
+
+  expect(await playToFinalResult(page, 2)).toEqual([1])
+  await expect(roundIndicator(page)).toHaveText('Smazzata 2/2')
+  expect(await readActiveSave(page)).toBeNull()
 })

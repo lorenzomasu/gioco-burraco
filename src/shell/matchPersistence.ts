@@ -1,6 +1,6 @@
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card } from '../game/cards/types'
-import type { MatchState } from '../game/match'
+import { isMatchRoundCount, type MatchState } from '../game/match'
 import { validateMeld } from '../game/melds'
 import { calculateRoundScore, type TeamRoundScore } from '../game/scoring'
 import type { GameState } from '../game/state/types'
@@ -9,8 +9,15 @@ import { HUMAN_PLAYER_ID, type MatchSetup } from './matchSetup'
 /** The single browser-storage key holding the one active local match. */
 export const MATCH_SAVE_STORAGE_KEY = 'gioco-burraco:active-match'
 
-/** The current save wire-format version. Any other version is rejected, never reinterpreted. */
-export const MATCH_SAVE_SCHEMA_VERSION = 1
+/**
+ * The current save wire-format version. Version 2 adds the configured match length. The
+ * only other accepted version is the released legacy version 1, always a four-smazzate
+ * match, which is normalized on load; any other version is rejected, never reinterpreted.
+ */
+export const MATCH_SAVE_SCHEMA_VERSION = 2
+
+/** The released pre-M34 wire-format version, restored as a four-smazzate current save. */
+export const LEGACY_MATCH_SAVE_SCHEMA_VERSION = 1
 
 /**
  * The complete resumable wire format: the onboarding setup needed to recreate future-round
@@ -43,7 +50,7 @@ export const getBrowserStorage = (): Storage | null => {
 export const serializeMatchSave = (setup: MatchSetup, match: MatchState): string => {
   const envelope: MatchSaveEnvelope = {
     version: MATCH_SAVE_SCHEMA_VERSION,
-    setup: { humanPlayerName: setup.humanPlayerName },
+    setup: { humanPlayerName: setup.humanPlayerName, roundCount: setup.roundCount },
     match,
   }
   return JSON.stringify(envelope)
@@ -57,7 +64,7 @@ export const parseMatchSave = (raw: string): MatchSaveEnvelope | null => {
   } catch {
     return null
   }
-  return isMatchSaveEnvelope(parsed) ? parsed : null
+  return normalizeMatchSave(parsed)
 }
 
 /** Reads the active save. Invalid saves are removed when possible; no failure escapes. */
@@ -136,7 +143,8 @@ const isRecord = (value: unknown): value is UnknownRecord =>
 
 const isOneOf = (value: unknown, allowed: readonly unknown[]): boolean => allowed.includes(value)
 
-const isRoundNumber = (value: unknown): value is 1 | 2 | 3 | 4 => isOneOf(value, [1, 2, 3, 4])
+const isRoundNumber = (value: unknown, roundCount: number): value is 1 | 2 | 3 | 4 =>
+  Number.isInteger(value) && (value as number) >= 1 && (value as number) <= roundCount
 
 /** Structural equality of JSON-compatible values, independent of object key order. */
 const jsonEqual = (first: unknown, second: unknown): boolean => {
@@ -303,16 +311,18 @@ const matchesCompletedRoundScore = (round: GameState, result: UnknownRecord): bo
 }
 
 /**
- * An active, resumable match: in progress, with exactly one settled result per finished
- * round (the current round included once it has completed). A completed match is stale.
+ * An active, resumable match of a supported configured length: in progress, with exactly
+ * one settled result per finished round (the current round included once it has
+ * completed). A completed match, or one beyond its configured length, is stale.
  */
 const isActiveMatchState = (value: unknown): value is MatchState => {
-  if (!isRecord(value) || value.status !== 'in-progress' || !isRoundNumber(value.currentRoundNumber)) return false
-  const { currentRoundNumber, currentRound } = value
+  if (!isRecord(value) || value.status !== 'in-progress' || !isMatchRoundCount(value.roundCount)) return false
+  const { roundCount, currentRoundNumber, currentRound } = value
+  if (!isRoundNumber(currentRoundNumber, roundCount)) return false
   if (!isGameState(currentRound)) return false
   const roundCompleted = currentRound.round.status === 'completed'
-  // A completed fourth round always completes the match, so it can no longer be active.
-  if (roundCompleted && currentRoundNumber === 4) return false
+  // A completed final round always completes the match, so it can no longer be active.
+  if (roundCompleted && currentRoundNumber === roundCount) return false
 
   const { roundResults } = value
   const expectedResults = roundCompleted ? currentRoundNumber : currentRoundNumber - 1
@@ -326,11 +336,44 @@ const isMatchSetup = (value: unknown): value is MatchSetup =>
   && typeof value.humanPlayerName === 'string'
   && value.humanPlayerName.length > 0
   && value.humanPlayerName === value.humanPlayerName.trim()
+  && isMatchRoundCount(value.roundCount)
 
-/** Validates an already-parsed value as a supported, active, internally consistent save. */
+/** Validates an already-parsed value as a current-version, active, internally consistent save. */
 export const isMatchSaveEnvelope = (value: unknown): value is MatchSaveEnvelope => {
   if (!isRecord(value) || value.version !== MATCH_SAVE_SCHEMA_VERSION) return false
   if (!isMatchSetup(value.setup) || !isActiveMatchState(value.match)) return false
+  if (value.setup.roundCount !== value.match.roundCount) return false
   const human = value.match.currentRound.players.find(({ id }) => id === HUMAN_PLAYER_ID)
   return human?.name === value.setup.humanPlayerName
+}
+
+const LEGACY_ROUND_COUNT = 4
+
+/**
+ * The single legacy compatibility path: a released version-1 save has no length fields
+ * and always meant four smazzate. Its setup and match must carry exactly the version-1
+ * fields; they are given round count 4 and then pass the full current validation.
+ */
+const migrateLegacyMatchSave = (value: UnknownRecord): unknown => {
+  const { setup, match } = value
+  if (!isRecord(setup) || !isRecord(match)) return null
+  if (Object.prototype.hasOwnProperty.call(setup, 'roundCount')) return null
+  if (Object.prototype.hasOwnProperty.call(match, 'roundCount')) return null
+  return {
+    version: MATCH_SAVE_SCHEMA_VERSION,
+    setup: { ...setup, roundCount: LEGACY_ROUND_COUNT },
+    match: { roundCount: LEGACY_ROUND_COUNT, ...match },
+  }
+}
+
+/**
+ * Accepts a current-version save as is, or a valid legacy version-1 save normalized to
+ * the current in-memory shape; `null` for everything else.
+ */
+export const normalizeMatchSave = (value: unknown): MatchSaveEnvelope | null => {
+  if (isRecord(value) && value.version === LEGACY_MATCH_SAVE_SCHEMA_VERSION) {
+    const migrated = migrateLegacyMatchSave(value)
+    return isMatchSaveEnvelope(migrated) ? migrated : null
+  }
+  return isMatchSaveEnvelope(value) ? value : null
 }

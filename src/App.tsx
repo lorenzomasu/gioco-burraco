@@ -5,7 +5,7 @@ import { HelpDialog } from './components/HelpDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { GameTable, type BotPlaybackSpeed } from './components/GameTable'
 import { StartScreen } from './components/StartScreen'
-import { MATCH_ROUND_COUNT, type MatchState, type RoundFactory } from './game/match'
+import { DEFAULT_MATCH_ROUND_COUNT, type MatchRoundCount, type MatchState, type RoundFactory } from './game/match'
 import {
   clearMatchSave,
   getBrowserStorage,
@@ -61,7 +61,8 @@ const loadNotice = (result: MatchSaveLoadResult): string | null => {
 }
 
 /** Concise non-blocking status after a valid local save was resumed. */
-export const resumeNotice = (roundNumber: number) => `Partita ripresa · Smazzata ${roundNumber}/${MATCH_ROUND_COUNT}`
+export const resumeNotice = (match: Pick<MatchState, 'currentRoundNumber' | 'roundCount'>) =>
+  `Partita ripresa · Smazzata ${match.currentRoundNumber}/${match.roundCount}`
 
 /** The app-level overlay currently open; transient shell state, never saved. */
 type ShellOverlay = 'settings' | 'help' | null
@@ -77,17 +78,25 @@ export default function App({
   const [initial] = useState(() => {
     const loaded = loadMatchSave(storage)
     if (loaded.status !== 'restored') {
-      return { screen: { kind: 'onboarding' } as AppScreen, name: '', notice: loadNotice(loaded), resumedRound: null }
+      return {
+        screen: { kind: 'onboarding' } as AppScreen,
+        name: '',
+        roundCount: DEFAULT_MATCH_ROUND_COUNT,
+        notice: loadNotice(loaded),
+        resumedMatch: null,
+      }
     }
     const { setup, match } = loaded.save
     const screen: AppScreen = { kind: 'match', setup, createGame: createRoundFactory(setup), initialMatch: match }
-    return { screen, name: setup.humanPlayerName, notice: null, resumedRound: match.currentRoundNumber }
+    return { screen, name: setup.humanPlayerName, roundCount: setup.roundCount, notice: null, resumedMatch: match }
   })
   const [screen, setScreen] = useState<AppScreen>(initial.screen)
   const [lastPlayerName, setLastPlayerName] = useState(initial.name)
+  // Last chosen length, retained like the name while this application stays mounted.
+  const [lastRoundCount, setLastRoundCount] = useState<MatchRoundCount>(initial.roundCount)
   const [notice, setNotice] = useState<string | null>(initial.notice)
-  // Round of the restored save, shown once as a dismissible status; UI only, never saved.
-  const [resumedRound, setResumedRound] = useState<number | null>(initial.resumedRound)
+  // Progress of the restored save, shown once as a dismissible status; UI only, never saved.
+  const [resumedMatch, setResumedMatch] = useState<MatchState | null>(initial.resumedMatch)
   const [overlay, setOverlay] = useState<ShellOverlay>(null)
   const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   const [audioPreferences, setAudioPreferences] = useState<AudioPreferences>(() => loadAudioPreferences(storage))
@@ -153,11 +162,13 @@ export default function App({
     return withOverlay(
       <StartScreen
         initialName={lastPlayerName}
+        initialRoundCount={lastRoundCount}
         notice={notice}
         focusOnMount={screen.returnedFromMatch}
         actions={shellActions}
         onStart={(setup) => {
           setLastPlayerName(setup.humanPlayerName)
+          setLastRoundCount(setup.roundCount)
           setNotice(null)
           setScreen({ kind: 'match', setup, createGame: createRoundFactory(setup), startedFromOnboarding: true })
         }}
@@ -179,13 +190,13 @@ export default function App({
     <SoundContext value={playSounds}>
       {notice ? (
         <p className="storage-notice storage-notice--match" role="status">{notice}</p>
-      ) : resumedRound !== null && (
+      ) : resumedMatch !== null && (
         <div className="storage-notice storage-notice--match storage-notice--resume" role="status">
-          <span>{resumeNotice(resumedRound)}</span>
+          <span>{resumeNotice(resumedMatch)}</span>
           <button
             type="button"
             className="storage-notice__dismiss"
-            onClick={() => setResumedRound(null)}
+            onClick={() => setResumedMatch(null)}
             aria-label="Chiudi avviso di ripresa"
           >
             ×
@@ -195,13 +206,14 @@ export default function App({
       <GameTable
         initialMatch={screen.initialMatch}
         createGame={screen.createGame}
+        roundCount={setup.roundCount}
         focusContextOnMount={screen.startedFromOnboarding}
         onMatchChange={persistMatch}
         onLeaveMatch={() => {
           // Reached only after any required confirmation: the abandoned match is not resumable.
           clearMatchSave(storage)
           setNotice(null)
-          setResumedRound(null)
+          setResumedMatch(null)
           setScreen({ kind: 'onboarding', returnedFromMatch: true })
         }}
         playbackSpeed={playbackSpeed}
