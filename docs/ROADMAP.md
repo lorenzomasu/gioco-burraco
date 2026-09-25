@@ -429,7 +429,7 @@ These are presentation/interaction corrections to the released v1.1 product. The
 
 ### M33.1 — Table Flow & Mobile Polish
 
-**Outcome:** make the live table easier to understand without scrolling or mentally reconstructing turn order. The human remains at the bottom; their teammate is opposite at the top; the next/previous opponents occupy the left/right seats so the visual order follows the existing clockwise player order. Public melds remain simultaneously visible through adaptive density rather than ordinary internal scrolling, bot playback becomes followable at normal speed, and the active-match chrome is reduced/refined without weakening accessibility or existing actions.
+**Outcome:** make the live table easier to understand without scrolling or mentally reconstructing turn order. The human remains at the bottom; their teammate is opposite at the top; the next/previous opponents occupy the left/right seats so the visual order follows the existing clockwise player order. Public melds remain simultaneously visible through adaptive density rather than ordinary internal scrolling or page-scrolling through one team's meld set, bot playback becomes followable at normal speed, and the active-match chrome is reduced/refined without weakening accessibility or existing actions.
 
 **Dependency:** released `v1.1.0` baseline.
 
