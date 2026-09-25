@@ -46,7 +46,7 @@ const OFFICIAL_BOUNDARIES: Readonly<Record<MatchRoundCount, readonly (readonly [
     [1305, 17, 3], [1500, 17, 3],
     [1505, 18, 2], [1700, 18, 2],
     [1705, 19, 1], [2000, 19, 1],
-    [2001, 20, 0], [2005, 20, 0],
+    [2005, 20, 0], [5000, 20, 0],
   ],
 }
 
@@ -82,6 +82,23 @@ describe.each([2, 3, 4] as const)('%i-smazzate Victory Points', (roundCount) => 
   it('rejects an unreachable value between two official bands', () => {
     const [upperOfFirstBand] = OFFICIAL_BOUNDARIES[roundCount][1]!
     expect(() => outcomeFor(upperOfFirstBand + 1, 0, roundCount)).toThrow(RangeError)
+  })
+
+  it('rejects every unreachable value between the last finite band and the 20–0 band', () => {
+    const lastFinite = { 2: 1000, 3: 1500, 4: 2000 }[roundCount]
+    for (const offset of [1, 2, 3, 4]) {
+      expect(() => outcomeFor(lastFinite + offset, 0, roundCount)).toThrow(RangeError)
+      expect(() => outcomeFor(0, lastFinite + offset, roundCount)).toThrow(RangeError)
+    }
+    expect(outcomeFor(lastFinite + 5, 0, roundCount).victoryPoints.map(({ victoryPoints }) => victoryPoints))
+      .toEqual([20, 0])
+  })
+
+  it('rejects a non-multiple of five inside a band', () => {
+    const [lower, upper] = [OFFICIAL_BOUNDARIES[roundCount][2]![0], OFFICIAL_BOUNDARIES[roundCount][3]![0]]
+    expect(() => outcomeFor(lower + 3, 0, roundCount)).toThrow(RangeError)
+    expect(() => outcomeFor(upper - 2, 0, roundCount)).toThrow(RangeError)
+    expect(() => outcomeFor(1_000_003, 0, roundCount)).toThrow(RangeError)
   })
 })
 

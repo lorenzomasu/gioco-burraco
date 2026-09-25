@@ -11,7 +11,7 @@
 ## Verification
 
 - `npm run verify`: passed (exit 0) on the final working tree, report included
-- Tests: Vitest 44 files / 826 tests passed (722 at `v1.1.2`); Playwright Chromium 55/55 passed (53 at `v1.1.2`)
+- Tests: Vitest 44 files / 832 tests passed (722 at `v1.1.2`); Playwright Chromium 55/55 passed (53 at `v1.1.2`)
 - Build: `tsc -b && vite build` passed (part of `npm run verify`)
 - `git diff --check`: passed
 - Working tree at completion: clean
@@ -19,6 +19,8 @@
 Targeted runs during implementation: `npx vitest run src/game/match`, `src/shell`,
 `src/App.test.tsx`, `src/components/GameTableMatchContext.test.tsx` — all green.
 
+Mutation checks (review fix): removing the five-point guard and restoring X+1 lower bounds
+makes 6 VP tests fail (final-gap and in-band non-multiple cases for 2/3/4 smazzate).
 Mutation checks: forcing the four-smazzate VP table for every length makes 48 match/UI
 tests fail; forcing the terminal round back to 4 (`isFinalRound`) makes 4 lifecycle/App
 tests fail. Both were restored before verification.
@@ -36,7 +38,10 @@ container-only link of the 1194 binary under the expected 1243 path; no reposito
   schedule is unchanged and naturally truncated. `MATCH_ROUND_COUNT` is removed.
 - Victory Points: `calculateMatchOutcome(cumulativeScores, roundCount)` replaces
   `calculateFourRoundOutcome` and selects the official 2/3/4-smazzate F.I.Bur. 2026 table;
-  Match Points, leader/tie and symmetry are unchanged. Unreachable gap values still throw.
+  Match Points, leader/tie and symmetry are unchanged. Every Match Points value that is not a
+  multiple of five is rejected with `RangeError` before band lookup, so unreachable values
+  (intermediate gaps and X+1…X+4 above the last finite band) are never classified; the
+  «oltre X» bands start at the first reachable value X+5.
 - Onboarding (`StartScreen`): native radio fieldset «Durata della partita» (2/3/4 smazzate,
   4 preselected); `MatchSetup` now carries `roundCount`. The shell retains the last choice,
   like the name, only while mounted. Copy no longer claims a fixed four-smazzate match
@@ -61,13 +66,18 @@ None.
 
 ## Known risks and ambiguities
 
-- «oltre 1000 / 1500 / 2000» is encoded, as the pre-existing four-smazzate table already did,
-  as a lower bound of X+1; values X+1…X+4 are unreachable with five-point scores and would map
-  to 20–0 rather than throw. Behaviour of the four-smazzate table is unchanged.
 - A v1 save that already contains a `roundCount` field in setup or match is rejected rather
   than trusted, since the released v1 format never had it.
 - The legacy v1 migration is covered by unit and App integration tests; no browser test
   seeds a v1 save (the spec requires browser coverage only for non-default lengths).
+
+## Review fixes
+
+- Independent-review finding (unreachable Match Points above the last finite band were
+  classified as 20–0): `victoryPointSplit` now rejects any non-multiple of five; the 20–0
+  bands start at 1005 / 1505 / 2005. Regression tests cover X+1…X+4 for all three lengths
+  (both leading teams), the first reachable 20–0 value and in-band non-multiples. No
+  reachable official boundary or split changed.
 
 ## Incidental changes
 

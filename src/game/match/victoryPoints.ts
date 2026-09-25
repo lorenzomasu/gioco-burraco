@@ -10,7 +10,7 @@ type VictoryPointBand = Readonly<{
 
 /**
  * Official F.I.Bur. (January 2026) tables, one per supported match length. Each band is
- * inclusive; the gaps between bands are unreachable with five-point round scores.
+ * inclusive and bounded by reachable five-point values; «oltre X» starts at X + 5.
  */
 const VP_BANDS_BY_ROUND_COUNT: Readonly<Record<MatchRoundCount, readonly VictoryPointBand[]>> = {
   2: [
@@ -24,7 +24,7 @@ const VP_BANDS_BY_ROUND_COUNT: Readonly<Record<MatchRoundCount, readonly Victory
     { minimum: 625, maximum: 740, winner: 17, loser: 3 },
     { minimum: 745, maximum: 870, winner: 18, loser: 2 },
     { minimum: 875, maximum: 1000, winner: 19, loser: 1 },
-    { minimum: 1001, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
+    { minimum: 1005, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
   ],
   3: [
     { minimum: 0, maximum: 50, winner: 10, loser: 10 },
@@ -37,7 +37,7 @@ const VP_BANDS_BY_ROUND_COUNT: Readonly<Record<MatchRoundCount, readonly Victory
     { minimum: 805, maximum: 1000, winner: 17, loser: 3 },
     { minimum: 1005, maximum: 1250, winner: 18, loser: 2 },
     { minimum: 1255, maximum: 1500, winner: 19, loser: 1 },
-    { minimum: 1501, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
+    { minimum: 1505, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
   ],
   4: [
     { minimum: 0, maximum: 100, winner: 10, loser: 10 },
@@ -50,13 +50,17 @@ const VP_BANDS_BY_ROUND_COUNT: Readonly<Record<MatchRoundCount, readonly Victory
     { minimum: 1305, maximum: 1500, winner: 17, loser: 3 },
     { minimum: 1505, maximum: 1700, winner: 18, loser: 2 },
     { minimum: 1705, maximum: 2000, winner: 19, loser: 1 },
-    { minimum: 2001, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
+    { minimum: 2005, maximum: Number.POSITIVE_INFINITY, winner: 20, loser: 0 },
   ],
 }
 
 const victoryPointSplit = (matchPoints: number, roundCount: MatchRoundCount): readonly [number, number] => {
   if (!Number.isInteger(matchPoints) || matchPoints < 0) {
     throw new RangeError('Match Points must be a non-negative integer.')
+  }
+  // Legal round scores are multiples of five, so any other difference is unreachable.
+  if (matchPoints % 5 !== 0) {
+    throw new RangeError('Match Points must use a reachable five-point increment.')
   }
   const bands = VP_BANDS_BY_ROUND_COUNT[roundCount]
   if (!bands) {
