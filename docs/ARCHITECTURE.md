@@ -272,6 +272,36 @@ match's `roundCount`. It is transient UI: it
   never moves focus, never writes the save and disappears when the match is left; a
   storage notice takes its place when present.
 
+### Contextual guidance (M36)
+
+- Preference: `src/shell/guidancePreferences.ts` owns `{ enabled, completedOnce }` under
+  its own versioned key `gioco-burraco:guidance-preferences`, never
+  `MATCH_SAVE_STORAGE_KEY`. With no valid value the defaults are `enabled: true`,
+  `completedOnce: false`, so the first match is guided. Corrupt, unsupported or unreadable
+  data falls back to the defaults without touching the match save; a failed write keeps the
+  in-memory state silently. `MatchSetup`, `GameState`, `MatchState` and the schema-v3 save
+  gain no guidance field; restoring a match only reads the independent current preference.
+- Shell ownership: `App` holds the preference, passes `guidance={{ enabled, onDismiss }}`
+  to `GameTable` and exposes one «Guida contestuale» checkbox in `SettingsDialog`.
+  «Nascondi guida» and the checkbox change only `enabled`. When the authoritative
+  `MatchState` received through `onMatchChange` is `completed` while
+  `enabled && !completedOnce`, the shell stores `{ enabled: false, completedOnce: true }`
+  (`guidanceAfterMatchCompletion`); an unguided completion, or guidance re-enabled after
+  `completedOnce`, is left unchanged. No timer, screen mount or round count is used.
+- Derivation seam: `deriveCoaching` (`src/components/guidedCoaching.ts`) is a pure mapping
+  from public/presentation facts — bot or human turn, phase, the actual enabled state of
+  the stock and discard-pile controls, the UI selection count, whether the human team has
+  public melds, the code of an engine `GameRuleError` that already rejected a human command,
+  and the committed `TableFeedback` pozzetto/Burraco cues — to copy. It reads no card
+  identity, enumerates or validates no move and never classifies melds itself, so the
+  engine stays the only legality authority and no hidden-information boundary changes.
+- Surface: with guidance enabled, `GuidedCoach` replaces the one-line turn guidance in the
+  turn-status area as a named, non-modal region (no `aria-live`, no focus movement, no
+  inert or blocking layer) with a keyboard-operable «Nascondi guida». With guidance disabled,
+  or on a standalone table without the prop, the existing compact guidance is unchanged.
+  The rule-error alert remains the immediate rejection feedback; the round-result and
+  final-result views show no coach.
+
 ### Local save and resume
 
 The application shell keeps one active local match in browser-local storage so a

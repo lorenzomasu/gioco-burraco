@@ -31,7 +31,8 @@ export function HelpDialog({ onClose }: HelpDialogProps) {
           Puoi anche trascinare le carte (mouse o tocco prolungato) sugli scarti, su «Nuova calata» o su
           una calata della tua squadra, e riordinare la mano trascinandole o con «Sposta» e «Ordina mano».
           Pulsanti e tastiera restano sempre disponibili al posto del trascinamento. Se una mossa non è
-          valida, il gioco lo spiega e non cambia nulla.
+          valida, il gioco lo spiega e non cambia nulla. La <strong>guida contestuale</strong> accompagna la
+          prima partita accanto allo stato del turno: puoi nasconderla o riattivarla da Impostazioni.
         </p>
       </section>
       <section aria-labelledby="help-table">
