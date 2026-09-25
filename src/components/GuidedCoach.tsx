@@ -23,12 +23,18 @@ export function GuidedCoach({ coaching, onDismiss }: GuidedCoachProps) {
       </div>
       <p className="guided-coach__now">{coaching.now}</p>
       {coaching.context && <p className="guided-coach__context">{coaching.context}</p>}
-      {coaching.unavailable.length > 0 && (
-        <ul className="guided-coach__unavailable" aria-label="Azioni non ancora disponibili">
-          {coaching.unavailable.map((line) => <li key={line}>{line}</li>)}
-        </ul>
+      {/* Native disclosure keeps the coach compact enough for the hand to stay in view. */}
+      {(coaching.unavailable.length > 0 || coaching.reminder) && (
+        <details className="guided-coach__details">
+          <summary>Comandi disattivati e chiusura</summary>
+          {coaching.unavailable.length > 0 && (
+            <ul className="guided-coach__unavailable" aria-label="Azioni non ancora disponibili">
+              {coaching.unavailable.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          )}
+          {coaching.reminder && <p className="guided-coach__reminder">{coaching.reminder}</p>}
+        </details>
       )}
-      {coaching.reminder && <p className="guided-coach__reminder">{coaching.reminder}</p>}
     </section>
   )
 }
