@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records the agreed product roadmap from the completed gameplay core through v1.0 and the planned v1.1 interaction/feel release.
+This document records the agreed product roadmap from the completed gameplay core through the released v1.0/v1.1 cycles and the next planned release cycle.
 
 It exists so milestone preparation does not depend on chat memory. Future milestone specifications must use this roadmap as the planning baseline together with the current repository state.
 
@@ -15,7 +15,11 @@ This roadmap is intentionally higher-level than a milestone specification:
 
 ## Current baseline
 
-The v1.0 cycle M20–M26 is complete. The exact v1.0.0 tag and main HEAD are at 98b86e708ffd38fccb1e032447ba923de26975a7 when the v1.1 plan is opened. M20–M26 below remain the historical v1 plan; M27–M33 define the next cycle.
+The v1.0 cycle M20–M26 is complete. The exact `v1.0.0` tag is at `98b86e708ffd38fccb1e032447ba923de26975a7`.
+
+The v1.1 cycle M27–M33 is also complete. The exact `v1.1.0` tag and release SHA are `2cbf5327abe0c435009d0431756eba90eb853324`; the post-merge `main` workflow passed canonical verification, GitHub Pages deployment, and the deployed Chromium smoke on that SHA.
+
+M20–M33 below remain the historical released plan. M34–M38 define the next planned cycle.
 
 
 ### Gameplay core complete through M20
@@ -348,7 +352,9 @@ Keep the four-round local match, deterministic engine, bot legality, hidden-info
 
 ## V1.1 sequence
 
-M27 UI Architecture & Visual Direction → M28 Tabletop & Discard Pile UX → M29 Hand Management & Direct Manipulation → M30 Motion & Bot Choreography → M31 Audio & Sensory Feedback → M32 App-wide UX Polish → M33 V1.1 Hardening & Release.
+`M27 ✅ UI Architecture & Visual Direction` → `M28 ✅ Tabletop & Discard Pile UX` → `M29 ✅ Hand Management & Direct Manipulation` → `M30 ✅ Motion & Bot Choreography` → `M31 ✅ Audio & Sensory Feedback` → `M32 ✅ App-wide UX Polish` → `M33 ✅ V1.1 Hardening & Release`.
+
+**Release status:** complete as `v1.1.0` on `2cbf5327abe0c435009d0431756eba90eb853324`.
 
 M27–M32 are product milestones; M33 is the release gate. Do not start motion or audio by decorating an interaction model still due to change. Complete M27–M29 first; M30–M32 depend on the stable table and interaction structure.
 
@@ -401,3 +407,107 @@ Prepare each milestone from current main and this roadmap, inspect only directly
 Delivery grouping follows docs/WORKFLOW.md and is risk-proportional rather than automatically one PR per milestone. After M28, the default plan is M29 standalone, M30–M32 as one presentation-focused batch if M29 lands cleanly, and M33 standalone for hardening/release. This grouping may be changed explicitly when repository evidence shows a safer or faster boundary.
 
 Update this roadmap explicitly for any material change to product objectives, order, dependencies or the v1.1 boundary. Batching milestones for implementation/review does not by itself change their product scope or dependency order.
+
+---
+
+# V1.2 — Single-player depth & installable app
+
+## Product outcome and boundary
+
+V1.1 established the table interaction model, full discard visibility, direct manipulation, motion, sound, responsive polish and release hardening. V1.2 should add meaningful replayability and make the browser client behave more like an installable app without opening the much larger online/backend scope.
+
+Keep the rules baseline, deterministic engine, physical-card identity, hidden-information guarantees, one-human/three-bot team structure and static-client deployment model. New setup options must be explicit product choices rather than silent rule changes. Online multiplayer, accounts, cloud sync, leaderboards and a full replay system remain outside this cycle.
+
+The release sequence is:
+
+`M34 Configurable Match Length`
+→ `M35 Bot Difficulty Levels`
+→ `M36 Guided First Match`
+→ `M37 Installable PWA & Offline Resume`
+→ `M38 V1.2 Hardening & Release`.
+
+M34, M35 and M37 cross boundaries that justify standalone review gates. M36 is presentation-focused but remains a separate delivery unit by default because M37 is deployment/offline work and should not be batched with it. Reassess only if preparation evidence shows a clearly safer grouping.
+
+### M34 — Configurable Match Length
+
+**Outcome:** let the player choose a supported match-length preset during onboarding instead of hard-coding every match to four smazzate, while preserving the current four-smazzate experience as the default.
+
+The milestone specification must resolve the exact supported presets from the current rules/product model rather than invent arbitrary values. Generalize match lifecycle, completion/progress presentation and tests only as far as required by those presets. Persist the chosen configuration safely and define backward compatibility for existing v1.1 local saves.
+
+**Dependency:** released v1.1 baseline.
+
+**Risk boundary:** match lifecycle and persistence. Deliver standalone.
+
+### M35 — Bot Difficulty Levels
+
+**Outcome:** add a player-facing bot-difficulty choice that changes strategy quality without changing legality, turn structure, hidden information or deterministic testability.
+
+The current v1.1 bot strategy is the behavioural baseline and must not silently regress. The milestone specification decides the smallest useful set of difficulty profiles after inspecting the existing candidate/strategy architecture; avoid expensive search/Monte Carlo/ML work unless evidence shows it is necessary.
+
+The selected difficulty belongs to match setup and must resume consistently from a save.
+
+**Dependency:** M34 setup/persistence shape.
+
+**Risk boundary:** bot strategy, hidden information and deterministic behaviour. Deliver standalone.
+
+### M36 — Guided First Match
+
+**Outcome:** make the first complete match understandable without requiring the player to read the full help dialog first.
+
+Add optional, dismissible contextual coaching around the existing phases and controls: what the player can do now, why common actions are unavailable, and the important digital flow around draw/collect, melds, discard, pozzetto and closing. Guidance must derive from already-authoritative state/control availability and must never become a second rules engine.
+
+Keep normal repeat play compact. Any “guidance seen/disabled” preference is presentation data, separate from the authoritative match save.
+
+**Dependency:** M34–M35 final onboarding/setup and active-table behaviour.
+
+### M37 — Installable PWA & Offline Resume
+
+**Outcome:** make the production client installable on supported desktop/mobile browsers and usable after connectivity is lost once the required application assets have been successfully cached.
+
+Add only the PWA/offline infrastructure required for the static client: manifest/app metadata, installable assets, service-worker/cache strategy, safe update behaviour and production/E2E coverage. A previously valid local match should still resume offline because the authoritative save remains browser-local.
+
+Do not introduce a backend, account, cloud sync or network-dependent game state. Development/test environments must avoid stale-cache surprises.
+
+**Dependency:** product flows stable through M36.
+
+**Risk boundary:** build/deployment/cache behaviour. Deliver standalone.
+
+### M38 — V1.2 Hardening & Release
+
+**Outcome:** turn M34–M37 into one verified release candidate and publish `v1.2.0` from an exact reviewed SHA.
+
+Update browser-level critical paths for each supported match-length preset, save compatibility, bot difficulty, guided-first-match opt-out/re-entry behaviour, installability/offline resume and service-worker update/failure behaviour. Run the normal independent review and exact-SHA PR/CI gate, then require the post-merge production workflow and deployed smoke before tagging `v1.2.0`.
+
+M38 has no new creative feature scope.
+
+**Dependency:** M34–M37 complete and integrated.
+
+## V1.2 delivery plan
+
+Default delivery units:
+
+- M34 standalone;
+- M35 standalone;
+- M36 standalone;
+- M37 standalone;
+- M38 standalone release gate.
+
+This deliberately uses more isolated gates than the v1.1 presentation batch: M34 touches lifecycle/persistence, M35 touches bots/hidden information, M37 touches deployment/offline caching, and M38 is the release gate. Do not batch merely to reduce ceremony when the resulting diff would cross those boundaries.
+
+The user-facing operating loop remains: one prepare request → implementation in one primary-agent thread → one review request → automatic PR/CI/merge on green. Review-driven fixes stay in the same implementation thread.
+
+## Beyond v1.2 — candidates, not committed roadmap
+
+Do not assign milestone numbers yet. Reassess after v1.2 playtesting.
+
+Candidates include:
+
+- local completed-match history and lightweight statistics;
+- deeper/highest-difficulty bot strategy if real playtesting shows the need;
+- optional visual themes/card-art refinement;
+- configurable rematch/setup shortcuts;
+- replay/history features only if their value justifies the additional state model;
+- online multiplayer, accounts, matchmaking and cloud sync as a separate major architecture/program rather than incremental v1.x scope.
+
+These are not approved scope until this roadmap is explicitly updated.
+

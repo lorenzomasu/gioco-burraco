@@ -12,7 +12,7 @@ Before implementing any task, read:
 
 1. the task or milestone specification;
 2. `docs/WORKFLOW.md`;
-3. `docs/ROADMAP.md` when the task is a milestone or v1 planning work;
+3. `docs/ROADMAP.md` when the task is a milestone or release-cycle planning work;
 4. `docs/RULES.md` when the task can affect game behaviour, rule enforcement, scoring, bots, or rule-facing UI;
 5. `docs/ARCHITECTURE.md` when present;
 6. the directly relevant implementation and tests.
@@ -35,9 +35,11 @@ Follow `docs/WORKFLOW.md` unless the user explicitly requests a different proces
 
 Work on a dedicated branch. An approved delivery batch may share one batch branch across sequential milestone specifications as defined in `docs/WORKFLOW.md`.
 
-Never modify `main` directly.
+Implementation agents never modify or merge `main` directly.
 
-Do not merge into `main`, force-push, rewrite history, or delete branches unless explicitly instructed.
+ChatGPT acting as the independent reviewer / merge-gate operator may advance `main` only through the automatic green path defined in `docs/WORKFLOW.md`. A user request to review a delivery unit authorizes that documented green path when the review is green, unless the user explicitly asks to stop after review.
+
+No actor may force-push, rewrite history, or delete branches unless explicitly instructed.
 
 ## Implementation
 

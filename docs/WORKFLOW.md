@@ -19,6 +19,8 @@ The user should normally need only one preparation request and one review reques
 
 If the independent review is green, ChatGPT should complete the PR/CI/merge gate directly when repository access permits, without requiring a separate `procedi` message.
 
+A user request such as `Review M34` or `Review M34-M35` authorizes the independent review and, if it is green, the documented automatic green path for that delivery unit unless the user explicitly asks to stop after review. This standing authorization applies to ChatGPT acting as merge-gate operator; it does not authorize the implementation agent to merge.
+
 ## Roles
 
 ### ChatGPT — architect, independent reviewer, and merge-gate operator
@@ -61,6 +63,8 @@ For each delivery unit, the selected implementation agent should:
 
 The implementation agent must not invent or author the milestone specification it is implementing.
 
+When Claude Code is selected and a persistent Claude Code Project is available, prefer one Project thread per delivery unit. Keep review-driven fixes in that same thread while its context remains useful. The Project coordinator may delegate bounded analysis/test/audit work to subagents, but there is still one primary implementer and the independent review remains outside the implementation thread.
+
 ## Delivery modes
 
 ### Standalone milestone
@@ -76,6 +80,8 @@ Use the existing one-milestone branch/review/PR path when the work is high-risk 
 ### Milestone batch
 
 Batch sequential milestones when they share the same implementation surface, the dependency order is clear, and the risk of reviewing them together is lower than the coordination overhead of separate PR/CI cycles.
+
+A batch is "approved" when ChatGPT has selected that grouping during preparation and has versioned all included milestone specifications on the shared delivery branch. A separate user confirmation message is not required unless the user asks to retain manual approval or objects to the proposed grouping.
 
 A batch uses:
 
@@ -93,13 +99,7 @@ Do not run the full verification or push merely to mark every internal checkpoin
 
 Split a batch before continuing if implementation unexpectedly crosses into game rules/engine semantics, persistence format, CI/deployment, release mechanics, or another boundary that materially increases review risk. Also split when the cumulative diff becomes too large to review confidently as one coherent change.
 
-For the current v1.1 roadmap, the default delivery plan is:
-
-- M29 standalone because direct manipulation changes the interaction contract and is the stable dependency for later presentation work;
-- M30–M32 as one presentation-focused batch if M29 lands cleanly;
-- M33 standalone as the v1.1 release/hardening gate.
-
-ChatGPT should reassess this grouping from repository evidence before preparation and proactively change it if risk or implementation coupling changes.
+Release-cycle-specific default grouping belongs in `docs/ROADMAP.md`. ChatGPT should reassess that grouping from current repository evidence during preparation and proactively change it when risk, coupling, or coordination cost justifies a different delivery boundary.
 
 ## Preparing a milestone
 
@@ -173,6 +173,8 @@ For a standalone milestone:
 `npm run verify`
 
    It runs, in one command, the Vitest suite, the production build, the Playwright Chromium E2E suite against that build (`npm run test:e2e`) and `git diff --check`. The browser suite needs the local Playwright Chromium runtime, installed once per machine with `npx playwright install chromium`.
+
+   In ephemeral/cloud environments, a runtime mismatch may be corrected only by adapting that environment. Do not commit repository changes solely to satisfy a broken or mismatched runner image. A verification result may be reported as passed only when the unchanged repository command actually completes successfully.
 
 10. fix failures caused by the milestone and rerun the necessary verification;
 11. create or update `docs/milestones/reports/MXX-implementation.md` using `docs/milestones/reports/TEMPLATE.md`;
@@ -343,7 +345,7 @@ Therefore:
 - keep standalone milestones isolated; batch only coherent sequential milestones under the delivery-mode rules above;
 - keep fix prompts narrow and review-driven;
 - do not add process artifacts, tools, or gates unless they solve an observed problem;
-- prefer one warm implementation-agent session across an approved batch when shared context is useful; start a fresh session when the task surface changes materially or context has become noisy;
+- prefer one warm implementation-agent thread across an approved batch when shared context is useful; with a persistent Claude Code Project, use one thread per delivery unit and keep review-driven fixes in that thread; start a fresh thread when the delivery unit changes materially or context has become noisy;
 - keep prompts small: reference versioned repository sources instead of pasting them, and request concise completion output rather than repeated narrative;
 - inspect only directly relevant files first; expand repository reading only when dependencies or review risk justify it;
 - prefer direct repository search/read operations over spawning a subagent for simple exploration;
