@@ -81,7 +81,27 @@ describe('validateMeldExtension', () => {
     expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'four' })
   })
 
-  it('rejects stateless reinterpretation of an existing wildcard without replacement', () => {
+  it('repositions the playtest jolly from 4♦ to 9♦ when 10♦ is added (M33.2 regression)', () => {
+    const wild = joker()
+    const existing = validatedSequence([
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+    expect(existing.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'four' })
+    const ten = card('ten', 'diamonds')
+
+    const extended = expectValidExtension(existing, [ten])
+
+    expect(extended.type).toBe('sequence')
+    expect(semanticRanks(extended.cards)).toEqual(['five', 'six', 'seven', 'eight', 'nine', 'ten'])
+    expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'nine' })
+    expect(extended.activeWildcard?.card).toBe(wild)
+    expect(extended.cards.map((placement) => placement.card.id).sort()).toEqual(
+      [...existing.cards.map((placement) => placement.card.id), ten.id].sort(),
+    )
+  })
+
+  it('repositions an existing active jolly without adding the natural card it represented', () => {
     const wild = joker()
     const existing = validatedSequence([
       card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), wild,
@@ -89,11 +109,72 @@ describe('validateMeldExtension', () => {
     expect(existing.activeWildcard?.representedRank).toBe('two')
     const addition = card('seven', 'spades')
     const stateless = validateMeld([...existing.cards.map((placement) => placement.card), addition])
-    expect(stateless.valid && stateless.meld.activeWildcard?.representedRank).toBe('six')
+    if (!stateless.valid) throw new Error('Expected a valid final sequence')
 
-    expect(validateMeldExtension(existing, [addition])).toEqual({
+    const extended = expectValidExtension(existing, [addition])
+
+    expect(extended).toEqual(stateless.meld)
+    expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'six' })
+  })
+
+  it('rejects an extension that no wildcard position can make consecutive', () => {
+    const wild = joker()
+    const existing = validatedSequence([
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+
+    expect(validateMeldExtension(existing, [card('jack', 'diamonds')]).valid).toBe(false)
+    expect(validateMeldExtension(existing, [card('ten', 'diamonds'), card('queen', 'diamonds')]).valid)
+      .toBe(false)
+  })
+
+  it.each([
+    ['wrong-suit natural', () => [card('ten', 'hearts')]],
+    ['second jolly', () => [joker(2)]],
+    ['duplicate natural position', () => [card('six', 'diamonds', 2)]],
+  ] as const)('keeps rejecting a %s added to the playtest sequence', (_, additions) => {
+    const existing = validatedSequence([
+      joker(), card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+
+    expect(validateMeldExtension(existing, additions()).valid).toBe(false)
+  })
+
+  it('rejects a physical card already present in the meld', () => {
+    const existing = validatedSequence([
+      joker(), card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+    ])
+
+    expect(validateMeldExtension(existing, [card('five', 'diamonds')])).toEqual({
       valid: false,
-      reason: 'WILDCARD_POSITION_LOCKED',
+      reason: 'DUPLICATE_CARD_ID',
+    })
+  })
+
+  it('rejects a sequence extension whose final cards change the stored type or suit', () => {
+    const naturalCards = (cards: readonly Card[]): MeldCardPlacement[] =>
+      cards.map((physical) => ({ card: physical, role: 'natural' }))
+    const storedAsSequence: ValidatedSequence = {
+      type: 'sequence',
+      suit: 'clubs',
+      cards: naturalCards([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')]),
+      acePosition: 'none',
+      activeWildcard: null,
+    }
+    const storedWithOtherSuit: ValidatedSequence = {
+      ...validatedSequence([card('three', 'clubs'), card('four', 'clubs'), card('five', 'clubs')]),
+      suit: 'hearts',
+    }
+
+    expect(validateMeldExtension(storedAsSequence, [card('seven', 'spades')])).toEqual({
+      valid: false,
+      reason: 'NOT_A_VALID_MELD',
+    })
+    expect(validateMeldExtension(storedWithOtherSuit, [card('six', 'clubs')])).toEqual({
+      valid: false,
+      reason: 'NOT_A_VALID_MELD',
     })
   })
 
@@ -119,7 +200,7 @@ describe('validateMeldExtension', () => {
     expect(validateMeldExtension(existing, [card('four', 'diamonds')]).valid).toBe(false)
   })
 
-  it('checks replacement suit even when stateless two-matta normalization is valid', () => {
+  it('lets an active pinella become a natural two when a valid final sequence requires it', () => {
     const previouslyActivePinella = card('two', 'spades')
     const existing: ValidatedSequence = {
       type: 'sequence',
@@ -132,17 +213,21 @@ describe('validateMeldExtension', () => {
       acePosition: 'none',
       activeWildcard: { card: previouslyActivePinella, role: 'wildcard', representedRank: 'two' },
     }
-    const wrongSuitTwo = card('two', 'hearts')
-    const stateless = validateMeld([...existing.cards.map((placement) => placement.card), wrongSuitTwo])
-    expect(stateless.valid).toBe(true)
+    const otherTwo = card('two', 'hearts')
+    const stateless = validateMeld([...existing.cards.map((placement) => placement.card), otherTwo])
+    if (!stateless.valid) throw new Error('Expected a valid final sequence')
 
-    expect(validateMeldExtension(existing, [wrongSuitTwo])).toEqual({
-      valid: false,
-      reason: 'WILDCARD_POSITION_LOCKED',
+    const extended = expectValidExtension(existing, [otherTwo])
+
+    expect(extended).toEqual(stateless.meld)
+    expect(extended.cards.find((placement) => placement.card.id === previouslyActivePinella.id)).toEqual({
+      card: previouslyActivePinella,
+      role: 'natural',
     })
+    expect(extended.activeWildcard).toEqual({ card: otherTwo, role: 'wildcard', representedRank: 'ace' })
   })
 
-  it('does not count a pre-existing table card as the replacement supplied by this extension', () => {
+  it('does not need a replacement supplied by this extension to reposition the wildcard', () => {
     const wild = joker()
     const existing: ValidatedSequence = {
       type: 'sequence',
@@ -158,12 +243,12 @@ describe('validateMeldExtension', () => {
     }
     const addition = card('seven', 'clubs')
     const stateless = validateMeld([...existing.cards.map((placement) => placement.card), addition])
-    expect(stateless.valid && stateless.meld.activeWildcard?.representedRank).toBe('six')
+    if (!stateless.valid) throw new Error('Expected a valid final sequence')
 
-    expect(validateMeldExtension(existing, [addition])).toEqual({
-      valid: false,
-      reason: 'WILDCARD_POSITION_LOCKED',
-    })
+    const extended = expectValidExtension(existing, [addition])
+
+    expect(extended).toEqual(stateless.meld)
+    expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'six' })
   })
 
   it.each([1, 2] as const)(
@@ -180,7 +265,7 @@ describe('validateMeldExtension', () => {
     },
   )
 
-  it('keeps a previously free wildcard unranked', () => {
+  it('lets a previously free wildcard take a rank in the valid final sequence', () => {
     const wild = joker()
     const existing: ValidatedSequence = {
       type: 'sequence',
@@ -195,10 +280,9 @@ describe('validateMeldExtension', () => {
       activeWildcard: { card: wild, role: 'wildcard', representedRank: null },
     }
 
-    expect(validateMeldExtension(existing, [card('seven', 'clubs')])).toEqual({
-      valid: false,
-      reason: 'WILDCARD_POSITION_LOCKED',
-    })
+    const extended = expectValidExtension(existing, [card('seven', 'clubs')])
+
+    expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'six' })
   })
 
   it('allows a natural same-suit pinella to become the active wildcard', () => {
@@ -211,7 +295,7 @@ describe('validateMeldExtension', () => {
     expect(extended.activeWildcard).toEqual({ card: pinella, role: 'wildcard', representedRank: 'five' })
   })
 
-  it('locks a pinella after it has become an active wildcard', () => {
+  it('keeps an active pinella on its rank while the final sequence still needs it there', () => {
     const pinella = card('two', 'diamonds')
     const natural = validatedSequence([pinella, card('three', 'diamonds'), card('four', 'diamonds')])
     const active = expectValidExtension(natural, [card('six', 'diamonds')])
@@ -224,6 +308,19 @@ describe('validateMeldExtension', () => {
       role: 'wildcard',
       representedRank: 'five',
     })
+  })
+
+  it('repositions an active same-suit pinella without the natural card it represented', () => {
+    const pinella = card('two', 'diamonds')
+    const existing = validatedSequence([
+      pinella, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+    ])
+    expect(existing.activeWildcard).toEqual({ card: pinella, role: 'wildcard', representedRank: 'four' })
+
+    const extended = expectValidExtension(existing, [card('nine', 'diamonds')])
+
+    expect(semanticRanks(extended.cards)).toEqual(['five', 'six', 'seven', 'eight', 'nine'])
+    expect(extended.activeWildcard).toEqual({ card: pinella, role: 'wildcard', representedRank: 'eight' })
   })
 
   it('allows an active same-suit pinella to return to natural two after exact replacement', () => {

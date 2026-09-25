@@ -14,7 +14,6 @@ export const MELD_VALIDATION_REASONS = [
   'INVALID_ACE_USAGE',
   'GROUP_CANNOT_BE_WILDCARDS_ONLY',
   'EMPTY_EXTENSION',
-  'WILDCARD_POSITION_LOCKED',
 ] as const
 
 export type MeldValidationReason = (typeof MELD_VALIDATION_REASONS)[number]

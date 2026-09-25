@@ -498,6 +498,33 @@ describe('GameTable direct manipulation (M29)', () => {
     expect(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' })).toBeInTheDocument()
   })
 
+  it('extends the playtest sequence Jolly=4♦ … 8♦ with a dropped 10♦ and repositions the jolly', () => {
+    const jolly = deck.find((candidate) => candidate.rank === 'joker')!
+    const sequence = validatedMeld([
+      jolly, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+    const ten = card('ten', 'diamonds')
+    const onMatchChange = vi.fn()
+    render(
+      <GameTable
+        initialState={withHumanTurn([ten, card('king', 'spades')], 'action', { teamOneMelds: [sequence] })}
+        onMatchChange={onMatchChange}
+      />,
+    )
+    expect(screen.getByText('Matta → 4')).toBeInTheDocument()
+
+    dragTo(handButton(ten), meldArticle(1, 1))
+
+    expect(screen.queryByText('Mossa non valida')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const meld = (onMatchChange.mock.lastCall![0] as MatchState).currentRound.teams[0]!.melds[0]!
+    expect(meld.cards.map(({ card: placed }) => placed.id)).toContain(ten.id)
+    expect(meld.activeWildcard).toEqual({ card: jolly, role: 'wildcard', representedRank: 'nine' })
+    expect(meldArticle(1, 1)).toHaveAttribute('data-feedback', 'meld-extended')
+    expect(screen.getByText('Matta → 9')).toBeInTheDocument()
+  })
+
   it('shows the engine error for an invalid direct extension', () => {
     const sevens = validatedMeld([card('seven', 'clubs'), card('seven', 'diamonds'), card('seven', 'hearts')])
     const onMatchChange = vi.fn()

@@ -168,13 +168,64 @@ describe('extendMeld', () => {
     expect(extended.cards.find((placement) => placement.card.id === naturalFour.id)?.role).toBe('natural')
   })
 
-  it('rejects illegal historical wildcard reinterpretation atomically', () => {
+  it('repositions the playtest jolly to 9♦ when 10♦ extends Jolly=4♦, 5♦, 6♦, 7♦, 8♦', () => {
+    const wild = joker()
+    const existing = validatedMeld([
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+    expect(existing.activeWildcard?.representedRank).toBe('four')
+    const otherMeld = validatedMeld([card('nine', 'clubs'), card('nine', 'hearts'), card('nine', 'spades')])
+    const ten = card('ten', 'diamonds')
+    const equivalentTen = card('ten', 'diamonds', 2)
+    const retained = card('king', 'clubs')
+    const state = stateFor([equivalentTen, ten, retained], [otherMeld, existing])
+    const opponentsBefore = teamById(state, 'team-2')
+
+    const next = extendMeld(state, 'player-1', 1, [ten.id])
+    const team = teamById(next, 'team-1')
+    const extended = team.melds[1]!
+
+    expect(getPlayer(next, 'player-1').hand).toEqual([equivalentTen, retained])
+    expect(team.melds[0]).toBe(otherMeld)
+    expect(teamById(next, 'team-2')).toBe(opponentsBefore)
+    expect(extended).toMatchObject({ type: 'sequence', suit: 'diamonds' })
+    expect(extended.cards.map((placement) => placement.role === 'wildcard'
+      ? placement.representedRank
+      : placement.card.rank)).toEqual(['five', 'six', 'seven', 'eight', 'nine', 'ten'])
+    expect(extended.activeWildcard).toEqual({ card: wild, role: 'wildcard', representedRank: 'nine' })
+    expect(extended.activeWildcard?.card).toBe(wild)
+    expect(extended.cards.map((placement) => placement.card.id).sort()).toEqual(
+      [...existing.cards.map((placement) => placement.card.id), ten.id].sort(),
+    )
+    expect(next.round.turn).toEqual(state.round.turn)
+    expect(next.pozzetti).toBe(state.pozzetti)
+  })
+
+  it('repositions an existing wildcard without the natural card it represented', () => {
     const wild = joker()
     const existing = validatedMeld([
       card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), wild,
     ])
     expect(existing.activeWildcard?.representedRank).toBe('two')
     const addition = card('seven', 'spades')
+
+    const next = extendMeld(stateFor([addition, card('king', 'clubs')], [existing]), 'player-1', 0, [addition.id])
+
+    expect(teamById(next, 'team-1').melds[0]!.activeWildcard).toEqual({
+      card: wild,
+      role: 'wildcard',
+      representedRank: 'six',
+    })
+  })
+
+  it('rejects an invalid final sequence atomically', () => {
+    const wild = joker()
+    const existing = validatedMeld([
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+    const addition = card('jack', 'diamonds')
     const retained = card('king', 'clubs')
     const state = stateFor([addition, retained], [existing])
     const before = structuredClone(state)

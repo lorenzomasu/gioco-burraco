@@ -298,6 +298,39 @@ describe('GameTable', () => {
     expect(screen.getByText('Matta → 2')).toBeInTheDocument()
   })
 
+  it('extends the playtest sequence Jolly=4♦, 5♦, 6♦, 7♦, 8♦ with 10♦ through the extension button', () => {
+    const wild = joker()
+    const existingMeld = validatedMeld([
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
+    ])
+    const ten = card('ten', 'diamonds')
+    const remainingCard = card('king', 'spades')
+    const onMatchChange = vi.fn()
+    render(
+      <GameTable
+        initialState={actionState([ten, remainingCard], [existingMeld])}
+        onMatchChange={onMatchChange}
+      />,
+    )
+
+    expect(screen.getByText('Matta → 4')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: cardLabel(ten) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aggiungi alla calata 1 della squadra 1' }))
+
+    expect(screen.queryByText('Mossa non valida')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('Matta → 4')).not.toBeInTheDocument()
+    expect(screen.getByText('Matta → 9')).toBeInTheDocument()
+    const teamArea = screen.getByRole('region', { name: 'Calate squadra 1' })
+    expect(within(teamArea).getAllByRole('img')).toHaveLength(6)
+    expect(screen.queryByRole('button', { name: cardLabel(ten) })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: cardLabel(remainingCard) })).toBeInTheDocument()
+    const committed = onMatchChange.mock.lastCall![0] as MatchState
+    expect(committed.currentRound.teams[0]!.melds[0]!.activeWildcard)
+      .toEqual({ card: wild, role: 'wildcard', representedRank: 'nine' })
+  })
+
   it('shows an engine rule error without losing state or selection', () => {
     const invalidCards = [
       card('three', 'clubs'),

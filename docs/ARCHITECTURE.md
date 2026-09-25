@@ -53,9 +53,13 @@ Meld validation and Burraco classification are derived behaviour.
 Validated meld logic must preserve the original physical cards and their semantic roles.
 
 New-meld validation through `validateMeld`, `validateSequence`, and `validateGroup`
-is stateless. Extending a stored meld uses the separate pure history-aware extension
-validator, which reuses stateless validation and then enforces the prior represented
-position of any already-active sequence wildcard.
+is stateless. Extending a stored meld uses the separate pure extension validator
+(`validateMeldExtension`): it revalidates every existing physical card plus the added
+cards through stateless validation and requires the stored meld type (and, for a
+sequence, its suit) to be kept. The final deterministic validated meld is authoritative;
+since M33.2 an already-active sequence wildcard may change its represented rank, and a
+same-suit pinella its role, whenever that final sequence is valid. No prior represented
+position is preserved.
 
 Do not persist derived classification into state unless a future milestone explicitly changes this architecture.
 
@@ -72,7 +76,7 @@ Bots may not inspect hidden opponent hands, future draw-pile order or identity, 
 Candidate generation may propose moves, but the engine remains authoritative for legality.
 
 Bot heuristics that predict whether a visible card extends an existing meld use the
-same history-aware extension validator as the engine.
+same extension validator as the engine.
 
 Do not duplicate game-rule validation inside bot strategy code.
 
@@ -260,7 +264,7 @@ implementation:
 - the hands, meld placements, stock, discard pile and pozzetti hold the complete
   canonical 108-card universe, each physical card exactly once and with its real face;
 - every stored meld equals `validateMeld` of its own cards (the engine always stores that
-  result, including after history-aware extension or wildcard replacement), so impossible
+  result, including after an extension that repositions a wildcard), so impossible
   roles, represented ranks, ace positions or active wildcards are rejected;
 - the settled history has exactly one result per finished round, every team total follows
   the round-scoring formula, and the result of a completed current round equals

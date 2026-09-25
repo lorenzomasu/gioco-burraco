@@ -2,7 +2,7 @@
 
 A browser version of the Italian card game Burraco, written in TypeScript and React.
 
-Current release: **v1.1.1**.
+Current release: **v1.1.2**.
 
 ## What you play
 

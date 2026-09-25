@@ -14,8 +14,8 @@ const PAGES_ORIGIN = 'http://pages.invalid'
 const PROJECT_PATH = '/gioco-burraco/'
 
 const ROOT_DIR = fileURLToPath(new URL('../', import.meta.url))
-/** The current product release (M33.1 patch). */
-const RELEASE_VERSION = '1.1.1'
+/** The current product release (M33.2 patch). */
+const RELEASE_VERSION = '1.1.2'
 
 test('package metadata and release documents agree on the current release version', async () => {
   const read = (file: string) => readFile(path.join(ROOT_DIR, file), 'utf8')

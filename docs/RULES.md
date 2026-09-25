@@ -21,6 +21,10 @@ implementazione.
   smazzate e pozzetti (art. 23).
 - Il controllo non ha richiesto modifiche al codice di gioco. Il comportamento
   implementato descritto in questo documento resta quello autorevole per la v1.
+- Dalla v1.1.2 (milestone 33.2) il riposizionamento di una matta già attiva all'interno
+  della stessa sequenza segue una variante di prodotto documentata, più permissiva della
+  regola in stile FIBUR adottata dalla milestone 15: vedi la sezione sul riposizionamento
+  delle matte nelle sequenze esistenti.
 - La baseline non implica che il gioco digitale applichi ogni norma del Codice. Le
   astrazioni digitali documentate nelle sezioni seguenti restano invariate. Time out
   (art. 15), stallo (art. 16), procedure arbitrali, carte esposte o penalizzate,
@@ -197,8 +201,8 @@ dalla mano e non colloca ancora calate sul tavolo.
 ### Funzionalità rinviate
 
 - spostare una matta tra calate, riprenderla in mano o riordinare una calata senza
-  aggiungere carte; la sostituzione all'interno della stessa sequenza è descritta
-  nella milestone 15;
+  aggiungere carte; il riposizionamento all'interno della stessa sequenza è descritto
+  nella milestone 15 e nella variante di prodotto della milestone 33.2;
 - punteggio.
 
 Queste funzioni restano fuori dall'attuale implementazione.
@@ -231,36 +235,51 @@ Queste funzioni restano fuori dall'attuale implementazione.
   `team.melds`. La selezione vuota e un indice inesistente sono errori espliciti.
 - Il motore ricostruisce l'insieme completo usando le carte fisiche della calata e
   quelle aggiunte, quindi lo valida come estensione della calata esistente. Solo un
-  risultato completo valido sostituisce la calata precedente; dalla milestone 15
-  l'eventuale ricalcolo del ruolo o del rango rappresentato da una matta già attiva
-  rispetta anche la posizione semantica che essa occupava sul tavolo.
+  risultato completo valido sostituisce la calata precedente. Dalla milestone 33.2 il
+  risultato deterministico della validazione finale è l'unico criterio: il ruolo o il
+  rango rappresentato da una matta già attiva può cambiare quando l'insieme finale è
+  una sequenza valida (vedi la milestone 15 e la variante di prodotto che la
+  sostituisce).
 - La riuscita rimuove dalla mano soltanto gli ID fisici richiesti, sostituisce solo
   la calata selezionata e non termina il turno. Qualunque errore lascia invariato
   l'intero stato di gioco.
 
-## Sostituzione delle matte nelle sequenze esistenti — milestone 15
+## Riposizionamento delle matte nelle sequenze esistenti — milestone 15 e variante di prodotto milestone 33.2
 
-- Una matta già attiva in una sequenza resta legata al rango che rappresenta. Una
-  normale estensione è valida quando conserva la stessa carta fisica come matta sullo
-  stesso rango rappresentato.
-- Per assegnare a quella matta un rango diverso, oppure per far tornare una pinella
-  attiva al ruolo di 2 naturale, l'estensione deve aggiungere dalla mano la carta
-  naturale esatta del rango e del seme precedentemente rappresentati. Una copia
-  fisica proveniente da uno qualunque dei due mazzi è valida; una carta già presente
-  nella sequenza prima della mossa non conta come sostituzione.
-- La carta naturale aggiunta e la matta sostituita restano entrambe nella stessa
-  sequenza, con i rispettivi ID fisici invariati. La matta non torna in mano e non
-  viene trasferita a un'altra calata.
-- Una matta libera oltre la sequenza naturale completa Asso–King, rappresentata con
-  `representedRank: null`, resta libera: non esiste un rango naturale esatto con cui
-  sbloccarne una reinterpretazione.
-- Una pinella dello stesso seme conservata come 2 naturale non è ancora una matta
-  attiva e può assumere quel ruolo quando una successiva estensione completa una
-  sequenza valida. Dal momento in cui viene memorizzata come matta, il suo rango
-  rappresentato resta vincolato dalle stesse regole fino all'esatta sostituzione.
-- Dopo una sostituzione legale, l'ordine e l'eventuale nuova posizione semantica della
-  matta sono quelli deterministici prodotti dal validatore. L'implementazione digitale
-  non simula lo spostamento manuale delle carte sul tavolo.
+**Variante di prodotto documentata.** La milestone 15 aveva adottato la regola più
+restrittiva in stile FIBUR, per cui una matta già attiva in una sequenza restava
+vincolata al rango rappresentato finché non veniva aggiunta la carta naturale esatta di
+quel rango e seme. Dalla milestone 33.2 (release `v1.1.2`) questo gioco adotta
+intenzionalmente la variante più permissiva richiesta dopo il playtest: quel vincolo di
+posizione non è più implementato. Il resto del baseline FIBUR resta invariato; questa è
+una deviazione di prodotto esplicita limitata al riposizionamento nella stessa sequenza.
+
+- Quando si estende una sequenza esistente, il motore rivalida l'insieme completo delle
+  carte fisiche già presenti più quelle aggiunte dalla mano con il validatore
+  deterministico delle calate. L'estensione è valida se il risultato è una sequenza
+  valida dello stesso seme; il tipo memorizzato non può cambiare.
+- Una matta già attiva (jolly o pinella) può quindi rappresentare un rango diverso da
+  quello precedente, senza che l'estensione debba aggiungere la carta naturale esatta
+  del rango lasciato. Esempio del playtest: `Jolly=4♦, 5♦, 6♦, 7♦, 8♦` più `10♦` diventa
+  `5♦, 6♦, 7♦, 8♦, Jolly=9♦, 10♦`.
+- Allo stesso modo una pinella dello stesso seme già presente nella sequenza può passare
+  dal ruolo di 2 naturale a quello di matta attiva, o viceversa, quando la validazione
+  finale deterministica lo richiede. Una matta libera oltre la sequenza naturale
+  completa Asso–King (`representedRank: null`) segue la stessa regola.
+- Le sostituzioni con la carta naturale esatta restano lecite, semplicemente perché la
+  sequenza finale è valida, non per un permesso speciale legato alla storia della calata.
+- La flessibilità non supera le regole della sequenza: restano rifiutate le estensioni
+  con ranghi non consecutivi anche considerando l'unica matta attiva, seme errato,
+  posizione naturale duplicata, uso non valido dell'Asso, troppe matte attive, limite
+  di lunghezza della sequenza, ID fisico duplicato o cambio di tipo della calata.
+- Ogni carta fisica resta nella stessa calata con il proprio ID. La matta reinterpretata
+  non torna in mano, non viene sostituita da una matta astratta e non viene trasferita a
+  un'altra calata; il comando aggiunge soltanto le carte selezionate dalla mano.
+- L'ordine e la posizione semantica della matta sono quelli deterministici prodotti dal
+  validatore. L'implementazione digitale non simula lo spostamento manuale delle carte
+  sul tavolo.
+- I bot usano lo stesso validatore di estensione del motore; non esiste una regola sulle
+  matte riservata ai bot.
 - Restano fuori ambito lo spostamento di matte tra calate, il ritorno della matta in
   mano, il riordino autonomo senza aggiungere carte e le procedure arbitrali per
   irregolarità del gioco fisico.
@@ -294,8 +313,9 @@ Queste funzioni restano fuori dall'attuale implementazione.
 
 La classificazione non applica punteggio, sostituzione o spostamento delle matte e non
 determina il vincitore; la chiusura usa dinamicamente questa classificazione senza
-memorizzarla nello stato. La legalità della sostituzione in una sequenza esistente è
-verificata separatamente come descritto nella milestone 15.
+memorizzarla nello stato. La legalità del riposizionamento in una sequenza esistente è
+verificata dal validatore di estensione come descritto nella milestone 15 e nella
+variante di prodotto della milestone 33.2.
 
 ## Acquisizione del pozzetto — milestone 7
 

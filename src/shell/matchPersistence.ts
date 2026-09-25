@@ -181,10 +181,10 @@ class CardLedger {
 
 /**
  * A stored meld is always exactly the engine's stateless validation of its physical cards:
- * `playMeld` stores `validateMeld`, and `validateMeldExtension` (the history-aware gate for
- * extensions and wildcard replacement) also returns `validateMeld` of the combined cards.
+ * `playMeld` stores `validateMeld`, and `validateMeldExtension` (the extension gate, which
+ * may reposition a wildcard) also returns `validateMeld` of the combined cards.
  * Re-validating therefore rejects impossible roles, represented ranks, ace positions and
- * active wildcards without restricting any legitimate history-aware result.
+ * active wildcards without restricting any legitimate extension result.
  */
 const isMeld = (value: unknown, ledger: CardLedger): boolean => {
   if (!isRecord(value) || !Array.isArray(value.cards)) return false

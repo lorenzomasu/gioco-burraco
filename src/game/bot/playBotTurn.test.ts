@@ -177,19 +177,26 @@ describe('deterministic bot turns', () => {
     expect(next.discardPile.at(-1)?.rank).toBe('king')
   })
 
-  it('does not generate an extension that only stateless wildcard reinterpretation permits', () => {
+  it('generates a wildcard-repositioning extension through the shared engine legality', () => {
     const wild = joker()
     const existing = validatedMeld([
-      card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), wild,
+      wild, card('five', 'diamonds'), card('six', 'diamonds'), card('seven', 'diamonds'),
+      card('eight', 'diamonds'),
     ])
-    const illegalExtension = card('seven', 'spades')
-    const state = stateFor({
-      hand: [illegalExtension, card('king', 'hearts')],
-      melds: [existing],
-    })
+    expect(existing.activeWildcard?.representedRank).toBe('four')
+    const ten = card('ten', 'diamonds')
+    const invalid = card('jack', 'diamonds')
+    const state = stateFor({ hand: [ten, invalid, card('king', 'hearts')], melds: [existing] })
 
-    expect(generateExtensionCandidates(state, 'player-2')
-      .some((candidate) => candidate.cardIds.includes(illegalExtension.id))).toBe(false)
+    const candidates = generateExtensionCandidates(state, 'player-2')
+    const candidate = candidates.find((option) => option.cardIds.includes(ten.id))
+
+    expect(candidates.some((option) => option.cardIds.includes(invalid.id))).toBe(false)
+    expect(candidate?.kind).toBe('extend')
+    if (!candidate) throw new Error('Expected repositioning candidate')
+    expect(teamForPlayer(candidate.state, 'player-2').melds[0]!.activeWildcard)
+      .toEqual({ card: wild, role: 'wildcard', representedRank: 'nine' })
+    expect(generateExtensionCandidates(state, 'player-2')).toEqual(candidates)
   })
 
   it('still generates an exact wildcard replacement extension', () => {
@@ -554,29 +561,31 @@ describe('strategic action ranking', () => {
 })
 
 describe('strategic discard ranking', () => {
-  it('does not mark a card as useful to its own meld through illegal wildcard reinterpretation', () => {
+  it('marks a card as useful to its own meld through legal wildcard repositioning only', () => {
     const existing = validatedMeld([
       card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), joker(),
     ])
-    const misleading = card('seven', 'spades')
+    const repositioning = card('seven', 'spades')
+    const invalid = card('nine', 'spades')
     const state = stateFor({
-      hand: [misleading, card('king', 'hearts'), card('three', 'clubs')],
+      hand: [repositioning, invalid, card('king', 'hearts'), card('three', 'clubs')],
       melds: [existing],
     })
 
-    const candidate = generateDiscardCandidates(state, 'player-2')
-      .find((option) => option.card.id === misleading.id)
+    const candidates = generateDiscardCandidates(state, 'player-2')
 
-    expect(candidate?.extendsOwnMeld).toBe(false)
+    expect(candidates.find((option) => option.card.id === repositioning.id)?.extendsOwnMeld).toBe(true)
+    expect(candidates.find((option) => option.card.id === invalid.id)?.extendsOwnMeld).toBe(false)
   })
 
-  it('does not mark a card as opponent help through illegal wildcard reinterpretation', () => {
+  it('marks a card as opponent help through legal wildcard repositioning only', () => {
     const opponentMeld = validatedMeld([
       card('three', 'spades'), card('four', 'spades'), card('five', 'spades'), joker(),
     ])
-    const misleading = card('seven', 'spades')
+    const repositioning = card('seven', 'spades')
+    const invalid = card('nine', 'spades')
     const base = stateFor({
-      hand: [misleading, card('king', 'hearts'), card('three', 'clubs')],
+      hand: [repositioning, invalid, card('king', 'hearts'), card('three', 'clubs')],
     })
     const state: InProgressGameState = {
       ...base,
@@ -585,10 +594,10 @@ describe('strategic discard ranking', () => {
         : team),
     }
 
-    const candidate = generateDiscardCandidates(state, 'player-2')
-      .find((option) => option.card.id === misleading.id)
+    const candidates = generateDiscardCandidates(state, 'player-2')
 
-    expect(candidate?.helpsOpponent).toBe(false)
+    expect(candidates.find((option) => option.card.id === repositioning.id)?.helpsOpponent).toBe(true)
+    expect(candidates.find((option) => option.card.id === invalid.id)?.helpsOpponent).toBe(false)
   })
 
   it('does not discard the first card when it belongs to a future meld', () => {

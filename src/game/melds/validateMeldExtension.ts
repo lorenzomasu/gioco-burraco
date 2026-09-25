@@ -3,9 +3,12 @@ import { invalidMeld, type MeldValidationResult, type ValidatedMeld } from './ty
 import { validateMeld } from './validateMeld'
 
 /**
- * Validates cards added to a stored meld while preserving the table position of
- * an already-active sequence wildcard. New-meld validation intentionally remains
- * stateless; only this existing-meld boundary considers the prior semantics.
+ * Validates cards added to a stored meld. The complete resulting set of physical cards
+ * is revalidated by the stateless meld validator and must keep the stored meld type (and,
+ * for a sequence, its suit). The deterministic result is authoritative: an already-active
+ * sequence wildcard may be reinterpreted to another represented rank, and a same-suit
+ * pinella may switch between natural and wildcard roles, whenever the final sequence is
+ * valid (M33.2 flexible same-sequence repositioning).
  */
 export const validateMeldExtension = (
   existingMeld: ValidatedMeld,
@@ -23,22 +26,5 @@ export const validateMeldExtension = (
     return invalidMeld('NOT_A_VALID_MELD')
   }
 
-  const previousWildcard = existingMeld.activeWildcard
-  if (previousWildcard === null) return validation
-
-  const resultingPlacement = validation.meld.cards.find(
-    (placement) => placement.card.id === previousWildcard.card.id,
-  )
-  const remainsInPreviousPosition = resultingPlacement?.role === 'wildcard'
-    && resultingPlacement.representedRank === previousWildcard.representedRank
-  if (remainsInPreviousPosition) return validation
-
-  if (previousWildcard.representedRank === null) {
-    return invalidMeld('WILDCARD_POSITION_LOCKED')
-  }
-
-  const exactReplacementWasAdded = addedCards.some((card) =>
-    card.rank === previousWildcard.representedRank && card.suit === existingMeld.suit,
-  )
-  return exactReplacementWasAdded ? validation : invalidMeld('WILDCARD_POSITION_LOCKED')
+  return validation
 }
