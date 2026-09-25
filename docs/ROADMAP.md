@@ -566,3 +566,37 @@ Candidates include:
 
 These are not approved scope until this roadmap is explicitly updated.
 
+---
+
+# Post-v1.2 — iPhone-first product direction
+
+## Playtest decision
+
+The exact `v1.2.0` release is complete at `b2022bf23ac5a8070ac4daca36acf74965d84cb5`.
+
+Post-release playtesting confirms that the game logic, match lifecycle, scoring foundation and bot behaviour are sufficiently mature for the next product phase. The main blocker is now the phone experience: the current responsive web table remains too dense and dashboard-like on iPhone to serve as the intended primary product experience.
+
+The next direction is therefore **iPhone-first**, while preserving the existing TypeScript game engine and stable web/PWA release until a mobile runtime decision is proven.
+
+One known non-UI product requirement remains approved for follow-up: persist and display which specific player took the pozzetto, rather than only whether the team has taken one. Do not mix that state-model change into the architecture experiment.
+
+## M39 — iOS Architecture Spike
+
+**Outcome:** build a small representative Capacitor/iOS vertical slice and run it on a physical iPhone before committing the full UI rewrite to Capacitor.
+
+This milestone is deliberately reversible. It must exercise the interaction qualities that could expose a WebView/native-feel gap: touch-first hand interaction, a compact table composition, card motion, sheet/panel behaviour, safe areas and native haptics. It is not a production migration and does not replace the current table.
+
+**Dependency:** released `v1.2.0`.
+
+**Decision gate:** M39 does not use the normal automatic green merge path. A technically green branch stays isolated until the user has run it on a physical iPhone and explicitly accepts Capacitor as the runtime direction.
+
+## After M39
+
+Do not assign the full v1.3 redesign milestone sequence until the device decision is made.
+
+- If **Capacitor is accepted**, define v1.3 as an iPhone-first UI/UX rebuild on the existing TypeScript/React engine, with the web/PWA target retained where practical.
+- If **Capacitor is rejected for feel**, do not continue investing in the Capacitor UI. Preserve the product/interaction learnings and prepare the smallest useful React Native or native-iOS comparison spike.
+- If the result is **close but not decisive**, allow one narrowly scoped M39 iteration aimed only at the concrete device feel problem before choosing the runtime.
+
+In all paths, avoid adding unrelated gameplay or bot scope while the primary phone interaction architecture is unresolved.
+
