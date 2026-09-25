@@ -9,6 +9,7 @@ import { startMatch, type MatchState } from '../src/game/match'
 import { validateMeld, type ValidatedMeld } from '../src/game/melds'
 import { createSetupRoundFactory } from '../src/shell/matchSetup'
 import {
+  chooseBotSpeed,
   E2E_SEED,
   PLAYER_NAME,
   discardButton,
@@ -136,7 +137,7 @@ test.describe('desktop pointer', () => {
 
     await historyToggle(page).click()
     await historyToggle(page).click()
-    await page.getByRole('radio', { name: 'Veloce' }).check()
+    await chooseBotSpeed(page, 'Veloce')
     await humanHandCards(page).nth(4).click()
     expect(await handLabels(page)).toEqual(manual)
     expect(await readActiveSave(page)).toEqual(saveBefore)

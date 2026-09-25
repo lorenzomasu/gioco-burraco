@@ -178,7 +178,8 @@ round-start path.
 ## Application shell
 
 `App` is the application shell. It owns transient screen selection (onboarding or one
-mounted match), the onboarding name, and the bot-speed preference. Onboarding trims the
+mounted match), the onboarding name, the bot-speed preference, the sound preferences and
+the app-level overlays. Onboarding trims the
 human name and refuses an empty one; starting a match turns it into a round factory via
 `src/shell/matchSetup.ts` and mounts `GameTable` with it. No game or match decision is
 made by the shell: the match layer still owns the lifecycle, starter schedule,
@@ -186,10 +187,32 @@ settlement and outcome.
 
 `GameTable` owns exactly one match session. Leaving it goes through the shell's
 `onLeaveMatch` callback: an in-progress match (including between smazzate) requires an
-explicit native confirmation, a completed match does not. Leaving unmounts the table,
-whose effect cleanup cancels any pending bot playback step; the shell returns to
-onboarding and never starts another match on its own. Confirmation primitives, screen
-state and timers never enter `src/game`.
+explicit in-app confirmation (`alertdialog` «Abbandonare la partita?», focus on
+«Annulla»; Escape and «Annulla» cancel and change nothing; «Abbandona partita» leaves
+exactly once), a completed match («Gioca ancora») does not. While the confirmation is
+open the table is `inert` and no bot step is scheduled, so the match cannot change under
+it; cancelling reschedules the pending step with the full delay. Leaving unmounts the
+table, whose effect cleanup cancels any pending bot playback step; the shell returns to
+onboarding and never starts another match on its own. Confirmation state, screen state
+and timers never enter `src/game` or the save.
+
+### Settings, Help and resume status
+
+- One Settings dialog (`SettingsDialog`) holds the shell-owned bot speed (same
+  normal/fast semantics and timer rescheduling) and the M31 sound controls; one Help
+  dialog (`HelpDialog`) describes only the implemented digital flow. Both are opened from
+  the same «Come si gioca» / «Impostazioni» entries on onboarding and in every match
+  view (active, between smazzate, final result), passed to `GameTable` as `shellActions`.
+  A standalone table without a shell keeps only its own bot-speed control.
+- Overlays use the shared `Dialog`: `role="dialog"`/`alertdialog`, `aria-modal`, a heading
+  as name; opening moves focus inside, Tab stays inside, Escape closes (never confirms),
+  and closing returns focus to the invoker when it still exists. The background stays
+  mounted but `inert`. Opening or using them never touches `GameState`, `MatchState` or
+  the match save.
+- A valid restored save still mounts the match directly and additionally shows a
+  dismissible `role="status"` «Partita ripresa · Smazzata N/4». It is transient UI: it
+  never moves focus, never writes the save and disappears when the match is left; a
+  storage notice takes its place when present.
 
 ### Local save and resume
 
@@ -272,7 +295,8 @@ These presentation contracts are transient React concerns; none of them is store
   target (`tabIndex={-1}`): onboarding → match and a fresh round focus the table's turn
   status; a completed round focuses its result heading; returning to onboarding focuses
   its heading. The first page load, including a restored save, never moves focus, and
-  ordinary card actions or bot events never do.
+  ordinary card actions or bot events never do. App overlays (Settings, Help, the
+  abandonment confirmation) take focus while open and give it back to their invoker.
 - The bot timeline is a mounted `role="log"` polite region announcing additions only;
   existing entries are never re-rendered as new nodes, so history is not re-announced.
   It is presented as a compact disclosure (a native button with `aria-expanded` and
@@ -303,8 +327,13 @@ opponents' side, with the stock, pozzetti count, discard pile and the turn statu
 between them. On wide desktop viewports the table fits the screen and each meld area
 scrolls locally; narrower layouts keep the same grouping in document order (seats,
 history, opponents' melds, public area, own melds, hand). The application header is a
-slim bar for the round indicator, bot speed and «Nuova partita»; «Completa subito» sits
-with the turn status while bots are playing.
+slim bar for the round indicator, a compact settled match score («La tua squadra» /
+«Avversari», from `calculateCumulativeScores`, never a partial-round score), the «Come si
+gioca» and «Impostazioni» entries and «Nuova partita»; «Completa subito» sits with the
+turn status while bots are playing. Between smazzate the result explains why the round
+ended, its score, the oriented cumulative score and progress, with one primary action;
+the final view states win, loss or tie only from `getFinalMatchOutcome` relative to the
+human's team, with the existing Match and Victory Points.
 
 ### Public table cards
 
@@ -401,7 +430,7 @@ It never enters `src/game`, `GameState`, `MatchState` or the match save.
   their own versioned key `gioco-burraco:audio-preferences`, never `MATCH_SAVE_STORAGE_KEY`.
   Corrupt, unsupported or unreadable data falls back to sound on at 60%; a failed write is
   silent and never affects the match save. `AudioControls` is a reusable native checkbox
-  and slider. Reduced motion does not mute sound, and every state stays expressed in text
+  and slider shown in the shared Settings dialog. Reduced motion does not mute sound, and every state stays expressed in text
   and visuals without it.
 
 ### Hand order and direct manipulation
@@ -450,7 +479,7 @@ order-only change calls `onMatchChange`.
 `e2e/` holds Playwright tests that run in Chromium against the production build served by
 `vite preview` (`playwright.config.ts`); `npm run verify` runs them after the Vitest suite
 and the build. They drive the built client only through its public browser surface:
-roles and accessible names, real controls, native dialogs and browser `localStorage`.
+roles and accessible names, real controls, in-app dialogs and browser `localStorage`.
 
 Determinism is test-side only. Before the bundle loads, each test replaces `Math.random`
 with a fixed-seed Mulberry32 sequence and installs a paused Playwright fake clock, so bot

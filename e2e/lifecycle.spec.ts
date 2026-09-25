@@ -38,7 +38,7 @@ test('one session plays all four smazzate through the real UI to the final resul
     if (await nextRoundButton.isVisible()) {
       await expect(resultHeading).toBeVisible()
       await expect(roundIndicator(page)).toHaveText(`Smazzata ${roundNumber}/4`)
-      await expect(page.getByText(`Dopo ${roundNumber} smazzate`)).toBeVisible()
+      await expect(page.getByText(`Smazzata ${roundNumber} di 4 conclusa`)).toBeVisible()
       await expect(nextRoundButton).toHaveText(`Inizia smazzata ${roundNumber + 1}`)
       completedRounds.push(roundNumber)
       await nextRoundButton.click()

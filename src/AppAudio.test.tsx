@@ -41,6 +41,8 @@ const step = () => act(() => {
   vi.advanceTimersByTime(BOT_STEP_DELAY_MS)
 })
 const gesture = () => fireEvent.pointerDown(window)
+/** M32 moved the reusable M31 controls into the shared Settings dialog. */
+const openSound = () => fireEvent.click(screen.getByRole('button', { name: 'Impostazioni' }))
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -85,12 +87,14 @@ describe('App M31 audio', () => {
 
   it('offers labelled native mute and volume controls with the default state', () => {
     renderApp(restoredStorage())
+    openSound()
     const mute = screen.getByRole('checkbox', { name: 'Disattiva suoni' })
     const volume = screen.getByRole('slider', { name: 'Volume' })
     expect(mute).not.toBeChecked()
     expect(volume).toHaveValue('60')
     expect(volume).toHaveAttribute('aria-valuetext', '60%')
     expect(screen.getByRole('group', { name: 'Suoni' })).toContainElement(mute)
+    expect(screen.getByRole('dialog', { name: 'Impostazioni' })).toContainElement(mute)
   })
 
   it('applies mute and volume immediately and persists them under their own key only', () => {
@@ -98,6 +102,7 @@ describe('App M31 audio', () => {
     const matchSave = storage.getItem(MATCH_SAVE_STORAGE_KEY)
     renderApp(storage)
     gesture()
+    openSound()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Disattiva suoni' }))
     step()
@@ -122,6 +127,7 @@ describe('App M31 audio', () => {
     const storage = restoredStorage()
     storage.setItem(AUDIO_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, muted: true, volume: 0.2 }))
     renderApp(storage)
+    openSound()
     expect(screen.getByRole('checkbox', { name: 'Disattiva suoni' })).toBeChecked()
     expect(screen.getByRole('slider', { name: 'Volume' })).toHaveValue('20')
   })
@@ -131,11 +137,12 @@ describe('App M31 audio', () => {
     const matchSave = storage.getItem(MATCH_SAVE_STORAGE_KEY)
     storage.setItem(AUDIO_PREFERENCES_STORAGE_KEY, '{corrupt')
     renderApp(storage)
+    openSound()
 
     expect(screen.getByRole('slider', { name: 'Volume' })).toHaveValue('60')
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(storage.getItem(MATCH_SAVE_STORAGE_KEY)).toBe(matchSave)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Partita ripresa')
   })
 
   it('keeps playing when preferences cannot be stored and when audio is unavailable', () => {
@@ -157,12 +164,14 @@ describe('App M31 audio', () => {
     })
     renderApp(failingPreferences)
     gesture()
+    openSound()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Disattiva suoni' }))
     expect(screen.getByRole('checkbox', { name: 'Disattiva suoni' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
     step()
     step()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Partita ripresa')
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
   })
 })

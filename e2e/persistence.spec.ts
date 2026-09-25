@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { cardLabel, sortCardsForDisplay } from '../src/components/cardPresentation'
 import { LEAVE_MATCH_CONFIRMATION } from '../src/components/GameTable'
 import {
+  leaveDialog,
   NORMAL_BOT_DELAY_MS,
   PLAYER_NAME,
   completeNowButton,
@@ -103,15 +104,14 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
   await expect(timelineEntries(page)).toHaveCount(0)
   expect(await readActiveSave(page)).not.toBeNull()
 
-  const dialogs: string[] = []
-  page.once('dialog', async (dialog) => {
-    dialogs.push(dialog.message())
-    await dialog.accept()
-  })
   await newMatchButton(page).click()
+  await expect(leaveDialog(page)).toContainText(LEAVE_MATCH_CONFIRMATION)
+  // The open confirmation holds the pending bot step.
+  await page.clock.runFor(NORMAL_BOT_DELAY_MS * 2)
+  await expect(timelineEntries(page)).toHaveCount(0)
+  await leaveDialog(page).getByRole('button', { name: 'Abbandona partita' }).click()
 
   await expect(onboardingHeading(page)).toBeVisible()
-  expect(dialogs).toEqual([LEAVE_MATCH_CONFIRMATION])
   expect(await readActiveSave(page)).toBeNull()
 
   // Explicitly advance well past the old pending step boundary: no stale callback may

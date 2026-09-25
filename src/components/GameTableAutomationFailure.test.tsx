@@ -8,6 +8,7 @@ import { MATCH_SAVE_STORAGE_KEY } from '../shell/matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from '../shell/matchSetup'
 import { createMemoryStorage } from '../tests/memoryStorage'
 import { BOT_AUTOMATION_FAILURE_MESSAGE, BOT_PLAYBACK_DELAYS_MS, GameTable } from './GameTable'
+import { leaveConfirmed } from '../tests/shellDialogs'
 
 /**
  * Pass-through spy on the chain-step primitive that can make a chosen call (1-based,
@@ -220,7 +221,6 @@ describe('App recovery after a bot automation failure', () => {
   })
 
   it('keeps the committed save without failure state and starts the next match without the error', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const storage = createMemoryStorage()
     render(<App storage={storage} createRoundFactory={seededFactory} />)
     fireEvent.change(screen.getByLabelText('Il tuo nome'), { target: { value: 'Lorenzo' } })
@@ -235,7 +235,7 @@ describe('App recovery after a bot automation failure', () => {
     expect(storage.getItem(MATCH_SAVE_STORAGE_KEY)).toBe(savedAfterDiscard)
     expect(savedAfterDiscard).not.toMatch(/automation|failed/i)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
     expect(screen.getByRole('heading', { level: 1, name: 'Burraco' })).toBeInTheDocument()
     expect(storage.getItem(MATCH_SAVE_STORAGE_KEY)).toBeNull()
 

@@ -4,6 +4,7 @@ import { createSeededRandom } from '../src/game/cards/shuffle'
 import { startMatch, type MatchState } from '../src/game/match'
 import { createSetupRoundFactory } from '../src/shell/matchSetup'
 import {
+  chooseBotSpeed,
   E2E_SEED,
   PLAYER_NAME,
   collectDiscardPileButton,
@@ -96,7 +97,7 @@ for (const width of [320, 375, 390]) {
       // Unrelated renders (history, speed) keep the user's position.
       await historyToggle(page).tap()
       await historyToggle(page).tap()
-      await page.getByRole('radio', { name: 'Veloce' }).check()
+      await chooseBotSpeed(page, 'Veloce')
       expect((await spreadScroll(page)).scrollLeft).toBe(0)
     })
   })

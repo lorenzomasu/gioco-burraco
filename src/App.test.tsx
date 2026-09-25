@@ -13,6 +13,16 @@ import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, LEAVE_MATCH_CONFIRMATION } f
 import { MATCH_SAVE_STORAGE_KEY, type MatchSaveEnvelope } from './shell/matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from './shell/matchSetup'
 import { createMemoryStorage } from './tests/memoryStorage'
+import {
+  cancelLeave,
+  chooseSpeedInSettings,
+  closeDialog,
+  leaveConfirmed,
+  leaveDialog,
+  openSettings,
+  requestLeave,
+  settingsDialog,
+} from './tests/shellDialogs'
 
 const deck = createBurracoDeck()
 
@@ -100,7 +110,8 @@ const timelineItems = () =>
 const timelineTypes = () => timelineItems().map((item) => item.getAttribute('data-event-type'))
 const turnBanner = () => screen.getByText('Turno di').parentElement!
 const drawPileButton = () => screen.getByRole('button', { name: /^Pesca dal tallone/ })
-const speedRadio = (label: 'Normale' | 'Veloce') => screen.getByRole('radio', { name: label })
+/** The bot speed radio inside the open shared Settings dialog. */
+const speedRadio = (label: 'Normale' | 'Veloce') => within(settingsDialog()!).getByRole('radio', { name: label })
 
 const advance = (ms: number) => {
   act(() => {
@@ -208,7 +219,6 @@ describe('App shell onboarding', () => {
   })
 
   it('cancelling Nuova partita keeps the exact active match and its pending bot playback', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const { createRoundFactory } = twoMatchFactories()
     render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
@@ -217,9 +227,11 @@ describe('App shell onboarding', () => {
     expect(timelineTypes()).toEqual(['draw-stock'])
     const pileBefore = drawPileButton().getAttribute('aria-label')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    expect(leaveDialog()).toHaveTextContent(LEAVE_MATCH_CONFIRMATION)
+    cancelLeave()
 
-    expect(confirm).toHaveBeenCalledExactlyOnceWith(LEAVE_MATCH_CONFIRMATION)
+    expect(leaveDialog()).not.toBeInTheDocument()
     expect(createRoundFactory).toHaveBeenCalledOnce()
     expect(table()).toBeInTheDocument()
     expect(timelineTypes()).toEqual(['draw-stock'])
@@ -231,7 +243,6 @@ describe('App shell onboarding', () => {
   })
 
   it('confirming Nuova partita returns to onboarding and a stale bot step cannot mutate the next match', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { setups, createRoundFactory } = twoMatchFactories()
     render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
@@ -239,7 +250,7 @@ describe('App shell onboarding', () => {
 
     // The old session's first bot step is just about to fire when the match is left.
     advance(BOT_STEP_DELAY_MS - 1)
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
 
     expectOnboarding()
     flushFocusSelectionChange()
@@ -265,16 +276,15 @@ describe('App shell onboarding', () => {
   })
 
   it('does not let a callback rescheduled by a speed change survive leaving the match', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { createRoundFactory } = twoMatchFactories()
     render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
     discardKingOfHearts()
     advance(400)
 
-    fireEvent.click(speedRadio('Veloce'))
+    chooseSpeedInSettings('Veloce')
     expect(vi.getTimerCount()).toBe(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
 
     expectOnboarding()
     flushFocusSelectionChange()
@@ -284,16 +294,17 @@ describe('App shell onboarding', () => {
   })
 
   it('keeps the selected bot speed for the next match started from onboarding', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { createRoundFactory } = twoMatchFactories()
     render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
-    fireEvent.click(speedRadio('Veloce'))
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    chooseSpeedInSettings('Veloce')
+    leaveConfirmed()
 
     startWith('Lorenzo')
 
+    openSettings()
     expect(speedRadio('Veloce')).toBeChecked()
+    closeDialog(settingsDialog()!)
     advance(BOT_PLAYBACK_DELAYS_MS.fast - 1)
     expect(timelineItems()).toHaveLength(0)
     advance(1)
@@ -490,7 +501,7 @@ describe('App local save and resume', () => {
 
     const setItem = vi.spyOn(window.localStorage, 'setItem')
     fireEvent.click(handButtons('Lorenzo')[0]!)
-    fireEvent.click(speedRadio('Veloce'))
+    chooseSpeedInSettings('Veloce')
     fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
@@ -521,7 +532,9 @@ describe('App local save and resume', () => {
     expect(drawPileButton()).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Scarta e passa' })).toBeInTheDocument()
     expect(timelineItems()).toHaveLength(0)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // M32: a concise, non-blocking resume status replaces silence; it is not a save.
+    expect(screen.getByRole('status')).toHaveTextContent('Partita ripresa · Smazzata 1/4')
+    expect(storedSave()).toEqual(saved)
   })
 
   it('resumes a pending bot turn from the committed state without replaying its committed step', () => {
@@ -604,7 +617,7 @@ describe('App local save and resume', () => {
 
     expect(second.created).toHaveLength(0)
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
-    expect(screen.getByText('Dopo 1 smazzate')).toBeInTheDocument()
+    expect(screen.getByText('Smazzata 1 di 4 conclusa')).toBeInTheDocument()
     expect(screen.getByLabelText('Punti cumulativi')).toHaveTextContent(cumulative!)
     expect(screen.getByRole('button', { name: 'Inizia smazzata 2' })).toBeInTheDocument()
     advance(BOT_STEP_DELAY_MS * 5)
@@ -622,19 +635,18 @@ describe('App local save and resume', () => {
   })
 
   it('keeps the save when Nuova partita is cancelled and clears it when confirmed', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const { createRoundFactory } = seededNamedFactories()
     const { unmount } = render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
     fireEvent.click(drawPileButton())
     const saved = storedRaw()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    cancelLeave()
     expect(table()).toBeInTheDocument()
     expect(storedRaw()).toBe(saved)
 
-    confirm.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
 
     expectOnboarding()
     expect(storedRaw()).toBeNull()
@@ -708,7 +720,6 @@ describe('App local save and resume', () => {
   })
 
   it('keeps a live match playable when saving fails and survives a failing clear on leave', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const storage = failingStorage(['setItem', 'removeItem'])
     const { createRoundFactory } = seededNamedFactories()
     render(<App createRoundFactory={createRoundFactory} storage={storage} />)
@@ -720,7 +731,7 @@ describe('App local save and resume', () => {
     fireEvent.click(drawPileButton())
     expect(handButtons('Lorenzo')).toHaveLength(12)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
     expectOnboarding()
     expect(storage.removeItem).toHaveBeenCalledWith(MATCH_SAVE_STORAGE_KEY)
   })
@@ -795,17 +806,19 @@ describe('App lifecycle focus', () => {
   })
 
   it('moves focus to the onboarding heading after a confirmed Nuova partita, not after a cancelled one', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<App />)
     startWith('Lorenzo')
     const newMatch = screen.getByRole('button', { name: 'Nuova partita' })
     newMatch.focus()
 
-    fireEvent.click(newMatch)
+    requestLeave()
+    // The confirmation takes focus on its safe choice and gives it back when cancelled.
+    expect(within(leaveDialog()!).getByRole('button', { name: 'Annulla' })).toHaveFocus()
+    cancelLeave()
     expect(newMatch).toHaveFocus()
 
-    confirm.mockReturnValue(true)
-    fireEvent.click(newMatch)
+    newMatch.focus()
+    leaveConfirmed()
 
     expectOnboarding()
     expect(screen.getByRole('heading', { level: 1, name: 'Burraco' })).toHaveFocus()

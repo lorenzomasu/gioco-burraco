@@ -24,6 +24,8 @@ import {
 } from '../game/match'
 import type { GameState, Player, PlayerId, Team } from '../game/state/types'
 import { BotActionTimeline } from './BotActionTimeline'
+import { BotSpeedControl } from './BotSpeedControl'
+import { Dialog } from './Dialog'
 import { DiscardPile } from './DiscardPile'
 import {
   canShiftCards,
@@ -73,8 +75,11 @@ type GameTableProps = Readonly<{
    * match replaces onboarding. Later round/result replacements always move focus.
    */
   focusContextOnMount?: boolean
-  /** Shell-owned sound controls shown in the header (provisional M31 placement). */
-  audioControls?: ReactNode
+  /**
+   * Shell-owned header controls (the app-level Help and Settings entries). A standalone
+   * table without them shows its own bot-speed control instead.
+   */
+  shellActions?: ReactNode
 }>
 
 const playerOrder: readonly PlayerId[] = ['player-1', 'player-2', 'player-3', 'player-4']
@@ -114,13 +119,8 @@ const unionRect = (elements: readonly Element[]): MotionRect | null => {
 /** The default (normal) presentation delay between committed bot steps. */
 export const BOT_STEP_DELAY_MS = BOT_PLAYBACK_DELAYS_MS.normal
 
-/** Native confirmation shown before an in-progress match is discarded. */
+/** In-app confirmation text shown before an in-progress match is discarded. */
 export const LEAVE_MATCH_CONFIRMATION = 'Vuoi abbandonare la partita in corso? Punteggi e carte andranno persi.'
-
-const playbackSpeedLabels: Readonly<Record<BotPlaybackSpeed, string>> = {
-  normal: 'Normale',
-  fast: 'Veloce',
-}
 
 /** Interaction-level rejection of a multi-card drop on the discard pile; no engine call. */
 export const MULTI_CARD_DISCARD_MESSAGE = 'Per scartare trascina una sola carta.'
@@ -309,7 +309,7 @@ export function GameTable({
   onPlaybackSpeedChange,
   onMatchChange,
   focusContextOnMount = false,
-  audioControls,
+  shellActions,
 }: GameTableProps) {
   const [session, setSession] = useState<GameTableSession>(() => {
     const startingMatch: MatchState = initialMatch ?? (initialState
@@ -327,6 +327,10 @@ export function GameTable({
   const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   // Visual disclosure state only; the history log stays mounted either way.
   const [historyExpanded, setHistoryExpanded] = useState(false)
+  // Transient in-app abandonment confirmation; never saved, never a domain state.
+  const [confirmingLeave, setConfirmingLeave] = useState(false)
+  const leavingRef = useRef(false)
+  const cancelLeaveRef = useRef<HTMLButtonElement>(null)
   // Seeded once per round from the deterministic display sort; later only reconciled.
   const [handPresentation, setHandPresentation] = useState<HandPresentation>(() => ({
     roundNumber: session.match.currentRoundNumber,
@@ -378,8 +382,10 @@ export function GameTable({
   }, [session.match])
 
   useEffect(() => {
-    // A failed session is never rescheduled, not even by a speed change.
-    if (!canPlayBots(session)) return
+    // A failed session is never rescheduled, not even by a speed change. While the
+    // abandonment confirmation is open no bot step is scheduled, so the match cannot change
+    // under it; closing it reschedules the pending step with the full delay.
+    if (!canPlayBots(session) || confirmingLeave) return
     const scheduledSession = session
     const timer = setTimeout(() => {
       // A callback scheduled for a replaced session must never mutate the new one.
@@ -389,7 +395,7 @@ export function GameTable({
     }, BOT_PLAYBACK_DELAYS_MS[playbackSpeed])
     // A speed change cancels the pending step and reschedules it with the new delay.
     return () => clearTimeout(timer)
-  }, [session, playbackSpeed])
+  }, [session, playbackSpeed, confirmingLeave])
 
   // Sounds follow committed presentation events exactly once: the M30 cue of a committed
   // change, or only the final state after «Completa subito». Mounting or restoring a match,
@@ -432,15 +438,49 @@ export function GameTable({
   }
 
   /**
-   * Discarding an in-progress match needs explicit confirmation; a completed match is
-   * left directly. Cancelling changes nothing. Leaving unmounts the table, whose effect
-   * cleanup cancels any pending bot step.
+   * Discarding an in-progress match (between smazzate included) opens the in-app
+   * confirmation; a completed match is left directly. Cancelling changes nothing. Leaving
+   * unmounts the table, whose effect cleanup cancels any pending bot step.
    */
   const leaveMatch = () => {
     if (!onLeaveMatch) return
-    if (match.status === 'in-progress' && !window.confirm(LEAVE_MATCH_CONFIRMATION)) return
+    if (match.status === 'in-progress') {
+      setConfirmingLeave(true)
+      return
+    }
     onLeaveMatch()
   }
+
+  const confirmLeave = () => {
+    // A repeated activation before the table unmounts must not leave twice.
+    if (leavingRef.current) return
+    leavingRef.current = true
+    setConfirmingLeave(false)
+    onLeaveMatch?.()
+  }
+
+  const leaveDialog = confirmingLeave && (
+    <Dialog
+      title="Abbandonare la partita?"
+      role="alertdialog"
+      onClose={() => setConfirmingLeave(false)}
+      initialFocusRef={cancelLeaveRef}
+      className="dialog--confirm"
+      actions={(
+        <>
+          <button ref={cancelLeaveRef} type="button" className="button button--ghost" onClick={() => setConfirmingLeave(false)}>
+            Annulla
+          </button>
+          <button type="button" className="button button--danger" onClick={confirmLeave}>
+            Abbandona partita
+          </button>
+        </>
+      )}
+    >
+      <p>{LEAVE_MATCH_CONFIRMATION}</p>
+      <p>Il salvataggio locale di questa partita verrà eliminato.</p>
+    </Dialog>
+  )
 
   const beginNextRound = () => {
     setSession(freshSession(advanceMatch(match, createGame)))
@@ -543,6 +583,14 @@ export function GameTable({
     <button type="button" className="button button--ghost button--compact" onClick={completeBotsNow}>Completa subito</button>
   )
 
+  const humanTeamId = game.players.find(({ id }) => id === humanPlayerId)!.teamId
+  const teamName = (teamId: string) => teamId === humanTeamId ? 'La tua squadra' : 'Avversari'
+  const teamNumberOf = (teamId: string) => teamId === 'team-1' ? '1' : '2'
+  // Settled rounds only (`calculateCumulativeScores`); a round in play has no partial score.
+  const cumulativeScores = calculateCumulativeScores(match)
+  const orientedScores = [...cumulativeScores].sort((a, b) =>
+    Number(b.teamId === humanTeamId) - Number(a.teamId === humanTeamId))
+
   // Slim application bar: match context and secondary controls stay visible but never
   // compete with the table.
   const shellHeader = (
@@ -552,23 +600,23 @@ export function GameTable({
         <strong>Burraco</strong>
       </div>
       <strong className="round-indicator">Smazzata {match.currentRoundNumber}/{MATCH_ROUND_COUNT}</strong>
-      <div className="game-header__actions">
-        <fieldset className="playback-controls">
-          <legend>Velocità bot</legend>
-          {(['normal', 'fast'] as const).map((speed) => (
-            <label key={speed} className="playback-controls__option">
-              <input
-                type="radio"
-                name="bot-playback-speed"
-                value={speed}
-                checked={playbackSpeed === speed}
-                onChange={() => setPlaybackSpeed(speed)}
-              />
-              {playbackSpeedLabels[speed]}
-            </label>
+      {game.round.status === 'in-progress' && (
+        <div className="match-score" role="group" aria-label="Punteggio della partita">
+          {orientedScores.map((teamScore) => (
+            <span key={teamScore.teamId} className="match-score__team">
+              {teamName(teamScore.teamId)} <small>(Sq. {teamNumberOf(teamScore.teamId)})</small>{' '}
+              <strong>{teamScore.total}</strong>
+            </span>
           ))}
-        </fieldset>
-        {audioControls}
+          <small className="match-score__note">
+            {match.roundResults.length === 0
+              ? 'nessuna smazzata conclusa'
+              : `dopo ${match.roundResults.length} ${match.roundResults.length === 1 ? 'smazzata' : 'smazzate'}`}
+          </small>
+        </div>
+      )}
+      <div className="game-header__actions">
+        {shellActions ?? <BotSpeedControl speed={playbackSpeed} onChange={setPlaybackSpeed} />}
         {onLeaveMatch && (
           <button type="button" className="button button--new button--compact" onClick={leaveMatch}>Nuova partita</button>
         )}
@@ -590,74 +638,95 @@ export function GameTable({
       ({ roundNumber }) => roundNumber === match.currentRoundNumber,
     )
     if (!currentResult) throw new Error(`Missing result for round ${match.currentRoundNumber}.`)
-    const cumulativeScores = calculateCumulativeScores(match)
     const outcome = match.status === 'completed' ? getFinalMatchOutcome(match) : null
+    // Win/loss/tie is read only from the domain outcome relative to the human's team.
+    const humanOutcome = outcome
+      ? outcome.leadingTeamId === null ? 'tie' : outcome.leadingTeamId === humanTeamId ? 'won' : 'lost'
+      : null
+    const teamMembers = (teamId: string) => game.players
+      .filter((player) => player.teamId === teamId)
+      .map((player) => player.id === humanPlayerId ? `${player.name} (tu)` : player.name)
+      .join(' e ')
 
     return (
-      <main className="game-shell">
-        {shellHeader}
-        <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} headingRef={resultHeadingRef} />
-        {history}
-        <section className="match-summary" aria-labelledby="match-summary-title">
-          <span className="round-complete__eyebrow">
-            {outcome ? 'Partita conclusa' : `Dopo ${match.currentRoundNumber} smazzate`}
-          </span>
-          {/* Decorative progress; the eyebrow and the header state the round in text. */}
-          <span className="round-track" aria-hidden="true">
-            {Array.from({ length: MATCH_ROUND_COUNT }, (_, index) => (
-              <span
-                key={index}
-                className={`round-track__step${index < match.currentRoundNumber ? ' round-track__step--done' : ''}`}
-              />
-            ))}
-          </span>
-          <h2 id="match-summary-title">Punteggio cumulativo</h2>
-          <div className="cumulative-score" aria-label="Punti cumulativi">
-            {cumulativeScores.map((teamScore) => (
-              <div key={teamScore.teamId}>
-                <span>Squadra {teamScore.teamId === 'team-1' ? '1' : '2'}</span>
-                <strong>{teamScore.total}</strong>
-              </div>
-            ))}
-          </div>
+      <>
+        <main className="game-shell" inert={confirmingLeave}>
+          {shellHeader}
+          <RoundScore game={{ ...game, round: game.round }} score={currentResult.score} headingRef={resultHeadingRef} />
+          <section className="match-summary" aria-labelledby="match-summary-title">
+            <span className="round-complete__eyebrow">
+              {outcome ? 'Partita conclusa' : `Smazzata ${match.currentRoundNumber} di ${MATCH_ROUND_COUNT} conclusa`}
+            </span>
+            {/* Decorative progress; the eyebrow and the header state the round in text. */}
+            <span className="round-track" aria-hidden="true">
+              {Array.from({ length: MATCH_ROUND_COUNT }, (_, index) => (
+                <span
+                  key={index}
+                  className={`round-track__step${index < match.currentRoundNumber ? ' round-track__step--done' : ''}`}
+                />
+              ))}
+            </span>
 
-          {outcome ? (
-            <div
-              className={`final-result ${outcome.leadingTeamId ? 'final-result--leader' : 'final-result--tie'}`}
-            >
-              <h3>Risultato finale</h3>
-              {/* Emphasis follows only the domain outcome: one leading team or an exact tie. */}
-              <p className="final-result__outcome">
-                <span className="final-result__icon" aria-hidden="true">{outcome.leadingTeamId ? '♛' : '='}</span>
-                {outcome.leadingTeamId
-                  ? `Prima la Squadra ${outcome.leadingTeamId === 'team-1' ? '1' : '2'}.`
-                  : 'Parità esatta.'}
-              </p>
-              <p className="final-result__match-points">Match Points <strong>{outcome.matchPoints}</strong></p>
-              <div className="victory-points" aria-label="Victory Points">
-                {outcome.victoryPoints.map((teamResult) => (
-                  <div
-                    key={teamResult.teamId}
-                    className={teamResult.teamId === outcome.leadingTeamId ? 'victory-points__team--leader' : undefined}
-                  >
-                    <span>Squadra {teamResult.teamId === 'team-1' ? '1' : '2'}</span>
-                    <strong>{teamResult.victoryPoints} VP</strong>
-                  </div>
-                ))}
+            {outcome && (
+              <div className={`final-result final-result--${humanOutcome} ${outcome.leadingTeamId ? 'final-result--leader' : 'final-result--tie'}`}>
+                <h3>Risultato finale</h3>
+                <p className="final-result__headline">
+                  {humanOutcome === 'won' ? 'Hai vinto la partita!' : humanOutcome === 'lost' ? 'Hanno vinto gli avversari.' : 'Partita pari.'}
+                </p>
+                {/* Emphasis follows only the domain outcome: one leading team or an exact tie. */}
+                <p className="final-result__outcome">
+                  <span className="final-result__icon" aria-hidden="true">{outcome.leadingTeamId ? '♛' : '='}</span>
+                  {outcome.leadingTeamId
+                    ? `Prima la Squadra ${teamNumberOf(outcome.leadingTeamId)}.`
+                    : 'Parità esatta.'}
+                </p>
               </div>
-              {onLeaveMatch && (
-                <button type="button" className="button button--primary match-summary__action" onClick={leaveMatch}>
-                  Gioca ancora
-                </button>
-              )}
+            )}
+
+            <h2 id="match-summary-title">Punteggio cumulativo</h2>
+            <div className="cumulative-score" aria-label="Punti cumulativi">
+              {orientedScores.map((teamScore) => (
+                <div key={teamScore.teamId} className={teamScore.teamId === humanTeamId ? 'cumulative-score__team--own' : undefined}>
+                  <span>
+                    {teamName(teamScore.teamId)} · Squadra {teamNumberOf(teamScore.teamId)}
+                    <small className="cumulative-score__members">{teamMembers(teamScore.teamId)}</small>
+                  </span>
+                  <strong>{teamScore.total}</strong>
+                </div>
+              ))}
             </div>
-          ) : (
-            <button type="button" className="button button--primary match-summary__action" onClick={beginNextRound}>
-              Inizia smazzata {match.currentRoundNumber + 1}
-            </button>
-          )}
-        </section>
-      </main>
+
+            {outcome ? (
+              <div className="final-result__points">
+                <p className="final-result__match-points">Match Points <strong>{outcome.matchPoints}</strong></p>
+                <div className="victory-points" aria-label="Victory Points">
+                  {outcome.victoryPoints.map((teamResult) => (
+                    <div
+                      key={teamResult.teamId}
+                      className={teamResult.teamId === outcome.leadingTeamId ? 'victory-points__team--leader' : undefined}
+                    >
+                      <span>{teamName(teamResult.teamId)} · Squadra {teamNumberOf(teamResult.teamId)}</span>
+                      <strong>{teamResult.victoryPoints} VP</strong>
+                    </div>
+                  ))}
+                </div>
+                {onLeaveMatch && (
+                  <button type="button" className="button button--primary match-summary__action" onClick={leaveMatch}>
+                    Gioca ancora
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button type="button" className="button button--primary match-summary__action" onClick={beginNextRound}>
+                Inizia smazzata {match.currentRoundNumber + 1}
+              </button>
+            )}
+          </section>
+          {/* The bot history stays available but secondary to the progression. */}
+          <div className="round-history">{history}</div>
+        </main>
+        {leaveDialog}
+      </>
     )
   }
 
@@ -671,7 +740,7 @@ export function GameTable({
   const seats = tableSeats(game.players, humanPlayer)
   const relationOf = (player: Player): SeatRelation =>
     player.teamId === humanPlayer.teamId ? 'teammate' : 'opponent'
-  const teamNumber = (teamId: string) => teamId === 'team-1' ? '1' : '2'
+  const teamNumber = teamNumberOf
   const activeRole = activePlayer.id === humanPlayerId ? 'Tu' : seatRelationLabels[relationOf(activePlayer)]
   const isHumanTurn = activePlayer.id === humanPlayerId
   const isActionPhase = isHumanTurn && round.turn.phase === 'action'
@@ -742,7 +811,8 @@ export function GameTable({
   const opponentTeam = game.teams.find((team) => team.id !== humanPlayer.teamId)!
 
   return (
-    <main className="game-shell" data-hand-dragging={drag ? '' : undefined}>
+    <>
+    <main className="game-shell" data-hand-dragging={drag ? '' : undefined} inert={confirmingLeave}>
       {shellHeader}
       <section className="table-surface" aria-label="Tavolo di Burraco">
         {seat(seats.top, 'top')}
@@ -974,5 +1044,7 @@ export function GameTable({
         capturedSource={motionSourceRef}
       />
     </main>
+    {leaveDialog}
+    </>
   )
 }

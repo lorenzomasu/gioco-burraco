@@ -7,6 +7,7 @@ import { dealInitialState } from '../game/engine/startGame'
 import type { MatchState, SettledRoundResult } from '../game/match'
 import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { CompletedGameState, InProgressGameState } from '../game/state/types'
+import { cancelLeave, leaveConfirmed, leaveDialog, requestLeave } from '../tests/shellDialogs'
 import { cardLabel, sortCardsForDisplay } from './cardPresentation'
 import { BOT_STEP_DELAY_MS, GameTable, LEAVE_MATCH_CONFIRMATION } from './GameTable'
 
@@ -320,7 +321,6 @@ describe('GameTable', () => {
       card('five', 'hearts'),
       card('seven', 'spades'),
     ]
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const createGame = vi.fn(() => dealInitialState(deck))
     const onLeaveMatch = vi.fn()
     render(
@@ -337,9 +337,11 @@ describe('GameTable', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cala' }))
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    expect(leaveDialog()).toHaveTextContent(LEAVE_MATCH_CONFIRMATION)
+    cancelLeave()
 
-    expect(confirm).toHaveBeenCalledExactlyOnceWith(LEAVE_MATCH_CONFIRMATION)
+    expect(leaveDialog()).not.toBeInTheDocument()
     expect(onLeaveMatch).not.toHaveBeenCalled()
     expect(createGame).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toBeInTheDocument()
@@ -351,14 +353,16 @@ describe('GameTable', () => {
   })
 
   it('leaves an in-progress match only after explicit confirmation', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const createGame = vi.fn(() => dealInitialState(deck))
     const onLeaveMatch = vi.fn()
     render(<GameTable initialState={dealInitialState(deck)} createGame={createGame} onLeaveMatch={onLeaveMatch} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    expect(onLeaveMatch).not.toHaveBeenCalled()
+    const abandon = within(leaveDialog()!).getByRole('button', { name: 'Abbandona partita' })
+    fireEvent.click(abandon)
+    fireEvent.click(abandon)
 
-    expect(confirm).toHaveBeenCalledExactlyOnceWith(LEAVE_MATCH_CONFIRMATION)
     expect(onLeaveMatch).toHaveBeenCalledOnce()
     expect(createGame).not.toHaveBeenCalled()
   })
@@ -409,7 +413,6 @@ describe('GameTable', () => {
 
   it('keeps pending bot playback and its events when Nuova partita is cancelled', () => {
     const state = automaticSequenceState(true)
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const onLeaveMatch = vi.fn()
     render(<GameTable initialState={state} onLeaveMatch={onLeaveMatch} />)
 
@@ -422,9 +425,14 @@ describe('GameTable', () => {
     expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
     expect(vi.getTimerCount()).toBe(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    // No bot step may commit behind the open confirmation, however long it stays open.
+    act(() => {
+      vi.advanceTimersByTime(BOT_STEP_DELAY_MS * 3)
+    })
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
+    cancelLeave()
 
-    expect(confirm).toHaveBeenCalledOnce()
     expect(onLeaveMatch).not.toHaveBeenCalled()
     expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
     expect(timeline).toHaveTextContent('North pesca dal tallone.')
@@ -494,23 +502,20 @@ describe('GameTable', () => {
   })
 
   it('requires confirmation to leave between smazzate of an unfinished match', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const createGame = vi.fn(() => dealInitialState(deck))
     const onLeaveMatch = vi.fn()
     render(<GameTable initialState={emptyCompletedRound()} createGame={createGame} onLeaveMatch={onLeaveMatch} />)
     expect(screen.queryByRole('button', { name: 'Gioca ancora' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    requestLeave()
+    cancelLeave()
 
-    expect(confirm).toHaveBeenCalledOnce()
     expect(onLeaveMatch).not.toHaveBeenCalled()
     expect(createGame).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Inizia smazzata 2' })).toBeInTheDocument()
 
-    confirm.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
 
-    expect(confirm).toHaveBeenCalledTimes(2)
     expect(onLeaveMatch).toHaveBeenCalledOnce()
     expect(createGame).not.toHaveBeenCalled()
   })
@@ -610,6 +615,7 @@ describe('GameTable', () => {
       fireEvent.click(screen.getByRole('button', { name: actionName }))
 
       expect(confirm).not.toHaveBeenCalled()
+      expect(leaveDialog()).not.toBeInTheDocument()
       expect(onLeaveMatch).toHaveBeenCalledOnce()
       expect(createGame).not.toHaveBeenCalled()
     },

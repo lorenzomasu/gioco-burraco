@@ -25,6 +25,7 @@ import { validateMeld, type ValidatedMeld } from '../game/melds'
 import type { GameState, InProgressGameState, PlayerId } from '../game/state/types'
 import { cardLabel } from './cardPresentation'
 import { BOT_PLAYBACK_DELAYS_MS, BOT_STEP_DELAY_MS, GameTable } from './GameTable'
+import { cancelLeave, leaveConfirmed, requestLeave } from '../tests/shellDialogs'
 
 /**
  * Pass-through spy on the one chain-step primitive, so tests can observe that every
@@ -403,7 +404,6 @@ describe('GameTable bot turn playback', () => {
   })
 
   it('cancels the pending bot step when a confirmed Nuova partita unmounts the table', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const createGame = vi.fn(() => pendingBotState())
     const onLeaveMatch = vi.fn()
     const { unmount } = render(
@@ -415,9 +415,8 @@ describe('GameTable bot turn playback', () => {
     expect(vi.getTimerCount()).toBe(1)
     chainStepSpy.mockClear()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+    leaveConfirmed()
 
-    expect(confirm).toHaveBeenCalledOnce()
     expect(onLeaveMatch).toHaveBeenCalledOnce()
     expect(createGame).not.toHaveBeenCalled()
 
@@ -641,7 +640,6 @@ describe('GameTable round starter rotation', () => {
   it.each([2, 3, 4] as const)(
     'requires confirmation to leave pending smazzata %i and keeps it intact when cancelled',
     (roundNumber: MatchRoundNumber) => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
       const createGame = vi.fn(rotatingRound)
       const onLeaveMatch = vi.fn()
       const { unmount } = render(
@@ -658,9 +656,12 @@ describe('GameTable round starter rotation', () => {
       const bannerBefore = turnBanner().textContent
       const pileBefore = drawPileButton().getAttribute('aria-label')
 
-      fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+      requestLeave()
+      // The confirmation holds the pending step: nothing commits behind it.
+      advanceOneStep()
+      expect(timelineItems()).toHaveLength(1)
+      cancelLeave()
 
-      expect(confirm).toHaveBeenCalledOnce()
       expect(onLeaveMatch).not.toHaveBeenCalled()
       expect(createGame).toHaveBeenCalledOnce()
       expect(screen.getByText(`Smazzata ${roundNumber}/4`)).toBeInTheDocument()
@@ -672,8 +673,7 @@ describe('GameTable round starter rotation', () => {
       advanceOneStep()
       expect(timelineItems().length).toBeGreaterThan(1)
 
-      confirm.mockReturnValue(true)
-      fireEvent.click(screen.getByRole('button', { name: 'Nuova partita' }))
+      leaveConfirmed()
 
       expect(onLeaveMatch).toHaveBeenCalledOnce()
       expect(createGame).toHaveBeenCalledOnce()

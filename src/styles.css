@@ -147,6 +147,20 @@ button { font: inherit; }
   white-space: nowrap;
 }
 
+/* M32 compact settled match score: context for the table, never a dashboard block. */
+.match-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .1rem .7rem;
+  color: #cfe0d8;
+  font-size: .78rem;
+}
+.match-score__team { white-space: nowrap; }
+.match-score__team small { color: #9fb8ad; font-size: .68rem; }
+.match-score__team strong { color: #f8f4e9; font-variant-numeric: tabular-nums; }
+.match-score__note { color: #9fb8ad; font-size: .68rem; }
+
 .brand { display: flex; align-items: center; gap: .75rem; }
 
 .brand__mark {
@@ -206,6 +220,12 @@ button { font: inherit; }
   border: 1px solid rgba(255, 255, 255, .2);
   color: #f8f4e9;
   background: rgba(255, 255, 255, .08);
+}
+
+.button--danger {
+  border: 1px solid #f2a197;
+  color: #fff4ef;
+  background: #9b3a30;
 }
 
 .button--primary {
@@ -1093,8 +1113,9 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 
 .match-summary__action { margin-top: 1.25rem; }
 .final-result { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid rgba(255, 255, 255, .1); }
-.final-result > p { color: #dbe8e1; }
-.final-result > p strong { color: #f6c760; font-size: 1.2rem; }
+.final-result > p,
+.final-result__points > p { color: #dbe8e1; }
+.final-result__points > p strong { color: #f6c760; font-size: 1.2rem; }
 
 .final-result__outcome {
   margin: 0 auto 1rem;
@@ -1410,10 +1431,12 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 
 @media (max-width: 440px) {
   .game-header .brand { display: none; }
-  /* Round and «Nuova partita» share the first line; the speed choice wraps below. */
+  /* Round and «Nuova partita» share the first line; score and shell entries wrap below. */
   .game-header__actions { display: contents; }
   .game-header .button--new { margin-left: auto; }
-  .playback-controls { order: 1; }
+  .game-header .playback-controls,
+  .game-header .button--ghost { order: 1; }
+  .match-score { order: 2; flex: 1 1 100%; }
   .pile-zone { gap: .25rem; }
   .pile-control { min-width: 6.4rem; }
   .pozzetti-counter { max-width: 4rem; }
@@ -1607,3 +1630,87 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   pointer-events: none;
   transform: translate(-50%, calc(-100% - 1rem));
 }
+
+/*
+ * M32 app-level overlays (Settings, Help, abandonment confirmation). The background is
+ * `inert` while one is open; the panel scrolls inside the viewport at any width or zoom.
+ */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  padding: 1rem;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 12, 9, .72);
+}
+.dialog {
+  width: min(32rem, 100%);
+  max-height: calc(100dvh - 2rem);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+  overflow: auto;
+  border: 1px solid rgba(246, 199, 96, .3);
+  border-radius: 1.1rem;
+  color: #f8f4e9;
+  background: #0b3326;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  overflow-wrap: anywhere;
+}
+.dialog--help { width: min(40rem, 100%); }
+.dialog__title { margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.45rem; }
+.dialog__body { display: grid; gap: .9rem; color: #dcebe3; font-size: .92rem; line-height: 1.5; }
+.dialog__body h3 { margin: 0 0 .25rem; color: #f6c760; font-size: .95rem; }
+.dialog__body p, .dialog__body ol { margin: 0; }
+.dialog__body ol { padding-left: 1.2rem; display: grid; gap: .3rem; }
+.dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; }
+.dialog--confirm .dialog__actions .button { flex: 1 1 10rem; }
+.settings-section { display: grid; gap: .4rem; padding-bottom: .8rem; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.settings-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.settings-section__help { color: #b9cfc5; font-size: .8rem; }
+.dialog .playback-controls,
+.dialog .audio-controls { font-size: .85rem; }
+
+/* M32 onboarding polish: shell entries on top, a quiet local-save note below the form. */
+.start-panel__actions { margin-bottom: 1rem; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.start-panel__save-note { margin: 1rem 0 0; color: #b9cfc5; font-size: .8rem; line-height: 1.45; }
+
+/* M32 resume status: informational (not an error) and dismissible, never blocking play. */
+.storage-notice--resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding-block: .2rem;
+  border-color: rgba(190, 228, 206, .45);
+  color: #e9f6ef;
+  background: rgba(47, 125, 91, .35);
+}
+.storage-notice__dismiss {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: .6rem;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* M32 between-round and final hierarchy. */
+.final-result__headline {
+  margin: .2rem 0 .4rem;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-weight: 700;
+}
+.final-result--won .final-result__headline { color: #f6c760; }
+.final-result--lost .final-result__headline { color: #f2d3cc; }
+.final-result__points { margin-top: 1rem; }
+.cumulative-score > div > span { display: grid; gap: .1rem; text-align: left; }
+.cumulative-score__members { color: #9fb8ad; font-size: .72rem; font-weight: 400; }
+.cumulative-score > .cumulative-score__team--own { box-shadow: inset 0 0 0 1px rgba(246, 199, 96, .45); }
+.round-history { width: min(950px, 100%); margin: 1rem auto 0; opacity: .92; }

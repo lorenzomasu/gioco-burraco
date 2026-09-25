@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { MatchSetup } from '../shell/matchSetup'
 
 type StartScreenProps = Readonly<{
@@ -10,12 +10,14 @@ type StartScreenProps = Readonly<{
    * replaces a match whose invoking control disappeared. Off for the first page load.
    */
   focusOnMount?: boolean
+  /** Shell-owned Help and Settings entries. */
+  actions?: ReactNode
   onStart: (setup: MatchSetup) => void
 }>
 
 const MAX_NAME_LENGTH = 24
 
-export function StartScreen({ initialName = '', notice = null, focusOnMount = false, onStart }: StartScreenProps) {
+export function StartScreen({ initialName = '', notice = null, focusOnMount = false, actions, onStart }: StartScreenProps) {
   const [name, setName] = useState(initialName)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const trimmedName = name.trim()
@@ -33,6 +35,7 @@ export function StartScreen({ initialName = '', notice = null, focusOnMount = fa
   return (
     <main className="start-screen">
       <section className="start-panel" aria-labelledby="start-title">
+        {actions && <nav className="start-panel__actions" aria-label="Aiuto e impostazioni">{actions}</nav>}
         <div className="brand">
           <span className="brand__mark" aria-hidden="true">B</span>
           <div>
@@ -66,6 +69,10 @@ export function StartScreen({ initialName = '', notice = null, focusOnMount = fa
             Inizia partita
           </button>
         </form>
+        <p className="start-panel__save-note">
+          La partita in corso viene salvata solo in questo browser e riprende automaticamente
+          quando riapri la pagina.
+        </p>
       </section>
     </main>
   )

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { SoundContext } from './audio/SoundContext'
 import { createSoundController, createWebAudioBackend, type SoundBackend } from './audio/soundEffects'
-import { AudioControls } from './components/AudioControls'
+import { HelpDialog } from './components/HelpDialog'
+import { SettingsDialog } from './components/SettingsDialog'
 import { GameTable, type BotPlaybackSpeed } from './components/GameTable'
 import { StartScreen } from './components/StartScreen'
-import type { MatchState, RoundFactory } from './game/match'
+import { MATCH_ROUND_COUNT, type MatchState, type RoundFactory } from './game/match'
 import {
   clearMatchSave,
   getBrowserStorage,
@@ -59,6 +60,12 @@ const loadNotice = (result: MatchSaveLoadResult): string | null => {
   return null
 }
 
+/** Concise non-blocking status after a valid local save was resumed. */
+export const resumeNotice = (roundNumber: number) => `Partita ripresa · Smazzata ${roundNumber}/${MATCH_ROUND_COUNT}`
+
+/** The app-level overlay currently open; transient shell state, never saved. */
+type ShellOverlay = 'settings' | 'help' | null
+
 const isTrustedGesture = (event: Event) => event.isTrusted
 
 export default function App({
@@ -70,15 +77,18 @@ export default function App({
   const [initial] = useState(() => {
     const loaded = loadMatchSave(storage)
     if (loaded.status !== 'restored') {
-      return { screen: { kind: 'onboarding' } as AppScreen, name: '', notice: loadNotice(loaded) }
+      return { screen: { kind: 'onboarding' } as AppScreen, name: '', notice: loadNotice(loaded), resumedRound: null }
     }
     const { setup, match } = loaded.save
     const screen: AppScreen = { kind: 'match', setup, createGame: createRoundFactory(setup), initialMatch: match }
-    return { screen, name: setup.humanPlayerName, notice: null }
+    return { screen, name: setup.humanPlayerName, notice: null, resumedRound: match.currentRoundNumber }
   })
   const [screen, setScreen] = useState<AppScreen>(initial.screen)
   const [lastPlayerName, setLastPlayerName] = useState(initial.name)
   const [notice, setNotice] = useState<string | null>(initial.notice)
+  // Round of the restored save, shown once as a dismissible status; UI only, never saved.
+  const [resumedRound, setResumedRound] = useState<number | null>(initial.resumedRound)
+  const [overlay, setOverlay] = useState<ShellOverlay>(null)
   const [playbackSpeed, setPlaybackSpeed] = useState<BotPlaybackSpeed>('normal')
   const [audioPreferences, setAudioPreferences] = useState<AudioPreferences>(() => loadAudioPreferences(storage))
   // One presentation-only sound service for the application's lifetime.
@@ -108,20 +118,50 @@ export default function App({
     // A preference write failure needs no notice; the match save is never involved.
     saveAudioPreferences(storage, next)
   }
-  const audioControls = <AudioControls preferences={audioPreferences} onChange={changeAudioPreferences} />
+
+  // The single Help and Settings entries, shared by onboarding and every match view.
+  const shellActions = (
+    <>
+      <button type="button" className="button button--ghost button--compact" onClick={() => setOverlay('help')}>
+        Come si gioca
+      </button>
+      <button type="button" className="button button--ghost button--compact" onClick={() => setOverlay('settings')}>
+        Impostazioni
+      </button>
+    </>
+  )
+
+  // The background stays mounted but `inert` while an overlay is open, so no match
+  // control can be operated behind it.
+  const withOverlay = (content: ReactNode) => (
+    <>
+      <div className="app-content" inert={overlay !== null}>{content}</div>
+      {overlay === 'settings' && (
+        <SettingsDialog
+          speed={playbackSpeed}
+          onSpeedChange={setPlaybackSpeed}
+          audio={audioPreferences}
+          onAudioChange={changeAudioPreferences}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+      {overlay === 'help' && <HelpDialog onClose={() => setOverlay(null)} />}
+    </>
+  )
 
   if (screen.kind === 'onboarding') {
-    return (
+    return withOverlay(
       <StartScreen
         initialName={lastPlayerName}
         notice={notice}
         focusOnMount={screen.returnedFromMatch}
+        actions={shellActions}
         onStart={(setup) => {
           setLastPlayerName(setup.humanPlayerName)
           setNotice(null)
           setScreen({ kind: 'match', setup, createGame: createRoundFactory(setup), startedFromOnboarding: true })
         }}
-      />
+      />,
     )
   }
 
@@ -135,9 +175,23 @@ export default function App({
     }
   }
 
-  return (
+  return withOverlay(
     <SoundContext value={playSounds}>
-      {notice && <p className="storage-notice storage-notice--match" role="status">{notice}</p>}
+      {notice ? (
+        <p className="storage-notice storage-notice--match" role="status">{notice}</p>
+      ) : resumedRound !== null && (
+        <div className="storage-notice storage-notice--match storage-notice--resume" role="status">
+          <span>{resumeNotice(resumedRound)}</span>
+          <button
+            type="button"
+            className="storage-notice__dismiss"
+            onClick={() => setResumedRound(null)}
+            aria-label="Chiudi avviso di ripresa"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <GameTable
         initialMatch={screen.initialMatch}
         createGame={screen.createGame}
@@ -147,12 +201,13 @@ export default function App({
           // Reached only after any required confirmation: the abandoned match is not resumable.
           clearMatchSave(storage)
           setNotice(null)
+          setResumedRound(null)
           setScreen({ kind: 'onboarding', returnedFromMatch: true })
         }}
         playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
-        audioControls={audioControls}
+        shellActions={shellActions}
       />
-    </SoundContext>
+    </SoundContext>,
   )
 }

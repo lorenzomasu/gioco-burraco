@@ -82,6 +82,16 @@ export const timelineEntries = (page: Page): Locator =>
   page.getByRole('region', { name: 'Cronologia bot' }).getByRole('listitem')
 /** The M27 disclosure toggle of the bot history; the log stays mounted while collapsed. */
 export const historyToggle = (page: Page): Locator => page.getByRole('button', { name: /^Cronologia bot/ })
+/** The shared M32 Settings dialog and its bot-speed choice. */
+export const settingsDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Impostazioni' })
+export const chooseBotSpeed = async (page: Page, label: 'Normale' | 'Veloce') => {
+  await page.getByRole('button', { name: 'Impostazioni' }).click()
+  await settingsDialog(page).getByRole('radio', { name: label }).check()
+  await settingsDialog(page).getByRole('button', { name: 'Chiudi' }).click()
+  await expect(settingsDialog(page)).toHaveCount(0)
+}
+/** The M32 in-app abandonment confirmation. */
+export const leaveDialog = (page: Page): Locator => page.getByRole('alertdialog', { name: 'Abbandonare la partita?' })
 export const onboardingHeading = (page: Page): Locator => page.getByRole('heading', { level: 1, name: 'Burraco' })
 
 /** Opens a fresh application and starts smazzata 1 through the real onboarding form. */
