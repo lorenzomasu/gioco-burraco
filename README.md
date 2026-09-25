@@ -22,6 +22,10 @@ committed state changes. Reloading or reopening the page in the same browser res
 directly; a completed match is not kept. The save never leaves the browser: clearing the
 site data, or using another browser or device, starts from onboarding.
 
+Since M37 (development baseline, not yet in a tagged release) the production build is an
+installable web app. After one online visit has cached the app shell, it also opens
+offline and resumes the saved match; there is no online account or sync.
+
 ## Local development
 
 Prerequisites:

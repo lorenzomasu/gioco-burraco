@@ -21,6 +21,7 @@ React components render state, collect player intent, and invoke the game engine
 - `src/components` — React UI for human and bot-controlled seats.
 - `src/shell` — application-shell helpers that turn onboarding choices into match configuration, persist the one active local match and store the separate sound preferences.
 - `src/audio` — the presentation-only sound service (locally synthesized effects) and its React context.
+- `src/pwa` — the production-only service-worker registration seam (M37).
 
 Tests live next to the code they cover as `*.test.ts` or `*.test.tsx`. Browser
 end-to-end tests of the built application live in `e2e/` as `*.spec.ts`. `scripts/`
@@ -621,8 +622,9 @@ and none may be added.
 
 ## Production build and deployment
 
-The application is a static client: `vite build` emits `dist/` (HTML, JS, CSS and the
-repository-owned `public/favicon.svg`) and nothing else runs at deploy or run time. There
+The application is a static client: `vite build` emits `dist/` (HTML, JS, CSS, the
+repository-owned `public/favicon.svg` and install icons, the web-app manifest and the
+generated service worker) and nothing else runs at deploy or run time. There
 is no backend, runtime server, router or path detection; all state lives in the browser.
 
 - `vite.config.ts` sets `base: './'`, so every emitted asset URL is relative to the page.
@@ -638,6 +640,45 @@ is no backend, runtime server, router or path detection; all state lives in the 
   suite, it uses only the public UI; no test hook ships in the application.
 
 The release procedure and tag gate are in `docs/RELEASE.md`.
+
+### Installable PWA and offline app shell (M37)
+
+PWA support is production client infrastructure and a progressive enhancement: when
+service workers, Cache Storage or installation are unavailable or fail, the online client
+loads and plays exactly as before.
+
+- `vite-plugin-pwa` (Workbox `generateSW`) runs inside the normal `vite build` and emits
+  `manifest.webmanifest`, `sw.js` and its Workbox runtime next to `index.html`. The
+  manifest (`id`, `start_url` and `scope` all `./`, standalone, Italian, 192 × 192 and
+  512 × 512 icons plus a maskable 512 × 512 icon from `public/icons/`) and every icon and
+  precache URL are relative, so the same `dist` is scoped to `/` on the local preview and
+  to `/gioco-burraco/` on Pages. Nothing hard-codes the production origin.
+- `src/pwa/registerServiceWorker.ts` registers `./sw.js` with scope `./` only when
+  `import.meta.env.PROD` is true, fire-and-forget after React renders, and swallows any
+  failure. `npm run dev` (plugin `devOptions` disabled) and Vitest never register a worker.
+- Cache boundary: the worker precaches only the build-revisioned app shell (`index.html`,
+  hashed JS/CSS, favicon, manifest, icons) and answers navigations with the cached
+  `index.html`. There is no runtime caching: every other request, same-origin or
+  third-party, goes to the network untouched. `cleanupOutdatedCaches` removes precaches of
+  earlier Workbox revisions when a new worker activates.
+- Update lifecycle: no `skipWaiting` and no `clients.claim`. A newly installed worker
+  waits until no client uses the old one, so an open match is never reloaded or served a
+  mixed asset graph; the first visit stays uncontrolled until its next navigation. The
+  generated worker only skips waiting on an explicit `SKIP_WAITING` message, which the
+  client never sends. There is no update UI.
+- Offline startup works only after one successful online install: a reload or installed
+  launch then renders from the cache, and the shell resumes the match through the normal
+  M22 path. A first visit without a cached shell has no offline guarantee.
+- The schema-v3 `localStorage` match save stays the only authoritative match state.
+  Service-worker code and Cache Storage hold application assets only; they never enter
+  `MatchSetup`, `GameState`, `MatchState` or the save envelope, and updating or clearing
+  them never reads, clears or migrates the save. No game command or save write waits on
+  service-worker work, and nothing is reconciled on reconnect because no remote state exists.
+- `e2e/pwa.spec.ts` covers the warmed offline reload and resume, the app-shell-only cache
+  and cache removal leaving the save intact; `e2e/deployment.spec.ts` checks the emitted
+  manifest, icons and worker and the Pages-shaped path; the deployed smoke checks that the
+  manifest and icons resolve and that the worker registers scoped to the deployed path.
+  The verified-artifact Pages deployment is unchanged.
 
 ## Source-of-truth relationship
 
