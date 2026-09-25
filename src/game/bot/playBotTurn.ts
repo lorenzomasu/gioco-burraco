@@ -1,6 +1,7 @@
 import type { Card } from '../cards/types'
 import type { GameState, InProgressGameState, PlayerId } from '../state/types'
 import { playerById, teamForPlayer, type BotActionCandidate } from './candidates'
+import { DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from './difficulty'
 import { acquireForBot, chooseBestAction, chooseBestDiscard } from './strategy'
 
 const DEFAULT_MAX_ACTIONS_PER_TURN = 128
@@ -92,8 +93,9 @@ const actionEvents = (
 const discardForBot = (
   state: InProgressGameState,
   playerId: PlayerId,
+  difficulty: BotDifficulty,
 ): TracedBotExecution => {
-  const discard = chooseBestDiscard(state, playerId)
+  const discard = chooseBestDiscard(state, playerId, difficulty)
   if (discard) {
     const events: BotPublicActionEvent[] = [{ type: 'discard', playerId, card: discard.card }]
     if (tookPozzetto(state, discard.state, playerId)) {
@@ -125,14 +127,19 @@ const requireCurrentBot = (state: GameState, playerId: PlayerId): InProgressGame
 /**
  * Commits exactly one bot action for the current player: one acquisition, one meld,
  * one extension, or one discard. A pozzetto taken by that action is reported as a
- * side-effect event immediately after the triggering action event.
+ * side-effect event immediately after the triggering action event. Every choice of the
+ * step uses the given difficulty profile (normal when omitted).
  */
-export const playBotStep = (state: GameState, playerId: PlayerId): BotStepResult => {
+export const playBotStep = (
+  state: GameState,
+  playerId: PlayerId,
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
+): BotStepResult => {
   const current = requireCurrentBot(state, playerId)
 
   if (current.round.turn.phase === 'mustDraw') {
     const discardCount = current.discardPile.length
-    const acquired = acquireForBot(current, playerId)
+    const acquired = acquireForBot(current, playerId, difficulty)
     if (acquired.round.turn.phase !== 'action') {
       throw new BotAutomationError(`Bot ${playerId} did not enter the action phase after acquiring cards.`)
     }
@@ -145,12 +152,12 @@ export const playBotStep = (state: GameState, playerId: PlayerId): BotStepResult
     }
   }
 
-  const action = chooseBestAction(current, playerId)
+  const action = chooseBestAction(current, playerId, difficulty)
   if (action) {
     return { action: action.kind, state: action.state, events: actionEvents(current, action, playerId) }
   }
 
-  return { action: 'discard', ...discardForBot(current, playerId) }
+  return { action: 'discard', ...discardForBot(current, playerId, difficulty) }
 }
 
 /** Per-turn safety counter for a bot turn that has already started. */
@@ -174,6 +181,7 @@ const playGuardedBotTurnStep = (
   playerId: PlayerId,
   turn: ActiveBotTurn | null,
   limits: BotRunLimits,
+  difficulty: BotDifficulty,
 ): GuardedBotTurnStep => {
   const current = requireCurrentBot(state, playerId)
   const actions = turn?.actions ?? 0
@@ -185,7 +193,7 @@ const playGuardedBotTurnStep = (
     throw new BotAutomationError(`Bot ${playerId} exceeded the ${maximumActions}-action safety limit.`)
   }
 
-  const step = playBotStep(current, playerId)
+  const step = playBotStep(current, playerId, difficulty)
   const stillActive = step.state.round.status === 'in-progress'
     && step.state.round.turn.currentPlayerId === playerId
   return {
@@ -201,6 +209,7 @@ export const playBotTurnWithTrace = (
   state: GameState,
   playerId: PlayerId,
   limits: BotRunLimits = {},
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): TracedBotExecution => {
   if (state.round.status === 'completed') return { state, events: [] }
   requireCurrentBot(state, playerId)
@@ -209,7 +218,7 @@ export const playBotTurnWithTrace = (
   const events: BotPublicActionEvent[] = []
   let turn: ActiveBotTurn | null = null
   do {
-    const guarded = playGuardedBotTurnStep(current, playerId, turn, limits)
+    const guarded = playGuardedBotTurnStep(current, playerId, turn, limits, difficulty)
     current = guarded.step.state
     events.push(...guarded.step.events)
     turn = guarded.turn
@@ -223,7 +232,8 @@ export const playBotTurn = (
   state: GameState,
   playerId: PlayerId,
   limits: BotRunLimits = {},
-): GameState => playBotTurnWithTrace(state, playerId, limits).state
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
+): GameState => playBotTurnWithTrace(state, playerId, limits, difficulty).state
 
 /** Safety counters carried between successive chain steps; transient, never part of `GameState`. */
 export type BotChainProgress = Readonly<{
@@ -240,13 +250,15 @@ export type BotChainStep = BotStepResult & Readonly<{
 /**
  * Commits exactly one action of the pending bot chain, or returns null when the
  * round is completed or control belongs to the human. Repeatedly applying this
- * function with the returned progress is the full-chain execution path.
+ * function with the returned progress is the full-chain execution path. The caller
+ * passes the match's one difficulty on every step, so a chain never switches profile.
  */
 export const playNextBotChainStep = (
   state: GameState,
   humanPlayerId: PlayerId,
   progress: BotChainProgress = INITIAL_BOT_CHAIN_PROGRESS,
   limits: BotRunLimits = {},
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): BotChainStep | null => {
   if (state.round.status !== 'in-progress' || state.round.turn.currentPlayerId === humanPlayerId) {
     return null
@@ -263,7 +275,7 @@ export const playNextBotChainStep = (
     activeTurn = null
   }
 
-  const guarded = playGuardedBotTurnStep(state, botPlayerId, activeTurn, limits)
+  const guarded = playGuardedBotTurnStep(state, botPlayerId, activeTurn, limits, difficulty)
   return { ...guarded.step, progress: { botTurns, activeTurn: guarded.turn } }
 }
 
@@ -272,17 +284,18 @@ export const playBotsUntilHumanTurnWithTrace = (
   state: GameState,
   humanPlayerId: PlayerId,
   limits: BotRunLimits = {},
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): TracedBotExecution => {
   let current = state
   const events: BotPublicActionEvent[] = []
   let progress = INITIAL_BOT_CHAIN_PROGRESS
 
-  let step = playNextBotChainStep(current, humanPlayerId, progress, limits)
+  let step = playNextBotChainStep(current, humanPlayerId, progress, limits, difficulty)
   while (step) {
     current = step.state
     events.push(...step.events)
     progress = step.progress
-    step = playNextBotChainStep(current, humanPlayerId, progress, limits)
+    step = playNextBotChainStep(current, humanPlayerId, progress, limits, difficulty)
   }
 
   return { state: current, events }
@@ -293,4 +306,5 @@ export const playBotsUntilHumanTurn = (
   state: GameState,
   humanPlayerId: PlayerId,
   limits: BotRunLimits = {},
-): GameState => playBotsUntilHumanTurnWithTrace(state, humanPlayerId, limits).state
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
+): GameState => playBotsUntilHumanTurnWithTrace(state, humanPlayerId, limits, difficulty).state

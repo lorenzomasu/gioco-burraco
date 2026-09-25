@@ -20,7 +20,7 @@ import {
 } from './matchPersistence'
 import { createSetupRoundFactory, type MatchSetup } from './matchSetup'
 
-const setup: MatchSetup = { humanPlayerName: 'Lorenzo', roundCount: 4 }
+const setup: MatchSetup = { humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' }
 
 /** Plays whole turns for every seat (the human seat included) with the deterministic bot. */
 const playTurns = (state: GameState, turns: number): GameState => {
@@ -89,12 +89,20 @@ const matchAt = (roundCount: MatchRoundCount, roundNumber: number, completed: bo
 const wire = (match: MatchState = activeMatch()): Record<string, any> =>
   JSON.parse(serializeMatchSave({ ...setup, roundCount: match.roundCount }, match))
 
-/** The released pre-M34 version-1 wire shape: no length in the setup or the match. */
+/** The released pre-M34 version-1 wire shape: no length or difficulty anywhere. */
 const legacyWire = (match: MatchState = activeMatch()): Record<string, any> => {
   const current = wire(match)
   delete current.setup.roundCount
+  delete current.setup.botDifficulty
   delete current.match.roundCount
   return { ...current, version: 1 }
+}
+
+/** The released M34 version-2 wire shape: an explicit length but no difficulty. */
+const version2Wire = (match: MatchState = activeMatch()): Record<string, any> => {
+  const current = wire(match)
+  delete current.setup.botDifficulty
+  return { ...current, version: 2 }
 }
 
 const parseWire = (value: unknown) => parseMatchSave(JSON.stringify(value))
@@ -121,16 +129,16 @@ const throwingStorage = (overrides: Partial<Record<'getItem' | 'setItem' | 'remo
 }
 
 describe('match save wire format', () => {
-  it('uses one explicit version-2 envelope holding only the setup and the match', () => {
-    expect(MATCH_SAVE_SCHEMA_VERSION).toBe(2)
+  it('uses one explicit version-3 envelope holding only the setup and the match', () => {
+    expect(MATCH_SAVE_SCHEMA_VERSION).toBe(3)
     const match = activeMatch()
-    const extendedSetup = { humanPlayerName: 'Lorenzo', roundCount: 4, ignored: () => 1 } as unknown as MatchSetup
+    const extendedSetup = { humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal', ignored: () => 1 } as unknown as MatchSetup
 
     const envelope = JSON.parse(serializeMatchSave(extendedSetup, match))
 
     expect(Object.keys(envelope)).toEqual(['version', 'setup', 'match'])
-    expect(envelope.version).toBe(2)
-    expect(envelope.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(envelope.version).toBe(3)
+    expect(envelope.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' })
     expect(Object.keys(envelope.match).sort())
       .toEqual(['currentRound', 'currentRoundNumber', 'roundCount', 'roundResults', 'status'])
     expect(envelope.match.roundCount).toBe(4)
@@ -143,7 +151,7 @@ describe('match save wire format', () => {
 
     const restored = parseMatchSave(serializeMatchSave(setup, match))
 
-    expect(restored).toEqual({ version: 2, setup, match })
+    expect(restored).toEqual({ version: 3, setup, match })
     const cardIds = (state: GameState) => [
       ...state.players.flatMap((player) => player.hand.map((card) => card.id)),
       ...state.teams.flatMap((team) => team.melds.flatMap((meld) => meld.cards.map(({ card }) => card.id))),
@@ -160,7 +168,7 @@ describe('match save wire format', () => {
     expect(match.roundResults).toHaveLength(1)
     expect(match.status).toBe('in-progress')
 
-    expect(parseMatchSave(serializeMatchSave(setup, match))).toEqual({ version: 2, setup, match })
+    expect(parseMatchSave(serializeMatchSave(setup, match))).toEqual({ version: 3, setup, match })
   })
 })
 
@@ -171,10 +179,10 @@ describe('configured match length in saves', () => {
       const raw = serializeMatchSave(configuredSetup, match)
       const envelope = JSON.parse(raw)
 
-      expect(envelope.version).toBe(2)
+      expect(envelope.version).toBe(3)
       expect(envelope.setup.roundCount).toBe(roundCount)
       expect(envelope.match.roundCount).toBe(roundCount)
-      expect(parseMatchSave(raw)).toEqual({ version: 2, setup: configuredSetup, match })
+      expect(parseMatchSave(raw)).toEqual({ version: 3, setup: configuredSetup, match })
     }
   })
 
@@ -244,16 +252,16 @@ describe('configured match length in saves', () => {
 })
 
 describe('legacy version-1 saves', () => {
-  it('restores a valid version-1 active save as a four-smazzate current save', () => {
+  it('restores a valid version-1 active save as a four-smazzate normal current save', () => {
     const match = activeMatch()
-    expect(parseWire(legacyWire(match))).toEqual({ version: 2, setup, match })
+    expect(parseWire(legacyWire(match))).toEqual({ version: 3, setup, match })
   })
 
   it('restores a valid version-1 between-round save with its history as four smazzate', () => {
     const match = advanceMatch(betweenRoundMatch(), createSetupRoundFactory(setup, createSeededRandom(9)))
     const restored = parseWire(legacyWire(match))
 
-    expect(restored).toEqual({ version: 2, setup, match })
+    expect(restored).toEqual({ version: 3, setup, match })
     expect(restored!.match.roundCount).toBe(4)
   })
 
@@ -266,7 +274,8 @@ describe('legacy version-1 saves', () => {
     expect(saveMatch(loaded.save.setup, loaded.save.match, storage)).toBe(true)
 
     const written = JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!)
-    expect(written.version).toBe(2)
+    expect(written.version).toBe(3)
+    expect(written.setup.botDifficulty).toBe('normal')
     expect(written.setup.roundCount).toBe(4)
     expect(written.match.roundCount).toBe(4)
   })
@@ -278,6 +287,7 @@ describe('legacy version-1 saves', () => {
     ['a fifth round', (save) => { save.match.currentRoundNumber = 5 }],
     ['a stray length in the setup', (save) => { save.setup.roundCount = 2 }],
     ['a stray length in the match', (save) => { save.match.roundCount = 4 }],
+    ['a stray difficulty in the setup', (save) => { save.setup.botDifficulty = 'normal' }],
     ['a completed match', (save) => { save.match.status = 'completed' }],
   ])('still rejects a version-1 save with %s', (_label, corrupt) => {
     const save = legacyWire()
@@ -306,6 +316,85 @@ describe('legacy version-1 saves', () => {
   })
 })
 
+describe('bot difficulty in saves', () => {
+  it.each(['easy', 'normal'] as const)('writes and round-trips a version-3 %s save without semantic loss', (botDifficulty) => {
+    const configuredSetup: MatchSetup = { ...setup, botDifficulty }
+    for (const match of [activeMatch(), betweenRoundMatch()]) {
+      const raw = serializeMatchSave(configuredSetup, match)
+      const envelope = JSON.parse(raw)
+
+      expect(envelope.version).toBe(3)
+      expect(envelope.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty })
+      expect(Object.keys(envelope.match)).not.toContain('botDifficulty')
+      expect(Object.keys(envelope.match.currentRound)).not.toContain('botDifficulty')
+      expect(parseMatchSave(raw)).toEqual({ version: 3, setup: configuredSetup, match })
+    }
+  })
+
+  it.each([undefined, null, '', 'hard', 'Easy', 'NORMAL', 'facile', 1, true, {}])(
+    'rejects the unsupported current difficulty %s',
+    (botDifficulty) => {
+      const save = wire()
+      save.setup.botDifficulty = botDifficulty
+      expect(parseWire(save)).toBeNull()
+    },
+  )
+
+  it('rejects a current save whose setup omits the difficulty', () => {
+    const save = wire()
+    delete save.setup.botDifficulty
+    expect(parseWire(save)).toBeNull()
+  })
+
+  it('restores an easy save through the storage boundary', () => {
+    const storage = createMemoryStorage()
+    expect(saveMatch({ ...setup, botDifficulty: 'easy' }, betweenRoundMatch(), storage)).toBe(true)
+    const loaded = loadMatchSave(storage)
+    expect(loaded.status === 'restored' && loaded.save.setup.botDifficulty).toBe('easy')
+  })
+})
+
+describe('released version-2 saves', () => {
+  it.each([2, 3, 4] as const)('restores a valid %i-smazzate version-2 save with its length and normal difficulty', (roundCount) => {
+    for (const match of [matchAt(roundCount, 1, false), matchAt(roundCount, 1, true)]) {
+      expect(parseWire(version2Wire(match))).toEqual({
+        version: 3,
+        setup: { ...setup, roundCount, botDifficulty: 'normal' },
+        match,
+      })
+    }
+  })
+
+  it('writes only version 3 once a migrated version-2 save is saved again', () => {
+    const storage = createMemoryStorage()
+    storage.setItem(MATCH_SAVE_STORAGE_KEY, JSON.stringify(version2Wire(matchAt(3, 2, false))))
+
+    const loaded = loadMatchSave(storage)
+    if (loaded.status !== 'restored') throw new Error('Expected a restored version-2 save.')
+    expect(saveMatch(loaded.save.setup, loaded.save.match, storage)).toBe(true)
+
+    const written = JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!)
+    expect(written.version).toBe(3)
+    expect(written.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 3, botDifficulty: 'normal' })
+  })
+
+  it.each<[string, (save: Record<string, any>) => void]>([
+    ['a card missing from the stock', (save) => save.match.currentRound.drawPile.pop()],
+    ['an invalid setup name', (save) => { save.setup.humanPlayerName = ' Lorenzo ' }],
+    ['a setup name inconsistent with player-1', (save) => { save.setup.humanPlayerName = 'Giulia' }],
+    ['a missing setup length', (save) => { delete save.setup.roundCount }],
+    ['an unsupported length', (save) => { save.setup.roundCount = 5; save.match.roundCount = 5 }],
+    ['a setup length that disagrees with the match', (save) => { save.setup.roundCount = 2 }],
+    ['a stray difficulty in the setup', (save) => { save.setup.botDifficulty = 'easy' }],
+    ['a completed match', (save) => { save.match.status = 'completed' }],
+  ])('still rejects a version-2 save with %s', (_label, corrupt) => {
+    const save = version2Wire()
+    expect(parseWire(save)).not.toBeNull()
+    corrupt(save)
+    expect(parseWire(save)).toBeNull()
+  })
+})
+
 describe('match save validation', () => {
   it('rejects malformed JSON and non-object roots', () => {
     expect(parseMatchSave('{"version":1,')).toBeNull()
@@ -313,8 +402,8 @@ describe('match save validation', () => {
     for (const root of [null, 1, 'save', [], true]) expect(parseWire(root)).toBeNull()
   })
 
-  it('rejects any version other than the current one and the legacy version 1', () => {
-    for (const version of [0, 3, '2', '1', null, undefined]) {
+  it('rejects any version other than the current one and the released versions 1 and 2', () => {
+    for (const version of [0, 4, '3', '2', '1', null, undefined]) {
       expect(parseWire({ ...wire(), version })).toBeNull()
     }
     const { version: _omitted, ...withoutVersion } = wire()
@@ -323,13 +412,13 @@ describe('match save validation', () => {
 
   it('rejects missing or invalid setup', () => {
     const base = wire()
-    for (const invalid of [undefined, null, {}, { humanPlayerName: '', roundCount: 4 }, { humanPlayerName: ' Lorenzo ', roundCount: 4 }, { humanPlayerName: 7, roundCount: 4 }]) {
+    for (const invalid of [undefined, null, {}, { humanPlayerName: '', roundCount: 4, botDifficulty: 'normal' }, { humanPlayerName: ' Lorenzo ', roundCount: 4, botDifficulty: 'normal' }, { humanPlayerName: 7, roundCount: 4, botDifficulty: 'normal' }]) {
       expect(parseWire({ ...base, setup: invalid })).toBeNull()
     }
   })
 
   it('rejects a setup name inconsistent with the saved player-1', () => {
-    expect(parseWire({ ...wire(), setup: { humanPlayerName: 'Giulia', roundCount: 4 } })).toBeNull()
+    expect(parseWire({ ...wire(), setup: { humanPlayerName: 'Giulia', roundCount: 4, botDifficulty: 'normal' } })).toBeNull()
   })
 
   it.each<[string, (save: Record<string, any>) => void]>([
@@ -397,7 +486,7 @@ describe('match save validation', () => {
   })
 
   it('is a real runtime guard, not a cast', () => {
-    expect(isMatchSaveEnvelope({ version: 2, setup, match: {} })).toBe(false)
+    expect(isMatchSaveEnvelope({ version: 3, setup, match: {} })).toBe(false)
     expect(isMatchSaveEnvelope(legacyWire())).toBe(false)
     expect(isMatchSaveEnvelope(wire())).toBe(true)
   })
@@ -651,8 +740,8 @@ describe('match save storage operations', () => {
     expect(saveMatch(setup, match, storage)).toBe(true)
 
     expect(storage.length).toBe(1)
-    expect(JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!).version).toBe(2)
-    expect(loadMatchSave(storage)).toEqual({ status: 'restored', save: { version: 2, setup, match } })
+    expect(JSON.parse(storage.getItem(MATCH_SAVE_STORAGE_KEY)!).version).toBe(3)
+    expect(loadMatchSave(storage)).toEqual({ status: 'restored', save: { version: 3, setup, match } })
   })
 
   it('reports no save when storage is empty', () => {
@@ -663,7 +752,8 @@ describe('match save storage operations', () => {
     const between = wire(betweenRoundMatch())
     for (const raw of [
       'not json',
-      JSON.stringify({ ...wire(), version: 3 }),
+      JSON.stringify({ ...wire(), version: 4 }),
+      JSON.stringify({ ...version2Wire(), version: 3 }),
       JSON.stringify({ ...legacyWire(), version: 0 }),
       JSON.stringify({ ...between, match: { ...between.match, status: 'completed' } }),
     ]) {

@@ -7,6 +7,7 @@ import {
   type BotActionCandidate,
   type BotDiscardCandidate,
 } from './candidates'
+import { DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from './difficulty'
 
 export type BotDrawSource = 'drawPile' | 'discardPile'
 
@@ -15,6 +16,7 @@ const compareNumbersDescending = (first: number, second: number): number => seco
 const compareBooleansDescending = (first: boolean, second: boolean): number =>
   compareNumbersDescending(Number(first), Number(second))
 
+/** Normal profile: the pre-M35 strategic ordering. */
 const compareActions = (first: BotActionCandidate, second: BotActionCandidate): number => {
   const comparisons = [
     compareBooleansDescending(first.enablesClosure, second.enablesClosure),
@@ -31,6 +33,7 @@ const compareActions = (first: BotActionCandidate, second: BotActionCandidate): 
   return comparisons.find((comparison) => comparison !== 0) ?? first.tieBreak.localeCompare(second.tieBreak)
 }
 
+/** Normal profile: the pre-M35 strategic ordering. */
 const compareDiscards = (first: BotDiscardCandidate, second: BotDiscardCandidate): number => {
   const comparisons = [
     compareBooleansDescending(first.closesRound, second.closesRound),
@@ -43,27 +46,61 @@ const compareDiscards = (first: BotDiscardCandidate, second: BotDiscardCandidate
   return comparisons.find((comparison) => comparison !== 0) ?? first.tieBreak.localeCompare(second.tieBreak)
 }
 
+/** Easy profile: volume and cost only, without closure/pozzetto/Burraco weighting. */
+const compareEasyActions = (first: BotActionCandidate, second: BotActionCandidate): number => {
+  const comparisons = [
+    compareNumbersDescending(first.cardsPlayed, second.cardsPlayed),
+    first.wildcardsPlayed - second.wildcardsPlayed,
+    compareNumbersDescending(first.pointsPlayed, second.pointsPlayed),
+  ]
+  return comparisons.find((comparison) => comparison !== 0) ?? first.tieBreak.localeCompare(second.tieBreak)
+}
+
+/** Easy profile: keep wildcards, shed points; no own-meld, future-meld or opponent reasoning. */
+const compareEasyDiscards = (first: BotDiscardCandidate, second: BotDiscardCandidate): number => {
+  const comparisons = [
+    Number(first.isWildcard) - Number(second.isWildcard),
+    compareNumbersDescending(first.points, second.points),
+  ]
+  return comparisons.find((comparison) => comparison !== 0) ?? first.tieBreak.localeCompare(second.tieBreak)
+}
+
+const ACTION_COMPARATORS: Readonly<Record<BotDifficulty, typeof compareActions>> = {
+  easy: compareEasyActions,
+  normal: compareActions,
+}
+
+const DISCARD_COMPARATORS: Readonly<Record<BotDifficulty, typeof compareDiscards>> = {
+  easy: compareEasyDiscards,
+  normal: compareDiscards,
+}
+
 export const chooseBestAction = (
   state: InProgressGameState,
   playerId: PlayerId,
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): BotActionCandidate | null =>
-  [...generateActionCandidates(state, playerId)].sort(compareActions)[0] ?? null
+  [...generateActionCandidates(state, playerId)].sort(ACTION_COMPARATORS[difficulty])[0] ?? null
 
 export const chooseBestDiscard = (
   state: InProgressGameState,
   playerId: PlayerId,
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): BotDiscardCandidate | null =>
-  [...generateDiscardCandidates(state, playerId)].sort(compareDiscards)[0] ?? null
+  [...generateDiscardCandidates(state, playerId)].sort(DISCARD_COMPARATORS[difficulty])[0] ?? null
 
 /**
  * Chooses from public information only. In particular this function checks stock
- * availability but never reads, simulates, or ranks the stock's hidden cards.
+ * availability but never reads, simulates, or ranks the stock's hidden cards. The easy
+ * profile draws from any non-empty stock without evaluating the discard pile.
  */
 export const chooseDrawSource = (
   state: InProgressGameState,
   playerId: PlayerId,
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
 ): BotDrawSource => {
   if (state.drawPile.length === 0) return 'discardPile'
+  if (difficulty === 'easy') return 'drawPile'
   if (state.discardPile.length === 0) return 'drawPile'
 
   const collected = takeDiscardPile(state, playerId)
@@ -77,6 +114,7 @@ export const chooseDrawSource = (
 export const acquireForBot = (
   state: InProgressGameState,
   playerId: PlayerId,
-): InProgressGameState => chooseDrawSource(state, playerId) === 'discardPile'
+  difficulty: BotDifficulty = DEFAULT_BOT_DIFFICULTY,
+): InProgressGameState => chooseDrawSource(state, playerId, difficulty) === 'discardPile'
   ? takeDiscardPile(state, playerId)
   : drawCard(state, playerId)

@@ -4,6 +4,7 @@ import { createSoundController, createWebAudioBackend, type SoundBackend } from 
 import { HelpDialog } from './components/HelpDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { GameTable, type BotPlaybackSpeed } from './components/GameTable'
+import { DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from './game/bot'
 import { StartScreen } from './components/StartScreen'
 import { DEFAULT_MATCH_ROUND_COUNT, type MatchRoundCount, type MatchState, type RoundFactory } from './game/match'
 import {
@@ -82,18 +83,27 @@ export default function App({
         screen: { kind: 'onboarding' } as AppScreen,
         name: '',
         roundCount: DEFAULT_MATCH_ROUND_COUNT,
+        botDifficulty: DEFAULT_BOT_DIFFICULTY,
         notice: loadNotice(loaded),
         resumedMatch: null,
       }
     }
     const { setup, match } = loaded.save
     const screen: AppScreen = { kind: 'match', setup, createGame: createRoundFactory(setup), initialMatch: match }
-    return { screen, name: setup.humanPlayerName, roundCount: setup.roundCount, notice: null, resumedMatch: match }
+    return {
+      screen,
+      name: setup.humanPlayerName,
+      roundCount: setup.roundCount,
+      botDifficulty: setup.botDifficulty,
+      notice: null,
+      resumedMatch: match,
+    }
   })
   const [screen, setScreen] = useState<AppScreen>(initial.screen)
   const [lastPlayerName, setLastPlayerName] = useState(initial.name)
   // Last chosen length, retained like the name while this application stays mounted.
   const [lastRoundCount, setLastRoundCount] = useState<MatchRoundCount>(initial.roundCount)
+  const [lastBotDifficulty, setLastBotDifficulty] = useState<BotDifficulty>(initial.botDifficulty)
   const [notice, setNotice] = useState<string | null>(initial.notice)
   // Progress of the restored save, shown once as a dismissible status; UI only, never saved.
   const [resumedMatch, setResumedMatch] = useState<MatchState | null>(initial.resumedMatch)
@@ -163,12 +173,14 @@ export default function App({
       <StartScreen
         initialName={lastPlayerName}
         initialRoundCount={lastRoundCount}
+        initialBotDifficulty={lastBotDifficulty}
         notice={notice}
         focusOnMount={screen.returnedFromMatch}
         actions={shellActions}
         onStart={(setup) => {
           setLastPlayerName(setup.humanPlayerName)
           setLastRoundCount(setup.roundCount)
+          setLastBotDifficulty(setup.botDifficulty)
           setNotice(null)
           setScreen({ kind: 'match', setup, createGame: createRoundFactory(setup), startedFromOnboarding: true })
         }}
@@ -207,6 +219,7 @@ export default function App({
         initialMatch={screen.initialMatch}
         createGame={screen.createGame}
         roundCount={setup.roundCount}
+        botDifficulty={setup.botDifficulty}
         focusContextOnMount={screen.startedFromOnboarding}
         onMatchChange={persistMatch}
         onLeaveMatch={() => {

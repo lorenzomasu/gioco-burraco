@@ -206,7 +206,7 @@ describe('App shell onboarding', () => {
 
     startWith('  Lorenzo  ')
 
-    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' })
     expect(created).toHaveLength(1)
     expect(created[0]!.context).toEqual({ roundNumber: 1, startingPlayerId: 'player-1' })
     expect(created[0]!.state.players.map(({ id, name, teamId }) => ({ id, name, teamId }))).toEqual([
@@ -271,7 +271,7 @@ describe('App shell onboarding', () => {
 
     startWith('Giulia')
 
-    expect(setups).toEqual([{ humanPlayerName: 'Lorenzo', roundCount: 4 }, { humanPlayerName: 'Giulia', roundCount: 4 }])
+    expect(setups).toEqual([{ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' }, { humanPlayerName: 'Giulia', roundCount: 4, botDifficulty: 'normal' }])
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(timelineItems()).toHaveLength(0)
     expect(turnBanner()).toHaveTextContent('North')
@@ -409,7 +409,7 @@ describe('App shell completed-match restart', () => {
 
     startWith('Giulia')
 
-    expect(createRoundFactory).toHaveBeenLastCalledWith({ humanPlayerName: 'Giulia', roundCount: 4 })
+    expect(createRoundFactory).toHaveBeenLastCalledWith({ humanPlayerName: 'Giulia', roundCount: 4, botDifficulty: 'normal' })
     expect(created.at(-1)!.context).toEqual({ roundNumber: 1, startingPlayerId: 'player-1' })
     expect(screen.getByText('Smazzata 1/4')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Mano di Giulia' })).toBeInTheDocument()
@@ -473,7 +473,7 @@ describe('App local save and resume', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('saves the started match as one version-2 envelope with only the setup and match', () => {
+  it('saves the started match as one version-3 envelope with only the setup and match', () => {
     const { created, createRoundFactory } = seededNamedFactories()
     render(<App createRoundFactory={createRoundFactory} />)
 
@@ -482,8 +482,8 @@ describe('App local save and resume', () => {
     const raw = storedRaw()!
     const save = JSON.parse(raw)
     expect(Object.keys(save)).toEqual(['version', 'setup', 'match'])
-    expect(save.version).toBe(2)
-    expect(save.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(save.version).toBe(3)
+    expect(save.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' })
     expect(save.match).toEqual({
       roundCount: 4,
       status: 'in-progress',
@@ -491,9 +491,11 @@ describe('App local save and resume', () => {
       currentRound: created[0]!.state,
       roundResults: [],
     })
-    for (const transient of ['botEvents', 'botProgress', 'activeTurn', 'selected', 'speed', 'normal', 'fast']) {
+    for (const transient of ['botEvents', 'botProgress', 'activeTurn', 'selected', 'speed', 'fast']) {
       expect(raw).not.toContain(transient)
     }
+    // The only 'normal' in the save is the bot difficulty, never the playback speed.
+    expect(JSON.stringify(save.match)).not.toContain('normal')
   })
 
   it('writes committed human actions but not selection or playback-speed changes', () => {
@@ -529,7 +531,7 @@ describe('App local save and resume', () => {
     const second = seededNamedFactories(99)
     render(<App createRoundFactory={second.createRoundFactory} />)
 
-    expect(second.createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(second.createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' })
     expect(second.created).toHaveLength(0)
     expect(storedSave()).toEqual(saved)
     expect(table()).toBeInTheDocument()
@@ -638,7 +640,7 @@ describe('App local save and resume', () => {
     expect(second.created[0]!.state.players.find(({ id }) => id === 'player-1')!.name).toBe('Lorenzo')
     expect(screen.getByText('Smazzata 2/4')).toBeInTheDocument()
     const next = storedSave()
-    expect(next.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4 })
+    expect(next.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' })
     expect(next.match.currentRoundNumber).toBe(2)
     expect(next.match.roundResults).toEqual(saved.match.roundResults)
   })
@@ -683,9 +685,9 @@ describe('App local save and resume', () => {
 
   it.each([
     ['invalid JSON', () => '{"version":1,'],
-    ['an unsupported version', () => JSON.stringify({ ...storedSave(), version: 3 })],
+    ['an unsupported version', () => JSON.stringify({ ...storedSave(), version: 4 })],
     ['a setup inconsistent with the saved player', () =>
-      JSON.stringify({ ...storedSave(), setup: { humanPlayerName: 'Giulia', roundCount: 4 } })],
+      JSON.stringify({ ...storedSave(), setup: { humanPlayerName: 'Giulia', roundCount: 4, botDifficulty: 'normal' } })],
     ['a structurally invalid match', () => {
       const save = storedSave()
       return JSON.stringify({ ...save, match: { ...save.match, currentRound: { players: [] } } })
@@ -708,7 +710,7 @@ describe('App local save and resume', () => {
 
     startWith('Giulia')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(storedSave().setup).toEqual({ humanPlayerName: 'Giulia', roundCount: 4 })
+    expect(storedSave().setup).toEqual({ humanPlayerName: 'Giulia', roundCount: 4, botDifficulty: 'normal' })
   })
 
   it('falls back to onboarding when storage cannot be read or a corrupt save cannot be removed', () => {
@@ -889,11 +891,11 @@ describe('App configurable match length', () => {
     expect(lengthRadio(4)).not.toBeChecked()
     startWith(' Lorenzo ')
 
-    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount })
+    expect(createRoundFactory).toHaveBeenCalledExactlyOnceWith({ humanPlayerName: 'Lorenzo', roundCount, botDifficulty: 'normal' })
     expect(screen.getByText(`Smazzata 1/${roundCount}`)).toBeInTheDocument()
     const saved = storedSave()
-    expect(saved.version).toBe(2)
-    expect(saved.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount })
+    expect(saved.version).toBe(3)
+    expect(saved.setup).toEqual({ humanPlayerName: 'Lorenzo', roundCount, botDifficulty: 'normal' })
     expect(saved.match.roundCount).toBe(roundCount)
   })
 
@@ -941,13 +943,13 @@ describe('App configurable match length', () => {
     expect(storedSave().match).toMatchObject({ roundCount: 3, currentRoundNumber: 2 })
   })
 
-  it('restores a released version-1 save as four smazzate and rewrites it as version 2', () => {
+  it('restores a released version-1 save as four smazzate and rewrites it as version 3', () => {
     const { createRoundFactory } = seededNamedFactories()
     const { unmount } = render(<App createRoundFactory={createRoundFactory} />)
     startWith('Lorenzo')
     const current = storedSave()
     unmount()
-    const { roundCount: _setupLength, ...legacySetup } = current.setup
+    const { roundCount: _setupLength, botDifficulty: _difficulty, ...legacySetup } = current.setup
     const { roundCount: _matchLength, ...legacyMatch } = current.match
     window.localStorage.setItem(
       MATCH_SAVE_STORAGE_KEY,

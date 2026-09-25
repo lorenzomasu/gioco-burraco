@@ -6,6 +6,7 @@ import {
   NORMAL_HANDOFF_DELAY_MS,
   PLAYER_NAME,
   completeNowButton,
+  difficultyRadio,
   discardPileCards,
   drawAndDiscard,
   drawPileButton,
@@ -39,8 +40,8 @@ test('committed progress survives a reload and play continues', async ({ page })
 
   const save = await readActiveSave(page)
   expect(save).toMatchObject({
-    version: 2,
-    setup: { humanPlayerName: PLAYER_NAME, roundCount: 4 },
+    version: 3,
+    setup: { humanPlayerName: PLAYER_NAME, roundCount: 4, botDifficulty: 'normal' },
     match: { roundCount: 4, status: 'in-progress' },
   })
   expect(await savedTurnOwner(page)).toBe('player-1')
@@ -78,7 +79,7 @@ test('a selected three-smazzate match survives a reload with the same total', as
   await completeNowButton(page).click()
   await expect(drawPileButton(page)).toBeEnabled()
   expect(await readActiveSave(page)).toMatchObject({
-    version: 2,
+    version: 3,
     setup: { roundCount: 3 },
     match: { roundCount: 3, currentRoundNumber: 1 },
   })
@@ -90,6 +91,31 @@ test('a selected three-smazzate match survives a reload with the same total', as
   await expect(page.getByRole('status')).toHaveText(/Partita ripresa · Smazzata 1\/3/)
   await drawAndDiscard(page)
   expect(await readActiveSave(page)).toMatchObject({ match: { roundCount: 3 } })
+})
+
+test('onboarding defaults to Normale and a Facile match keeps its difficulty across a reload', async ({ page }) => {
+  await page.goto('/')
+  await expect(onboardingHeading(page)).toBeVisible()
+  await expect(difficultyRadio(page, 'Normale')).toBeChecked()
+  await expect(difficultyRadio(page, 'Facile')).not.toBeChecked()
+
+  await startNewMatch(page, PLAYER_NAME, undefined, 'Facile')
+  expect(await readActiveSave(page)).toMatchObject({ version: 3, setup: { botDifficulty: 'easy' } })
+  await drawAndDiscard(page)
+  await completeNowButton(page).click()
+  await expect(drawPileButton(page)).toBeEnabled()
+
+  await page.reload()
+
+  await expect(onboardingHeading(page)).toBeHidden()
+  await expect(roundIndicator(page)).toHaveText('Smazzata 1/4')
+  await drawAndDiscard(page)
+  await completeNowButton(page).click()
+  await expect(drawPileButton(page)).toBeEnabled()
+  expect(await readActiveSave(page)).toMatchObject({
+    version: 3,
+    setup: { humanPlayerName: PLAYER_NAME, roundCount: 4, botDifficulty: 'easy' },
+  })
 })
 
 test('a reload during bot playback resumes the pending chain from the committed match', async ({ page }) => {

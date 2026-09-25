@@ -1719,6 +1719,29 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
   font-weight: 700;
 }
 
+.bot-difficulty-options { margin-top: .9rem; }
+
+.bot-difficulty-options__option {
+  justify-content: flex-start;
+  align-items: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+
+.bot-difficulty-options__option input { margin-top: .2rem; }
+
+.bot-difficulty-options__text {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+}
+
+.bot-difficulty-options__description {
+  font-size: .8rem;
+  font-weight: 400;
+  color: #b9cfc4;
+}
+
 .storage-notice {
   margin: 0;
   padding: .6rem .9rem;

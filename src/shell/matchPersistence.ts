@@ -1,3 +1,4 @@
+import { DEFAULT_BOT_DIFFICULTY, isBotDifficulty } from '../game/bot/difficulty'
 import { createBurracoDeck } from '../game/cards/deck'
 import type { Card } from '../game/cards/types'
 import { isMatchRoundCount, type MatchState } from '../game/match'
@@ -10,14 +11,18 @@ import { HUMAN_PLAYER_ID, type MatchSetup } from './matchSetup'
 export const MATCH_SAVE_STORAGE_KEY = 'gioco-burraco:active-match'
 
 /**
- * The current save wire-format version. Version 2 adds the configured match length. The
- * only other accepted version is the released legacy version 1, always a four-smazzate
- * match, which is normalized on load; any other version is rejected, never reinterpreted.
+ * The current save wire-format version. Version 2 added the configured match length and
+ * version 3 the bot difficulty. The only other accepted versions are the released legacy
+ * versions 1 (always four smazzate) and 2 (explicit length), both normal difficulty and
+ * normalized on load; any other version is rejected, never reinterpreted.
  */
-export const MATCH_SAVE_SCHEMA_VERSION = 2
+export const MATCH_SAVE_SCHEMA_VERSION = 3
 
-/** The released pre-M34 wire-format version, restored as a four-smazzate current save. */
+/** The released pre-M34 wire-format version, restored as a four-smazzate normal save. */
 export const LEGACY_MATCH_SAVE_SCHEMA_VERSION = 1
+
+/** The released M34 wire-format version, restored with its length and normal difficulty. */
+export const LENGTH_ONLY_MATCH_SAVE_SCHEMA_VERSION = 2
 
 /**
  * The complete resumable wire format: the onboarding setup needed to recreate future-round
@@ -50,7 +55,11 @@ export const getBrowserStorage = (): Storage | null => {
 export const serializeMatchSave = (setup: MatchSetup, match: MatchState): string => {
   const envelope: MatchSaveEnvelope = {
     version: MATCH_SAVE_SCHEMA_VERSION,
-    setup: { humanPlayerName: setup.humanPlayerName, roundCount: setup.roundCount },
+    setup: {
+      humanPlayerName: setup.humanPlayerName,
+      roundCount: setup.roundCount,
+      botDifficulty: setup.botDifficulty,
+    },
     match,
   }
   return JSON.stringify(envelope)
@@ -337,6 +346,7 @@ const isMatchSetup = (value: unknown): value is MatchSetup =>
   && value.humanPlayerName.length > 0
   && value.humanPlayerName === value.humanPlayerName.trim()
   && isMatchRoundCount(value.roundCount)
+  && isBotDifficulty(value.botDifficulty)
 
 /** Validates an already-parsed value as a current-version, active, internally consistent save. */
 export const isMatchSaveEnvelope = (value: unknown): value is MatchSaveEnvelope => {
@@ -349,30 +359,52 @@ export const isMatchSaveEnvelope = (value: unknown): value is MatchSaveEnvelope 
 
 const LEGACY_ROUND_COUNT = 4
 
+const hasOwn = (value: UnknownRecord, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key)
+
 /**
- * The single legacy compatibility path: a released version-1 save has no length fields
- * and always meant four smazzate. Its setup and match must carry exactly the version-1
- * fields; they are given round count 4 and then pass the full current validation.
+ * The released version-1 save has no length or difficulty fields and always meant four
+ * smazzate against the normal bots. Its setup and match must carry exactly the version-1
+ * fields; they are given round count 4 and normal difficulty, then pass the full current
+ * validation.
  */
-const migrateLegacyMatchSave = (value: UnknownRecord): unknown => {
+const migrateVersion1MatchSave = (value: UnknownRecord): unknown => {
   const { setup, match } = value
   if (!isRecord(setup) || !isRecord(match)) return null
-  if (Object.prototype.hasOwnProperty.call(setup, 'roundCount')) return null
-  if (Object.prototype.hasOwnProperty.call(match, 'roundCount')) return null
+  if (hasOwn(setup, 'roundCount') || hasOwn(setup, 'botDifficulty')) return null
+  if (hasOwn(match, 'roundCount')) return null
   return {
     version: MATCH_SAVE_SCHEMA_VERSION,
-    setup: { ...setup, roundCount: LEGACY_ROUND_COUNT },
+    setup: { ...setup, roundCount: LEGACY_ROUND_COUNT, botDifficulty: DEFAULT_BOT_DIFFICULTY },
     match: { roundCount: LEGACY_ROUND_COUNT, ...match },
   }
 }
 
 /**
- * Accepts a current-version save as is, or a valid legacy version-1 save normalized to
- * the current in-memory shape; `null` for everything else.
+ * The released version-2 save carries its configured length but no difficulty and always
+ * meant the normal bots. It is given normal difficulty and then passes the full current
+ * validation, so every version-2 check (including the length checks) still applies.
+ */
+const migrateVersion2MatchSave = (value: UnknownRecord): unknown => {
+  const { setup } = value
+  if (!isRecord(setup) || hasOwn(setup, 'botDifficulty')) return null
+  return {
+    ...value,
+    version: MATCH_SAVE_SCHEMA_VERSION,
+    setup: { ...setup, botDifficulty: DEFAULT_BOT_DIFFICULTY },
+  }
+}
+
+/**
+ * Accepts a current-version save as is, or a valid released version-1 or version-2 save
+ * normalized to the current in-memory shape; `null` for everything else.
  */
 export const normalizeMatchSave = (value: unknown): MatchSaveEnvelope | null => {
   if (isRecord(value) && value.version === LEGACY_MATCH_SAVE_SCHEMA_VERSION) {
-    const migrated = migrateLegacyMatchSave(value)
+    const migrated = migrateVersion1MatchSave(value)
+    return isMatchSaveEnvelope(migrated) ? migrated : null
+  }
+  if (isRecord(value) && value.version === LENGTH_ONLY_MATCH_SAVE_SCHEMA_VERSION) {
+    const migrated = migrateVersion2MatchSave(value)
     return isMatchSaveEnvelope(migrated) ? migrated : null
   }
   return isMatchSaveEnvelope(value) ? value : null

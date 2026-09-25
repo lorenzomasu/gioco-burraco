@@ -1,3 +1,4 @@
+import type { BotDifficulty } from '../game/bot/difficulty'
 import type { RandomSource } from '../game/cards/shuffle'
 import { createMatchRoundFactory, type MatchRoundCount, type RoundFactory } from '../game/match'
 
@@ -10,6 +11,8 @@ export type MatchSetup = Readonly<{
   humanPlayerName: string
   /** Chosen match length; it configures the match lifecycle, never the round factory. */
   roundCount: MatchRoundCount
+  /** One strategy profile for all three bot seats; consumed by bot orchestration only. */
+  botDifficulty: BotDifficulty
 }>
 
 /** Builds the round factory that gives every round of the match the chosen human name. */

@@ -16,3 +16,9 @@ export {
   type TracedBotExecution,
 } from './playBotTurn'
 export { chooseDrawSource } from './strategy'
+export {
+  BOT_DIFFICULTIES,
+  DEFAULT_BOT_DIFFICULTY,
+  isBotDifficulty,
+  type BotDifficulty,
+} from './difficulty'

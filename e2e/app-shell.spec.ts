@@ -118,7 +118,7 @@ test('the new-match confirmation is keyboard operable and Escape never abandons'
 })
 
 test('a restored save shows a concise resume status without taking focus', async ({ page }) => {
-  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME, roundCount: 4 }, createSeededRandom(E2E_SEED)))
+  const match = startMatch(createSetupRoundFactory({ humanPlayerName: PLAYER_NAME, roundCount: 4, botDifficulty: 'normal' }, createSeededRandom(E2E_SEED)))
   await openSavedMatch(page, match)
 
   await expect(page.getByRole('status')).toHaveText(/Partita ripresa · Smazzata 1\/4/)

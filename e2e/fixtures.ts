@@ -1,4 +1,5 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test'
+import type { BotDifficulty } from '../src/game/bot/difficulty'
 import type { MatchState } from '../src/game/match'
 import { MATCH_SAVE_STORAGE_KEY, serializeMatchSave, type MatchSaveEnvelope } from '../src/shell/matchPersistence'
 
@@ -101,13 +102,23 @@ export const onboardingHeading = (page: Page): Locator => page.getByRole('headin
  * Opens a fresh application and starts smazzata 1 through the real onboarding form, with
  * the default four smazzate unless another supported length is chosen.
  */
-export const startNewMatch = async (page: Page, typedName = `  ${PLAYER_NAME}  `, roundCount?: 2 | 3 | 4) => {
+/** The onboarding bot-difficulty choice, by its accessible group and option names. */
+export const difficultyRadio = (page: Page, label: 'Facile' | 'Normale') =>
+  page.getByRole('group', { name: 'Difficoltà dei bot' }).getByRole('radio', { name: label })
+
+export const startNewMatch = async (
+  page: Page,
+  typedName = `  ${PLAYER_NAME}  `,
+  roundCount?: 2 | 3 | 4,
+  difficulty?: 'Facile' | 'Normale',
+) => {
   await page.goto('/')
   await expect(onboardingHeading(page)).toBeVisible()
   await page.getByLabel('Il tuo nome').fill(typedName)
   if (roundCount !== undefined) {
     await page.getByRole('group', { name: 'Durata della partita' }).getByRole('radio', { name: `${roundCount} smazzate` }).check()
   }
+  if (difficulty !== undefined) await difficultyRadio(page, difficulty).check()
   await page.getByRole('button', { name: 'Inizia partita' }).click()
   await expect(roundIndicator(page)).toHaveText(`Smazzata 1/${roundCount ?? 4}`)
 }
@@ -124,12 +135,17 @@ export const drawAndDiscard = async (page: Page) => {
  * Opens a known committed match through the real M22 boundary: a current-version envelope
  * produced by the app's own serializer is placed in browser storage and the page reloads.
  */
-export const openSavedMatch = async (page: Page, match: MatchState, humanPlayerName = PLAYER_NAME) => {
+export const openSavedMatch = async (
+  page: Page,
+  match: MatchState,
+  humanPlayerName = PLAYER_NAME,
+  botDifficulty: BotDifficulty = 'normal',
+) => {
   await page.goto('/')
   await expect(onboardingHeading(page)).toBeVisible()
   await page.evaluate(
     ([key, raw]) => window.localStorage.setItem(key, raw),
-    [MATCH_SAVE_STORAGE_KEY, serializeMatchSave({ humanPlayerName, roundCount: match.roundCount }, match)] as const,
+    [MATCH_SAVE_STORAGE_KEY, serializeMatchSave({ humanPlayerName, roundCount: match.roundCount, botDifficulty }, match)] as const,
   )
   await page.reload()
   await expect(roundIndicator(page)).toHaveText(`Smazzata ${match.currentRoundNumber}/${match.roundCount}`)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { BOT_DIFFICULTIES, DEFAULT_BOT_DIFFICULTY, type BotDifficulty } from '../game/bot'
 import { DEFAULT_MATCH_ROUND_COUNT, MATCH_ROUND_COUNTS, type MatchRoundCount } from '../game/match'
 import type { MatchSetup } from '../shell/matchSetup'
 
@@ -6,6 +7,8 @@ type StartScreenProps = Readonly<{
   initialName?: string
   /** Preselected match length; a fresh onboarding uses the default of four smazzate. */
   initialRoundCount?: MatchRoundCount
+  /** Preselected bot difficulty; a fresh onboarding uses Normale. */
+  initialBotDifficulty?: BotDifficulty
   /** Minimal non-blocking message, e.g. when a previous local save could not be restored. */
   notice?: string | null
   /**
@@ -20,9 +23,15 @@ type StartScreenProps = Readonly<{
 
 const MAX_NAME_LENGTH = 24
 
+const BOT_DIFFICULTY_OPTIONS: Readonly<Record<BotDifficulty, Readonly<{ label: string; description: string }>>> = {
+  easy: { label: 'Facile', description: 'Scelte più semplici e meno strategiche.' },
+  normal: { label: 'Normale', description: 'Strategia completa, difficoltà predefinita.' },
+}
+
 export function StartScreen({
   initialName = '',
   initialRoundCount = DEFAULT_MATCH_ROUND_COUNT,
+  initialBotDifficulty = DEFAULT_BOT_DIFFICULTY,
   notice = null,
   focusOnMount = false,
   actions,
@@ -30,6 +39,7 @@ export function StartScreen({
 }: StartScreenProps) {
   const [name, setName] = useState(initialName)
   const [roundCount, setRoundCount] = useState<MatchRoundCount>(initialRoundCount)
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>(initialBotDifficulty)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const trimmedName = name.trim()
 
@@ -40,7 +50,7 @@ export function StartScreen({
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!trimmedName) return
-    onStart({ humanPlayerName: trimmedName, roundCount })
+    onStart({ humanPlayerName: trimmedName, roundCount, botDifficulty })
   }
 
   return (
@@ -88,6 +98,28 @@ export function StartScreen({
                   onChange={() => setRoundCount(option)}
                 />
                 {option} smazzate
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="round-count-options bot-difficulty-options">
+            <legend>Difficoltà dei bot</legend>
+            {BOT_DIFFICULTIES.map((option) => (
+              <label key={option} className="round-count-options__option bot-difficulty-options__option">
+                <input
+                  type="radio"
+                  name="bot-difficulty"
+                  value={option}
+                  checked={botDifficulty === option}
+                  aria-labelledby={`bot-difficulty-${option}-label`}
+                  aria-describedby={`bot-difficulty-${option}-description`}
+                  onChange={() => setBotDifficulty(option)}
+                />
+                <span className="bot-difficulty-options__text">
+                  <span id={`bot-difficulty-${option}-label`}>{BOT_DIFFICULTY_OPTIONS[option].label}</span>
+                  <small id={`bot-difficulty-${option}-description`} className="bot-difficulty-options__description">
+                    {BOT_DIFFICULTY_OPTIONS[option].description}
+                  </small>
+                </span>
               </label>
             ))}
           </fieldset>

@@ -46,7 +46,7 @@ const failOnCall = (onCall: number, error: Error = new BotAutomationError('Bot p
 }
 
 const seededFactory = (setup: MatchSetup) => createSetupRoundFactory(setup, createSeededRandom(25))
-const seededMatch = (): MatchState => startMatch(seededFactory({ humanPlayerName: 'Lorenzo', roundCount: 4 }))
+const seededMatch = (): MatchState => startMatch(seededFactory({ humanPlayerName: 'Lorenzo', roundCount: 4, botDifficulty: 'normal' }))
 
 /**
  * Commits exactly one pending normal bot step, whichever cadence applies to it: the longer

@@ -59,7 +59,7 @@ afterEach(() => {
 
 const restoredStorage = () => {
   const storage = createMemoryStorage()
-  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4 }, savedMatch(), storage)).toBe(true)
+  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4, botDifficulty: 'normal' }, savedMatch(), storage)).toBe(true)
   return storage
 }
 

@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePlaySounds } from '../audio/SoundContext'
 import {
   BotAutomationError,
+  DEFAULT_BOT_DIFFICULTY,
   INITIAL_BOT_CHAIN_PROGRESS,
   playNextBotChainStep,
   type BotChainProgress,
+  type BotDifficulty,
   type BotPublicActionEvent,
 } from '../game/bot'
 import { GameRuleError } from '../game/engine/errors'
@@ -59,6 +61,11 @@ type GameTableProps = Readonly<{
   createGame?: RoundFactory
   /** Length of a freshly started match; a provided `initialMatch` keeps its own. */
   roundCount?: MatchRoundCount
+  /**
+   * The match's one bot strategy profile, used for every bot seat and every step (delayed
+   * playback and «Completa subito» alike); normal when omitted.
+   */
+  botDifficulty?: BotDifficulty
   /**
    * Leaves the mounted match (the app shell returns to onboarding). The match actions
    * are offered only when the owner provides it.
@@ -217,8 +224,8 @@ const canPlayBots = (session: GameTableSession): boolean =>
   !session.automationFailed && hasPendingBot(session.match)
 
 /** Commits exactly one pending bot action and appends only that action's public events. */
-const advanceBotPlayback = (session: GameTableSession): GameTableSession => {
-  const step = playNextBotChainStep(session.match.currentRound, humanPlayerId, session.botProgress)
+const advanceBotPlayback = (session: GameTableSession, difficulty: BotDifficulty): GameTableSession => {
+  const step = playNextBotChainStep(session.match.currentRound, humanPlayerId, session.botProgress, {}, difficulty)
   if (!step) return session
   return {
     match: updateCurrentRound(session.match, step.state),
@@ -253,12 +260,13 @@ const guardBotAutomation = (
  * control returns to the human or the round completes; the existing chain-step safety
  * limits raise `BotAutomationError` for a non-progressing chain.
  */
-const completeBotPlayback = (session: GameTableSession): GameTableSession => {
+const completeBotPlayback = (session: GameTableSession, difficulty: BotDifficulty): GameTableSession => {
+  const advance = (current: GameTableSession) => advanceBotPlayback(current, difficulty)
   let current = session
-  let next = guardBotAutomation(current, advanceBotPlayback)
+  let next = guardBotAutomation(current, advance)
   while (next !== current && !next.automationFailed) {
     current = next
-    next = guardBotAutomation(current, advanceBotPlayback)
+    next = guardBotAutomation(current, advance)
   }
   // A failure keeps every step committed before it, exactly as delayed playback would.
   if (next.automationFailed) current = next
@@ -344,6 +352,7 @@ export function GameTable({
   initialState,
   createGame,
   roundCount = DEFAULT_MATCH_ROUND_COUNT,
+  botDifficulty = DEFAULT_BOT_DIFFICULTY,
   onLeaveMatch,
   playbackSpeed: controlledPlaybackSpeed,
   onPlaybackSpeedChange,
@@ -431,12 +440,12 @@ export function GameTable({
     const timer = setTimeout(() => {
       // A callback scheduled for a replaced session must never mutate the new one.
       setSession((current) => current === scheduledSession
-        ? guardBotAutomation(current, advanceBotPlayback)
+        ? guardBotAutomation(current, (next) => advanceBotPlayback(next, botDifficulty))
         : current)
     }, botPlaybackDelay(playbackSpeed, session.feedback))
     // A speed change cancels the pending step and reschedules it with the new delay.
     return () => clearTimeout(timer)
-  }, [session, playbackSpeed, confirmingLeave])
+  }, [session, playbackSpeed, confirmingLeave, botDifficulty])
 
   // Sounds follow committed presentation events exactly once: the M30 cue of a committed
   // change, or only the final state after «Completa subito». Mounting or restoring a match,
@@ -464,7 +473,7 @@ export function GameTable({
 
   const completeBotsNow = () => {
     // Replacing the session cancels any pending delayed step.
-    setSession((current) => canPlayBots(current) ? completeBotPlayback(current) : current)
+    setSession((current) => canPlayBots(current) ? completeBotPlayback(current, botDifficulty) : current)
   }
 
   /** Shows a refused action (engine or interaction-structural) with its UI-only sound. */

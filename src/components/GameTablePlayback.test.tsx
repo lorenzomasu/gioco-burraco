@@ -45,8 +45,8 @@ vi.mock('../game/bot', async (importOriginal) => {
   return {
     ...actual,
     playNextBotChainStep: vi.fn((...args: Parameters<typeof actual.playNextBotChainStep>) => {
-      const [state, humanPlayerId, progress, limits] = args
-      return actual.playNextBotChainStep(state, humanPlayerId, progress, botStepSpy.limits ?? limits)
+      const [state, humanPlayerId, progress, limits, difficulty] = args
+      return actual.playNextBotChainStep(state, humanPlayerId, progress, botStepSpy.limits ?? limits, difficulty)
     }),
   }
 })
@@ -1129,6 +1129,64 @@ describe('GameTable immediate bot completion', () => {
       expectTimelineMatches(expected.events)
     },
   )
+})
+
+/** North (player-2) must acquire; the visible nine on the discard pile completes a legal meld. */
+const usefulDiscardPileState = (): InProgressGameState => ({
+  ...pendingBotState(),
+  discardPile: [card('nine', 'spades')],
+})
+
+describe('GameTable bot difficulty', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  const difficultiesUsed = () => new Set(chainStepSpy.mock.calls.map((call) => call[4]))
+
+  it.each(['easy', 'normal'] as const)('passes the %s profile to every delayed and immediate chain step', (botDifficulty) => {
+    const state = chainState()
+    const afterHuman = discardCard(state, 'player-1', card('king', 'hearts').id)
+    const expected = playBotsUntilHumanTurnWithTrace(afterHuman, 'player-1', {}, botDifficulty)
+    render(<GameTable initialState={state} botDifficulty={botDifficulty} />)
+    discardKingOfHearts()
+    chainStepSpy.mockClear()
+
+    advanceOneStep()
+    advanceOneStep()
+    expect(chainStepSpy.mock.calls.length).toBeGreaterThan(0)
+    fireEvent.click(completeNowButton()!)
+
+    expect(difficultiesUsed()).toEqual(new Set([botDifficulty]))
+    expectTimelineMatches(expected.events)
+    expect(turnBanner()).toHaveTextContent('You')
+  })
+
+  it('uses the normal profile when a standalone table omits the difficulty', () => {
+    render(<GameTable initialState={usefulDiscardPileState()} />)
+    chainStepSpy.mockClear()
+
+    fireEvent.click(completeNowButton()!)
+
+    expect(difficultiesUsed()).toEqual(new Set(['normal']))
+    expect(timelineTypes()[0]).toBe('collect-discard-pile')
+  })
+
+  it('lets the selected profile decide which legal acquisition the bot commits', () => {
+    const { unmount } = render(<GameTable initialState={usefulDiscardPileState()} botDifficulty="normal" />)
+    advanceOneStep()
+    expect(timelineTypes()).toEqual(['collect-discard-pile'])
+    unmount()
+
+    render(<GameTable initialState={usefulDiscardPileState()} botDifficulty="easy" />)
+    advanceOneStep()
+    expect(timelineTypes()).toEqual(['draw-stock'])
+  })
 })
 
 describe('GameTable playback safety, reset and hidden information', () => {

@@ -38,7 +38,7 @@ const savedStorage = (match: MatchState = {
   roundResults: [],
 }) => {
   const storage = createMemoryStorage()
-  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4 }, match, storage)).toBe(true)
+  expect(saveMatch({ humanPlayerName: 'Ada', roundCount: 4, botDifficulty: 'normal' }, match, storage)).toBe(true)
   return storage
 }
 

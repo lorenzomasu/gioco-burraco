@@ -87,6 +87,34 @@ current smazzata, but must not infer them by diffing game states. Public events 
 never expose stock identities, unrevealed pozzetto contents, rejected candidates,
 or other hidden strategy information.
 
+### Bot difficulty profiles
+
+`src/game/bot/difficulty.ts` defines the one finite `BotDifficulty` domain
+(`BOT_DIFFICULTIES = ['easy', 'normal']`, runtime guard `isBotDifficulty`) and
+`DEFAULT_BOT_DIFFICULTY = 'normal'`. A profile changes only which legal candidate
+`strategy.ts` prefers; both profiles consume the same engine-backed candidates from
+`candidates.ts` and commit through the same engine commands, so legality, card identity,
+pozzetto, closure, wildcard and scoring behaviour are shared.
+
+- `normal` is the pre-M35 strategic bot, unchanged: acquisition evaluates the visible
+  discard pile through the candidate generator, actions rank closure, pozzetto and
+  Burraco improvement before volume, and discards weigh closure, wildcards, own-meld,
+  future-meld and opponent-meld criteria. A golden regression (digests of complete
+  all-bot rounds recorded from the pre-M35 strategy) guards it.
+- `easy` is deliberately simpler: it draws from any non-empty stock (collecting the
+  discard pile only when the stock is empty), ranks actions only by cards played,
+  fewer wildcards and points played, and ranks discards only by keeping wildcards and
+  shedding points, each followed by the existing deterministic tie-break. A legal
+  closure still happens when it results naturally.
+
+Every bot API (`playBotStep`, `playBotTurn[WithTrace]`, `playNextBotChainStep`,
+`playBotsUntilHumanTurn[WithTrace]`) takes an optional trailing `difficulty`, defaulting
+to `normal`, and passes the same value to every acquisition, action and discard of the
+turn or chain. The difficulty is match setup, not game state: it is never stored in
+`GameState` or `MatchState`, never appears in public events, and adds no wall-clock,
+browser or random input. The hidden-information boundary is identical for both profiles;
+`easy` simply consults less public information.
+
 ### Bot turn playback
 
 `playBotStep` commits exactly one bot action (one acquisition, meld, extension, or
@@ -201,13 +229,16 @@ round-start path.
 ## Application shell
 
 `App` is the application shell. It owns transient screen selection (onboarding or one
-mounted match), the onboarding name and match-length choice, the bot-speed preference, the sound preferences and
+mounted match), the onboarding name, match-length and bot-difficulty choice, the bot-speed preference, the sound preferences and
 the app-level overlays. Onboarding trims the
 human name and refuses an empty one, and offers a native radio group «Durata della
-partita» (2, 3 or 4 smazzate, 4 preselected; the last choice is retained only while the
-application stays mounted); starting a match turns it into a round factory via
-`src/shell/matchSetup.ts` and mounts `GameTable` with it and with the setup's
-`roundCount`. No game or match decision is
+partita» (2, 3 or 4 smazzate, 4 preselected) and a native radio group «Difficoltà dei
+bot» (Facile or Normale, Normale preselected; one profile for all three bot seats); the
+last choices are retained only while the application stays mounted. Starting a match
+turns it into a round factory via `src/shell/matchSetup.ts` and mounts `GameTable` with
+it, the setup's `roundCount` and its `botDifficulty`, which the table passes to every
+delayed and «Completa subito» chain step (a standalone table without it uses `normal`).
+The difficulty cannot change during a match; a new one goes through onboarding. No game or match decision is
 made by the shell: the match layer still owns the lifecycle, starter schedule,
 settlement and outcome.
 
@@ -251,17 +282,24 @@ versions, `window` or React.
 The wire format is an explicit versioned JSON envelope stored under the single key
 `MATCH_SAVE_STORAGE_KEY` (`gioco-burraco:active-match`):
 
-- `version` — `MATCH_SAVE_SCHEMA_VERSION`, currently `2` (M34);
-- `setup` — the `MatchSetup` (`humanPlayerName` and `roundCount`);
+- `version` — `MATCH_SAVE_SCHEMA_VERSION`, currently `3` (M35);
+- `setup` — the `MatchSetup` (`humanPlayerName`, `roundCount` and `botDifficulty`);
 - `match` — the authoritative committed `MatchState` (including its `roundCount`),
   stored as-is.
 
-The only other accepted version is the released legacy version 1 (pre-M34, no length
-fields), which always meant four smazzate. `normalizeMatchSave` gives its setup and match
-`roundCount: 4` and then applies the full current validation; a version-1 save that
-already carries a length field, or fails any check, is rejected. The first ordinary
-save notification after restoring (the initial `onMatchChange`) rewrites it as version 2;
-the writer never emits version 1.
+A current save requires a supported `botDifficulty`; a missing or unknown value is
+rejected, never coerced. The only other accepted versions are the released ones, both
+normalized by `normalizeMatchSave` and then subjected to the full current validation:
+
+- version 1 (pre-M34, no length or difficulty fields) always meant four smazzate against
+  the normal bots: its setup and match get `roundCount: 4` and its setup
+  `botDifficulty: 'normal'`; one that already carries a length or difficulty field is
+  rejected;
+- version 2 (M34, explicit length, no difficulty) keeps its stored length and gets
+  `botDifficulty: 'normal'`; one that already carries a difficulty is rejected.
+
+The first ordinary save notification after restoring (the initial `onMatchChange`)
+rewrites a migrated save as version 3; the writer never emits version 1 or 2.
 
 Nothing derived (cumulative totals, Match/Victory Points, Burraco classification) is
 stored. Transient machinery is never serialized: the round factory and its random
