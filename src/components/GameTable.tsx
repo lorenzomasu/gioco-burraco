@@ -35,6 +35,7 @@ import {
   type ShiftDirection,
 } from './handOrder'
 import { MeldArea } from './MeldArea'
+import { MotionLayer, type CapturedMotionSource, type MotionRect } from './MotionLayer'
 import { PlayerSeat, seatRelationLabels, type SeatPosition, type SeatRelation } from './PlayerSeat'
 import { PlayingCard } from './PlayingCard'
 import { RoundScore } from './RoundScore'
@@ -84,6 +85,26 @@ export type BotPlaybackSpeed = 'normal' | 'fast'
 export const BOT_PLAYBACK_DELAYS_MS: Readonly<Record<BotPlaybackSpeed, number>> = {
   normal: 550,
   fast: 150,
+}
+
+/**
+ * Longest decorative card flight. A bot flight is also kept inside its playback delay, so
+ * motion never stretches the cadence; playback never waits for it either way.
+ */
+export const MOTION_FLIGHT_MS = 380
+
+const motionDuration = (feedback: TableFeedback | null, speed: BotPlaybackSpeed): number =>
+  feedback?.actorId ? Math.min(MOTION_FLIGHT_MS, Math.round(BOT_PLAYBACK_DELAYS_MS[speed] * 0.8)) : MOTION_FLIGHT_MS
+
+/** Union viewport rectangle of the human's own moved cards, measured before the view updates. */
+const unionRect = (elements: readonly Element[]): MotionRect | null => {
+  if (elements.length === 0) return null
+  const rects = elements.map((element) => element.getBoundingClientRect())
+  const left = Math.min(...rects.map((rect) => rect.left))
+  const top = Math.min(...rects.map((rect) => rect.top))
+  const right = Math.max(...rects.map((rect) => rect.right))
+  const bottom = Math.max(...rects.map((rect) => rect.bottom))
+  return { left, top, width: right - left, height: bottom - top }
 }
 
 /** The default (normal) presentation delay between committed bot steps. */
@@ -384,16 +405,31 @@ export function GameTable({
     resetTransientState()
   }
 
-  const commitAction = (action: () => GameState, cue: HumanAction) => {
+  // Pre-commit geometry of the human's moved cards, for the motion layer only.
+  const motionSourceRef = useRef<CapturedMotionSource | null>(null)
+  const handSectionRef = useRef<HTMLElement>(null)
+  const captureHandSource = (cardIds: readonly string[]): MotionRect | null => {
+    const section = handSectionRef.current
+    if (!section || cardIds.length === 0) return null
+    const elements = section.querySelectorAll('[data-motion-anchor="hand"] [data-hand-card]')
+    const ids = new Set(cardIds)
+    return unionRect(handOrder.flatMap((id, index) => ids.has(id) && elements[index] ? [elements[index]] : []))
+  }
+
+  const commitAction = (action: () => GameState, cue: HumanAction, movedCardIds: readonly string[] = []) => {
     if (isBotPlaying) return
     try {
       const next = action()
       // The cue is derived only once the engine has committed the action.
+      const nextFeedback = humanActionFeedback(game, next, cue, session.feedback)
+      // Geometry is read only after a successful commit, while the old view is still shown.
+      const sourceRect = captureHandSource(movedCardIds)
+      motionSourceRef.current = sourceRect ? { feedback: nextFeedback, rect: sourceRect } : null
       setSession({
         match: updateCurrentRound(match, next),
         botEvents,
         botProgress: INITIAL_BOT_CHAIN_PROGRESS,
-        feedback: humanActionFeedback(game, next, cue, session.feedback),
+        feedback: nextFeedback,
         automationFailed: false,
       })
       resetTransientState()
@@ -437,15 +473,16 @@ export function GameTable({
           setRuleError(MULTI_CARD_DISCARD_MESSAGE)
           return
         }
-        commitAction(() => discardCard(game, humanPlayerId, payload[0]!), { type: 'discard' })
+        commitAction(() => discardCard(game, humanPlayerId, payload[0]!), { type: 'discard' }, payload)
         return
       case 'new-meld':
-        commitAction(() => playMeld(game, humanPlayerId, payload), { type: 'play-meld', teamId })
+        commitAction(() => playMeld(game, humanPlayerId, payload), { type: 'play-meld', teamId }, payload)
         return
       case 'meld':
         commitAction(
           () => extendMeld(game, humanPlayerId, target.meldIndex, payload),
           { type: 'extend-meld', teamId, meldIndex: target.meldIndex },
+          payload,
         )
     }
   }
@@ -648,6 +685,7 @@ export function GameTable({
       onExtend={(meldIndex) => commitAction(
         () => extendMeld(game, humanPlayerId, meldIndex, selectedIds),
         { type: 'extend-meld', teamId: humanPlayer.teamId, meldIndex },
+        selectedIds,
       )}
       feedback={feedback}
       directTargets={placement === 'own'
@@ -712,6 +750,7 @@ export function GameTable({
               <button
                 type="button"
                 className="pile-control"
+                data-motion-anchor="stock"
                 onClick={() => commitAction(() => drawCard(game, humanPlayerId), { type: 'draw-stock' })}
                 disabled={!canDrawStock}
                 {...cueAttributes(feedback, cuedAction === 'draw-stock' && 'draw')}
@@ -724,6 +763,7 @@ export function GameTable({
 
               <div
                 className="pozzetti-counter"
+                data-motion-anchor="pozzetti"
                 {...cueAttributes(feedback, (feedback?.pozzettoTeamIds.length ?? 0) > 0 && 'pozzetto')}
               >
                 {/* Face-down stacks derived only from the available count; no identity or owner. */}
@@ -754,6 +794,7 @@ export function GameTable({
         </div>
 
         <section
+          ref={handSectionRef}
           className="active-player"
           aria-label={`Mano di ${humanPlayer.name}`}
           {...cueAttributes(feedback, feedback?.turnChange === 'player' && isHumanTurn && 'turn')}
@@ -772,6 +813,7 @@ export function GameTable({
           <div
             ref={handDrag.handRef}
             className="hand"
+            data-motion-anchor="hand"
             aria-label={`Carte di ${humanPlayer.name}`}
             data-drop-target={isHumanTurn ? 'hand' : undefined}
             data-drop-state={drag ? dropState(insertBoundary !== null) : undefined}
@@ -835,6 +877,7 @@ export function GameTable({
               onClick={() => commitAction(
                 () => playMeld(game, humanPlayerId, selectedIds),
                 { type: 'play-meld', teamId: humanPlayer.teamId },
+                selectedIds,
               )}
             >
               Cala
@@ -843,7 +886,11 @@ export function GameTable({
               type="button"
               className="button button--secondary"
               disabled={!isActionPhase || selectedCardIds.size !== 1}
-              onClick={() => commitAction(() => discardCard(game, humanPlayerId, selectedIds[0]!), { type: 'discard' })}
+              onClick={() => commitAction(
+                () => discardCard(game, humanPlayerId, selectedIds[0]!),
+                { type: 'discard' },
+                selectedIds,
+              )}
             >
               Scarta e passa
             </button>
@@ -876,6 +923,11 @@ export function GameTable({
           )}
         </section>
       </section>
+      <MotionLayer
+        feedback={feedback}
+        durationMs={motionDuration(feedback, playbackSpeed)}
+        capturedSource={motionSourceRef}
+      />
     </main>
   )
 }

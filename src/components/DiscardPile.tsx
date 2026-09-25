@@ -62,6 +62,7 @@ export function DiscardPile({ cards, canCollect, onCollect, cue, dropState = nul
       className="discard-pile"
       role="group"
       aria-label="Monte degli scarti"
+      data-motion-anchor="discard"
       data-drop-target={dropState ? 'discard' : undefined}
       data-drop-state={dropState && dropState !== 'idle' ? dropState : undefined}
       {...cue}

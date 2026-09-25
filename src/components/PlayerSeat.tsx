@@ -30,6 +30,7 @@ export function PlayerSeat({ player, position, relation, bot = false, active = f
       aria-label={`Giocatore ${player.name}`}
       aria-current={active ? 'true' : undefined}
       data-seat={position}
+      data-motion-anchor={`seat-${player.id}`}
       {...cue}
     >
       {active && <span className="turn-badge player-seat__turn">Di turno</span>}

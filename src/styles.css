@@ -1182,6 +1182,66 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 .hand[data-feedback='collect'] { animation: cue-hand-a .9s ease-out; }
 .hand[data-feedback-cycle='b'][data-feedback='collect'] { animation-name: cue-hand-b; }
 
+/* M30: a newly reached or changed Burraco (classifyBurraco before/after) gets a stronger accent. */
+.meld[data-burraco-emphasis]::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px #f6c760, 0 0 30px 8px rgba(246, 199, 96, .55);
+  opacity: 0;
+  pointer-events: none;
+  animation: cue-ring-a 1.1s ease-out;
+}
+.meld[data-burraco-emphasis='b']::before { animation-name: cue-ring-b; }
+.burraco-badge[data-feedback='burraco'] { animation: burraco-accent-a .7s ease-out; }
+.burraco-badge[data-feedback-cycle='b'][data-feedback='burraco'] { animation-name: burraco-accent-b; }
+@keyframes burraco-accent-a { 0% { opacity: 0; scale: .6; } 55% { opacity: 1; scale: 1.18; } 100% { scale: 1; } }
+@keyframes burraco-accent-b { 0% { opacity: 0; scale: .6; } 55% { opacity: 1; scale: 1.18; } 100% { scale: 1; } }
+
+/*
+ * M30 motion layer: decorative card proxies flown with the Web Animations API from a
+ * committed action's source to its destination. The layer never receives input and holds
+ * no content beyond neutral card shapes and a public count.
+ */
+.motion-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+.motion-proxy {
+  position: fixed;
+  width: 44px;
+  height: 62px;
+  border-radius: .4rem;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .35);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.motion-proxy--back {
+  border: 3px solid #f1ead8;
+  background: linear-gradient(135deg, transparent 43%, rgba(255,255,255,.16) 43% 57%, transparent 57%), #a64039;
+  background-size: 9px 9px;
+}
+.motion-proxy--blank { border: 1px solid #d9d0bb; background: linear-gradient(145deg, #fffdf7, #efe7d4); }
+.motion-proxy--stack { box-shadow: 3px 3px 0 -1px #d9d0bb, 6px 6px 0 -2px #b9b09b, 0 8px 18px rgba(0, 0, 0, .35); }
+.motion-proxy__count {
+  position: absolute;
+  top: -.55rem;
+  right: -.55rem;
+  min-width: 1.35rem;
+  padding: .1rem .3rem;
+  border-radius: 999px;
+  color: #102019;
+  background: #f6c760;
+  font-size: .7rem;
+  font-weight: 800;
+  text-align: center;
+}
+
 @keyframes cue-ring-a { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes cue-ring-b { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes cue-pop-a { 0% { transform: scale(1); } 40% { transform: scale(1.08); } 100% { transform: scale(1); } }
@@ -1333,6 +1393,8 @@ main > .bot-timeline .bot-timeline__panel { max-height: 22rem; overflow: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Card flights are skipped in script as well; nothing may linger if one slipped through. */
+  .motion-layer { display: none; }
   *, *::before, *::after {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;

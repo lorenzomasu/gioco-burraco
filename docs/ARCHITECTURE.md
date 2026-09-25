@@ -343,6 +343,38 @@ in `GameState`, `MatchState` or the local save.
 - Every state a cue decorates stays expressed in text or static styling, and the
   reduced-motion policy collapses all animation and transition timing.
 
+### Card motion
+
+Card flights (`src/components/tableMotion.ts`, `src/components/MotionLayer.tsx`) explain a
+committed transition; they are never part of it. They are transient presentation only and
+never enter `GameState`, `MatchState` or the local save.
+
+- Provenance: a flight is planned only from the session's `TableFeedback` cue, so a human
+  flight exists only after the engine command returned a new state, and a bot flight only
+  from that committed step's public events. Rejected `GameRuleError`s and structural drop
+  refusals produce none. The cue also carries the public moved-card count and the melds
+  whose `classifyBurraco` result is new or changed between the committed before/after
+  states; presentation compares the domain helper's results and never classifies itself.
+- Geometry: endpoints are public anchors (`data-motion-anchor`: stock, discard pile,
+  pozzetti, hand, bot seat, meld by team and index). The human's own moved cards are
+  measured after the successful command but before the new view renders, and that
+  rectangle belongs only to that cue. A missing source or destination simply has no
+  flight.
+- Hidden information: proxies are neutral card shapes — face down for stock, bot hands and
+  pozzetti — with at most a public card count; no rank, suit, card ID or pozzetto content
+  reaches markup, attributes or accessible text.
+- The layer is one `aria-hidden`, `pointer-events: none`, fixed overlay with no focusable
+  content, so it never intercepts M29 drag, scroll, click or keyboard input and never
+  remounts a focus target.
+- Timing and lifecycle: flights use the Web Animations API on transform/opacity. A new
+  cue cancels the running flights (no queue); a cleared cue (fresh session, «Completa
+  subito»), the completed-round view and unmount cancel and remove them. A bot flight is
+  kept within 80% of the current playback delay and playback never waits for it.
+- Reduced motion (`prefers-reduced-motion: reduce`) skips every flight in script and hides
+  the layer in CSS; a missing or failing Web Animations API leaves the static committed
+  table. The M24 cues and the newly reached Burraco/pozzetto accents stay static-safe
+  under the existing reduced-motion policy.
+
 ### Hand order and direct manipulation
 
 The human hand's visible order is presentation state (`src/components/handOrder.ts`),

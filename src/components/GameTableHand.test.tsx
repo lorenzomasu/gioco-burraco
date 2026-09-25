@@ -683,3 +683,61 @@ describe('GameTable hand accessibility and fallbacks (M29)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
+
+describe('GameTable direct manipulation and M30 motion', () => {
+  let animated: HTMLElement[] = []
+
+  beforeEach(() => {
+    animated = []
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      writable: true,
+      value(this: HTMLElement) {
+        animated.push(this)
+        return { cancel: () => undefined, onfinish: null }
+      },
+    })
+  })
+
+  afterEach(() => {
+    delete (HTMLElement.prototype as { animate?: unknown }).animate
+  })
+
+  const flights = () => animated.map((proxy) => proxy.dataset.motionFlight)
+
+  it('flies a dropped discard from its pre-commit hand position', () => {
+    render(<GameTable initialState={withHumanTurn(unsortedHand, 'action')} />)
+    const discarded = unsortedHand[2]!
+    const index = handButtons().indexOf(handButton(discarded))
+
+    dragTo(handButton(discarded), discardGroup())
+
+    expect(flights()).toEqual(['hand-selection>discard'])
+    // The 44 px proxy is centred on the 80 px card measured before the commit.
+    expect(animated[0]!.style.left).toBe(`${index * 100 + 18}px`)
+    expect(dragProxy()).toBeNull()
+  })
+
+  it('creates no flight for structural drop rejections or an engine-rejected drop', () => {
+    render(<GameTable initialState={withHumanTurn(unsortedHand, 'action')} />)
+    const sorted = sortCardsForDisplay(unsortedHand)
+
+    dragTo(handButton(sorted[0]!), null)
+    expect(screen.getByRole('alert')).toHaveTextContent(OUTSIDE_DROP_MESSAGE)
+    fireEvent.click(handButton(sorted[0]!))
+    fireEvent.click(handButton(sorted[1]!))
+    dragTo(handButton(sorted[0]!), discardGroup())
+    expect(screen.getByRole('alert')).toHaveTextContent(MULTI_CARD_DISCARD_MESSAGE)
+    dragTo(handButton(sorted[0]!), newMeldTarget())
+    expect(screen.getByRole('alert')).toHaveTextContent('Le carte selezionate non formano una calata valida.')
+
+    expect(animated).toEqual([])
+    expect(document.querySelector('.motion-proxy')).toBeNull()
+  })
+
+  it('keeps a hand reorder presentation-only, without any flight', () => {
+    render(<GameTable initialState={withHumanTurn(unsortedHand, 'action')} />)
+    dragToBoundary(handButton(sortCardsForDisplay(unsortedHand)[0]!), 3)
+    expect(animated).toEqual([])
+  })
+})

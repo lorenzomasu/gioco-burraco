@@ -62,6 +62,9 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
     ? action.meldIndex
     : null
   const meldCue = action?.type === 'play-meld' ? 'meld-created' : 'meld-extended'
+  // Burraco emphasis follows only the before/after `classifyBurraco` comparison of the cue.
+  const isNewBurraco = (meldIndex: number) =>
+    feedback?.burracoMelds.some((ref) => ref.teamId === team.id && ref.meldIndex === meldIndex) ?? false
   const targets = directTargets?.enabled ? directTargets : null
   const newMeldState = targets && dropState(targets, targets.activeTarget?.kind === 'new-meld')
   const meldState = (meldIndex: number) => targets && dropState(
@@ -130,6 +133,8 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
                 key={`${team.id}-meld-${meldIndex}`}
                 aria-label={`Calata ${meldIndex + 1} squadra ${teamNumber}`}
                 data-burraco={classification !== 'none' ? classification : undefined}
+                data-motion-anchor={`meld-${team.id}-${meldIndex}`}
+                data-burraco-emphasis={isNewBurraco(meldIndex) ? feedback?.cycle : undefined}
                 {...cueAttributes(feedback, cuedMeldIndex === meldIndex && meldCue)}
                 data-drop-target={state ? 'meld' : undefined}
                 data-meld-index={state ? meldIndex : undefined}
@@ -143,7 +148,11 @@ export function MeldArea({ team, owner, activeTeam, canExtend, onExtend, feedbac
                   {classification !== 'none' && (
                     // Keyed by classification so a newly reached or changed Burraco replays
                     // its short first-appearance treatment.
-                    <strong key={classification} className={`burraco-badge burraco-badge--${classification}`}>
+                    <strong
+                      key={classification}
+                      className={`burraco-badge burraco-badge--${classification}`}
+                      {...cueAttributes(feedback, isNewBurraco(meldIndex) && 'burraco')}
+                    >
                       <span className="burraco-badge__icon" aria-hidden="true">{burracoIcons[classification]}</span>
                       <span className="burraco-badge__kind">Burraco</span> {burracoLabels[classification]}
                     </strong>
