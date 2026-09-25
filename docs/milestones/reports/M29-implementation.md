@@ -9,7 +9,10 @@
 
 ## Verification
 
-- `npm run verify`: passed, exit code 0 (`npm test && npm run test:e2e && git diff --check`),
+- `npm run verify` after the CI fix (real Chrome Headless Shell 1243, see «CI fix after
+  review»): passed, exit code 0. The first delivery's run below used the 1194 symlink and is
+  not equivalent to the CI browser.
+- `npm run verify` at `c83e72b`: passed, exit code 0 (`npm test && npm run test:e2e && git diff --check`),
   run once as the final gate on the complete implementation. This report was written
   afterwards (documentation only) and `git diff --check` was re-run on it.
 - Vitest: 621 tests passed across 34 files (585 before M29 + 36 new).
@@ -35,11 +38,51 @@
 
 ### Local environment note
 
-The container's pre-installed Chromium is build 1194 while `@playwright/test` 1.63 expects
-headless shell 1243. Without downloading browsers, a local symlink
-`/opt/pw-browsers/chromium_headless_shell-1243/…/chrome-headless-shell → chromium_headless_shell-1194`
-was created outside the repository. No repository file (config, lockfile) was changed for
-it; CI uses its own installed browser.
+At the first delivery (`c83e72b`) the container had only Chromium build 1194 while
+`@playwright/test` 1.63 expects Chrome Headless Shell 1243; a local symlink 1243 → 1194 was
+used. That run is **not** equivalent to the CI browser and is superseded: for the CI fix
+below, `npx playwright install` was blocked by the environment's network policy
+(`cdn.playwright.dev` → 403), so the exact expected build, Chrome for Testing
+`153.0.8010.12` (`chrome-headless-shell-linux64.zip`, revision 1243 in
+`playwright-core/browsers.json`), was installed from the official
+`storage.googleapis.com/chrome-for-testing-public` bucket into the Playwright browsers
+path. All E2E results in «CI fix» were produced with that browser. No repository file was
+changed for it. GitHub CI remains the authoritative gate.
+
+### CI fix after review (PR #23)
+
+- **Failure.** GitHub Actions run `36102780305` on `c83e72b`: Vitest (621) and build green;
+  `e2e/hand-manipulation.spec.ts › touch reorder and a direct discard work while the page
+  still scrolls` failed — first at 390 px (hand order unchanged after the touch reorder),
+  on the rerun at 375 and 390 px (`.playing-card--armed` never appeared).
+- **Reproduction.** With the real 1243 browser the test was flaky locally too (1/10 and
+  2/20 failures with parallel workers, 0/20 with one worker): load-dependent timing.
+- **Cause (verified by an event log in the failing runs).** The preceding «quick swipe»
+  assertion starts a native fling that keeps scrolling after `touchEnd` and even after the
+  test's `window.scrollTo` restore (scroll events 636 → 714 after the restore). The next
+  long-press `touchstart` then arrived during that fling; Chrome deliberately delivers a
+  touchstart that interrupts a fling as non-cancelable (`touchstart(nc)`), so the gesture
+  became a scroll and ended in `pointercancel` — either before the 250 ms arm (no
+  `--armed` class) or before release (order unchanged). The pointer-capture handover, the
+  fake clock and the React state were not involved: every failing log showed the
+  non-cancelable touchstart inside a running fling.
+- **Production verdict.** No `useHandDrag` defect: this is the browser's standard
+  fling-interruption behaviour; a real user's first touch after a fling stops the fling,
+  exactly as on any native page. `src/` is unchanged by this fix.
+- **Fix (test only).** `touchDrag` now synchronises explicitly on public state: waits until
+  the page scroll has settled (scrollY unchanged between polls) before the press; checks
+  the card is not armed before the fake clock runs `TOUCH_DRAG_DELAY_MS` and is armed after;
+  checks the drag really started (`.drag-proxy` «1 carta») on the first move past the
+  threshold and still on the last move; checks the destination is `data-drop-state="active"`
+  (the hand for the reorder, the discard pile for the discard) before `touchEnd`; then
+  checks the proxy is gone and the result. After the swipe the test also waits for the
+  fling to settle and verifies the restored scroll position. The swipe-scrolls, long-press
+  reorder, touch discard and no-overflow assertions are all kept.
+- **Targeted runs (browser 1243):** `--grep "touch reorder" --repeat-each=20`: 40/40
+  passed; `--repeat-each=25`: 50/50 passed; `--repeat-each=10 --workers=1`: 20/20
+  passed; the whole `e2e/hand-manipulation.spec.ts` with `--repeat-each=5`: 30/30 passed.
+- **`npm run verify` after the fix (browser 1243):** passed, exit code 0 — Vitest 621 tests
+  in 34 files, Playwright 30 passed, `git diff --check` clean.
 
 ### Rendered inspection
 

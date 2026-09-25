@@ -193,17 +193,52 @@ test.describe('desktop pointer', () => {
 const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd', x = 0, y = 0) =>
   cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
 
-const touchDrag = async (page: Page, cdp: CDPSession, source: Locator, target: Locator, xFraction = 0.5) => {
+/**
+ * Resolves once the page's scroll position has stopped changing. A native swipe leaves a
+ * fling running after `touchEnd`; a touch that starts during a fling only stops it (Chrome
+ * makes that `touchstart` non-cancelable), so the next gesture must wait for it to settle.
+ */
+const waitForScrollToSettle = async (page: Page) => {
+  let previous = Number.NaN
+  await expect.poll(async () => {
+    const current = await page.evaluate(() => window.scrollY)
+    const settled = current === previous
+    previous = current
+    return settled
+  }, { intervals: [100] }).toBe(true)
+}
+
+/**
+ * A long-press drag with explicit synchronisation at each stage: the press is delivered
+ * before the fake clock runs the touch delay, the card is armed, the drag has really
+ * started, and `target` is the active destination before the finger is lifted.
+ */
+const touchDrag = async (
+  page: Page,
+  cdp: CDPSession,
+  source: Locator,
+  target: Locator,
+  activeTarget: Locator,
+  xFraction = 0.5,
+) => {
+  await waitForScrollToSettle(page)
   const from = await centre(source)
   const to = await centre(target, xFraction, 0.3)
+  // `dispatchTouchEvent` resolves once the renderer has handled the (blocking) touchstart,
+  // so the pointerdown handler has scheduled the touch delay before the clock advances.
   await touch(cdp, 'touchStart', from.x, from.y)
-  // Resting on the card arms the drag; before that a moving touch scrolls.
+  await expect(source).not.toHaveClass(/playing-card--armed/)
   await page.clock.runFor(TOUCH_DRAG_DELAY_MS)
   await expect(source).toHaveClass(/playing-card--armed/)
-  for (let step = 1; step <= 8; step += 1) {
-    await touch(cdp, 'touchMove', from.x + (to.x - from.x) * step / 8, from.y + (to.y - from.y) * step / 8)
+  const steps = 8
+  for (let step = 1; step <= steps; step += 1) {
+    await touch(cdp, 'touchMove', from.x + (to.x - from.x) * step / steps, from.y + (to.y - from.y) * step / steps)
+    // The drag begins on the first move past the threshold and survives every later move.
+    if (step === 1 || step === steps) await expect(page.locator('.drag-proxy')).toHaveText('1 carta')
   }
+  await expect(activeTarget).toHaveAttribute('data-drop-state', 'active')
   await touch(cdp, 'touchEnd')
+  await expect(page.locator('.drag-proxy')).toHaveCount(0)
 }
 
 for (const width of [375, 390]) {
@@ -227,16 +262,20 @@ for (const width of [375, 390]) {
       for (let step = 1; step <= 6; step += 1) await touch(cdp, 'touchMove', hand.x, hand.y - step * 25)
       await touch(cdp, 'touchEnd')
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBefore)
+      await waitForScrollToSettle(page)
+      await expect(page.locator('.drag-proxy')).toHaveCount(0)
       expect(await handLabels(page)).toEqual(sorted)
       await page.evaluate((y) => window.scrollTo(0, y), scrollBefore)
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBefore)
 
       // Touch reorder inside the hand.
-      await touchDrag(page, cdp, humanHandCards(page).nth(0), humanHandCards(page).nth(1), 0.9)
+      const handZone = page.getByLabel(`Carte di ${PLAYER_NAME}`)
+      await touchDrag(page, cdp, humanHandCards(page).nth(0), humanHandCards(page).nth(1), handZone, 0.9)
       await expect.poll(() => handLabels(page)).toEqual([sorted[1], sorted[0], ...sorted.slice(2)])
       await expect(humanHandCards(page).nth(1)).toHaveAttribute('aria-pressed', 'false')
 
       // Direct discard by touch.
-      await touchDrag(page, cdp, handCard(page, queenOfClubs), discardPile(page), 0.3)
+      await touchDrag(page, cdp, handCard(page, queenOfClubs), discardPile(page), discardPile(page), 0.3)
       await expect(discardPileCards(page).last()).toHaveAccessibleName(cardLabel(queenOfClubs))
       await expect(humanHandCards(page)).toHaveCount(0)
       await expectNoDocumentOverflow(page)
