@@ -11,7 +11,7 @@ import {
   test,
 } from './fixtures'
 
-test('the first match is guided and a dismissed guide stays hidden while the match resumes', async ({ page }) => {
+test('the first match is guided, a dismissed guide stays hidden on resume and Settings re-enables it', async ({ page }) => {
   await startNewMatch(page)
   const coach = page.getByRole('region', { name: 'Guida contestuale' })
   await expect(coach).toBeVisible()
@@ -45,6 +45,20 @@ test('the first match is guided and a dismissed guide stays hidden while the mat
   await page.getByRole('dialog', { name: 'Impostazioni' }).getByRole('checkbox', { name: 'Guida contestuale' }).check()
   await page.getByRole('dialog', { name: 'Impostazioni' }).getByRole('button', { name: 'Chiudi' }).click()
   await expect(page.getByRole('region', { name: 'Guida contestuale' })).toBeVisible()
+  // M38: re-entry on the same active match is a preference change only.
+  await expect(page.getByRole('region', { name: 'Guida contestuale' })).toContainText('Seleziona carte per provare «Cala»')
+  expect(await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key)!), GUIDANCE_PREFERENCES_STORAGE_KEY))
+    .toEqual({ version: 1, enabled: true, completedOnce: false })
+  expect(await readActiveSave(page)).toEqual(saveBefore)
+
+  await page.reload()
+
+  await expect(roundIndicator(page)).toHaveText('Smazzata 1/4')
+  await expect(page.getByRole('region', { name: 'Guida contestuale' })).toBeVisible()
+  const saveAfterReentry = await readActiveSave(page)
+  expect(saveAfterReentry).toEqual(saveBefore)
+  expect(Object.keys(saveAfterReentry!).sort()).toEqual(['match', 'setup', 'version'])
+  expect(Object.keys(saveAfterReentry!.setup).sort()).toEqual(['botDifficulty', 'humanPlayerName', 'roundCount'])
 })
 
 test.describe('desktop 1440×900', () => {

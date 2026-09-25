@@ -1,3 +1,7 @@
+import { readFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Page } from '@playwright/test'
 import { MATCH_SAVE_STORAGE_KEY } from '../src/shell/matchPersistence'
 import {
@@ -141,3 +145,217 @@ test('removing the worker and its caches leaves the local match save untouched',
   await expect(roundIndicator(page)).toHaveText('Smazzata 1/2')
   expect(await readRawSave(page)).toBe(rawSave)
 })
+
+/**
+ * M38 update lifecycle. The shipped `dist` is served by a test-only static server on its own
+ * localhost origin (a secure context), and a second, distinct build is simulated by test-only
+ * transforms of the same artifacts: each build's `sw.js` answers which build it is over a
+ * MessageChannel, and build 2 changes the precached `index.html` (marker plus revision). The
+ * product code, its registration and the Workbox lifecycle options are unchanged. A real
+ * server is used because the browser's worker update check bypasses request routing.
+ */
+const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
+/** One port per parallel worker, next to the preview server's 4173. */
+const updateOrigin = (parallelIndex: number) => `http://127.0.0.1:${4180 + parallelIndex}`
+const BUILD_QUERY = 'm38-build'
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json',
+}
+
+const serveBuilds = async (origin: string) => {
+  const build = { current: 1 }
+  const distIndex = await readFile(path.join(DIST_DIR, 'index.html'), 'utf8')
+  const distWorker = await readFile(path.join(DIST_DIR, 'sw.js'), 'utf8')
+  const indexRevision = distWorker.match(/url:"index\.html",revision:"([^"]+)"/)?.[1]
+  expect(indexRevision).toBeDefined()
+  const server = createServer(async (request, response) => {
+    const file = new URL(request.url ?? '/', origin).pathname.slice(1) || 'index.html'
+    const n = build.current
+    let body: string | Buffer
+    if (file === 'index.html') {
+      body = distIndex.replace('<head>', `<head><meta name="${BUILD_QUERY}" content="${n}">`)
+    } else if (file === 'sw.js') {
+      const responder = `self.addEventListener("message",e=>{e.data==="${BUILD_QUERY}"&&e.ports[0].postMessage(${n})});`
+      body = responder + (n === 1 ? distWorker : distWorker.replace(indexRevision!, `${indexRevision}-build-${n}`))
+    } else {
+      try {
+        body = await readFile(path.join(DIST_DIR, path.normalize(file)))
+      } catch {
+        response.writeHead(404).end()
+        return
+      }
+    }
+    response.writeHead(200, {
+      'content-type': CONTENT_TYPES[path.extname(file)] ?? 'application/octet-stream',
+      'cache-control': 'no-cache',
+    }).end(body)
+  })
+  await new Promise<void>((resolve) => server.listen(Number(new URL(origin).port), '127.0.0.1', resolve))
+  return { build, close: () => new Promise((resolve) => server.close(resolve)) }
+}
+
+/** Which simulated build a worker of this page's registration is, or `null` when absent. */
+const workerBuild = (page: Page, which: 'controller' | 'active' | 'waiting') =>
+  page.evaluate(async ([slot, query]) => {
+    const registration = await navigator.serviceWorker.getRegistration()
+    const worker = slot === 'controller' ? navigator.serviceWorker.controller : registration?.[slot]
+    if (!worker) return null
+    return new Promise<number>((resolve) => {
+      const channel = new MessageChannel()
+      channel.port1.onmessage = (event) => resolve(event.data)
+      worker.postMessage(query, [channel.port2])
+    })
+  }, [which, BUILD_QUERY] as const)
+
+const servedBuild = (page: Page) => page.locator(`meta[name="${BUILD_QUERY}"]`).getAttribute('content')
+
+test.describe('service-worker update', () => {
+  test.use({ baseURL: async ({}, use, testInfo) => use(updateOrigin(testInfo.parallelIndex)) })
+
+  test('a newer worker waits while a match is open and controls the next client with the save intact', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const { build, close } = await serveBuilds(baseURL!)
+    try {
+      // Build 1 installs on the first visit; the match page is then a controlled client.
+      await page.goto('/')
+      await waitForActiveWorker(page)
+      await startNewMatch(page, PLAYER_NAME, 3)
+      await drawAndDiscard(page)
+      await completeNowButton(page).click()
+      await expect(drawPileButton(page)).toBeEnabled()
+      expect(await workerBuild(page, 'controller')).toBe(1)
+      const rawSave = await readRawSave(page)
+      expect(rawSave).not.toBeNull()
+
+      let navigations = 0
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) navigations += 1
+      })
+      await page.evaluate(() => {
+        (window as unknown as { m38SamePage: boolean }).m38SamePage = true
+      })
+
+      // Build 2 is deployed at the same scope and the browser's update check finds it.
+      build.current = 2
+      await page.evaluate(async () => {
+        const registration = (await navigator.serviceWorker.getRegistration())!
+        await registration.update()
+        const installing = registration.installing ?? registration.waiting
+        if (installing && installing.state !== 'installed') {
+          await new Promise<void>((resolve) => {
+            const onChange = () => {
+              if (installing.state === 'installing') return
+              installing.removeEventListener('statechange', onChange)
+              resolve()
+            }
+            installing.addEventListener('statechange', onChange)
+            onChange()
+          })
+        }
+      })
+
+      // The new worker installed and waits: no takeover, no reload, the same page and save.
+      expect(await workerBuild(page, 'waiting')).toBe(2)
+      expect(await workerBuild(page, 'active')).toBe(1)
+      expect(await workerBuild(page, 'controller')).toBe(1)
+      expect(navigations).toBe(0)
+      expect(await page.evaluate(() => (window as unknown as { m38SamePage?: boolean }).m38SamePage)).toBe(true)
+      expect(await servedBuild(page)).toBe('1')
+      await expect(roundIndicator(page)).toHaveText('Smazzata 1/3')
+      expect(await readRawSave(page)).toBe(rawSave)
+
+      // Closing the last old client is the safe activation boundary; the next client is build 2.
+      await page.close()
+      const next = await context.newPage()
+      const errors: Error[] = []
+      next.on('pageerror', (error) => errors.push(error))
+      await next.goto('/')
+      await expect.poll(() => workerBuild(next, 'active')).toBe(2)
+      expect(await workerBuild(next, 'controller')).toBe(2)
+      expect(await servedBuild(next)).toBe('2')
+
+      // The same local match resumes unchanged and keeps playing in schema v3.
+      await expect(roundIndicator(next)).toHaveText('Smazzata 1/3')
+      await expect(onboardingHeading(next)).toBeHidden()
+      expect(await readRawSave(next)).toBe(rawSave)
+      await drawAndDiscard(next)
+      await expect.poll(() => savedTurnOwner(next)).not.toBe('player-1')
+      expect(await readActiveSave(next)).toMatchObject({
+        version: 3,
+        setup: { humanPlayerName: PLAYER_NAME, roundCount: 3, botDifficulty: 'normal' },
+        match: { roundCount: 3, status: 'in-progress' },
+      })
+      expect(errors.map(String)).toEqual([])
+    } finally {
+      await close()
+    }
+  })
+})
+
+/**
+ * M38 progressive enhancement: with no service-worker support, or a registration that the
+ * browser rejects, the online app still starts, resumes and plays, and the save is untouched.
+ * Both conditions are imposed by browser/test control only.
+ */
+const SERVICE_WORKER_FAILURES = {
+  unsupported: async (page: Page) => {
+    await page.addInitScript(() => {
+      delete (Navigator.prototype as { serviceWorker?: unknown }).serviceWorker
+    })
+    return async () => expect(await page.evaluate(() => 'serviceWorker' in navigator)).toBe(false)
+  },
+  'registration rejected': async (page: Page) => {
+    await page.context().route('**/sw.js', (route) => route.fulfill({ status: 404, body: 'not deployed' }))
+    await page.addInitScript(() => {
+      const register = ServiceWorkerContainer.prototype.register
+      ServiceWorkerContainer.prototype.register = function (...args) {
+        const result = register.apply(this, args)
+        ;(window as unknown as { m38Registration: Promise<string> }).m38Registration =
+          result.then(() => 'registered', () => 'rejected')
+        return result
+      }
+    })
+    return async () => {
+      expect(await page.evaluate(() => (window as unknown as { m38Registration?: Promise<string> }).m38Registration))
+        .toBe('rejected')
+      expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0)
+    }
+  },
+}
+
+for (const [failure, impose] of Object.entries(SERVICE_WORKER_FAILURES)) {
+  test(`with service-worker setup ${failure} the online app starts, resumes and plays`, async ({ page }) => {
+    const expectFailure = await impose(page)
+    await startNewMatch(page, PLAYER_NAME, 2, 'Facile')
+    await drawAndDiscard(page)
+    await completeNowButton(page).click()
+    await expect(drawPileButton(page)).toBeEnabled()
+    const rawSave = await readRawSave(page)
+    expect(rawSave).not.toBeNull()
+
+    await page.reload()
+
+    await expect(onboardingHeading(page)).toBeHidden()
+    await expect(roundIndicator(page)).toHaveText('Smazzata 1/2')
+    await expectFailure()
+    expect(await page.evaluate(() => navigator.serviceWorker?.controller ?? null)).toBeNull()
+    expect(await readRawSave(page)).toBe(rawSave)
+
+    await drawAndDiscard(page)
+    await expect(completeNowButton(page)).toBeVisible()
+    expect(await savedTurnOwner(page)).not.toBe('player-1')
+    expect(await readActiveSave(page)).toMatchObject({
+      version: 3,
+      setup: { humanPlayerName: PLAYER_NAME, roundCount: 2, botDifficulty: 'easy' },
+      match: { roundCount: 2, status: 'in-progress' },
+    })
+  })
+}

@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { MATCH_SAVE_STORAGE_KEY } from '../src/shell/matchPersistence'
 import { cardLabel, sortCardsForDisplay } from '../src/components/cardPresentation'
 import { LEAVE_MATCH_CONFIRMATION } from '../src/components/GameTable'
 import {
@@ -180,4 +181,92 @@ test('a confirmed Nuova partita during bot playback returns to a stable onboardi
   await expect(drawPileButton(page)).toBeEnabled()
   await page.clock.runFor(NORMAL_HANDOFF_DELAY_MS * 5)
   await expect(timelineEntries(page)).toHaveCount(0)
+})
+
+/**
+ * M38: the released legacy wire formats the current migration layer accepts are restored
+ * through the real application boundary. Each legacy save is derived from a real committed
+ * match by removing exactly the fields its version never had.
+ */
+type Wire = { version: number; setup: Record<string, unknown>; match: Record<string, unknown> }
+const LEGACY_SAVES = [
+  {
+    // Released v1.1.x: no length, no difficulty; always four smazzate against the normal bots.
+    version: 1,
+    roundCount: 4 as const,
+    toLegacy: ({ setup: { roundCount: _length, botDifficulty: _difficulty, ...setup }, match: { roundCount: _matchLength, ...match } }: Wire) =>
+      ({ version: 1, setup, match }),
+  },
+  {
+    // Pre-release v1.2 (M34 on `main`): explicit length, no difficulty; always the normal bots.
+    version: 2,
+    roundCount: 3 as const,
+    toLegacy: ({ setup: { botDifficulty: _difficulty, ...setup }, match }: Wire) => ({ version: 2, setup, match }),
+  },
+]
+
+const writeRawSave = (page: Page, raw: string) =>
+  page.evaluate(([key, value]) => window.localStorage.setItem(key, value), [MATCH_SAVE_STORAGE_KEY, raw] as const)
+
+for (const { version, roundCount, toLegacy } of LEGACY_SAVES) {
+  test(`a released schema-v${version} save resumes and continues as a current schema-v3 save`, async ({ page }) => {
+    await startNewMatch(page, PLAYER_NAME, roundCount)
+    await drawAndDiscard(page)
+    await completeNowButton(page).click()
+    await expect(drawPileButton(page)).toBeEnabled()
+    const current = (await readActiveSave(page)) as unknown as Wire
+    const legacy = toLegacy(current)
+    expect(legacy.version).toBe(version)
+    const tallone = await drawPileButton(page).getAttribute('aria-label')
+    const discards = await pileLabels(page)
+
+    await writeRawSave(page, JSON.stringify(legacy))
+    await page.reload()
+
+    // The normal resume path, with the historical semantics: its length and the normal bots.
+    await expect(onboardingHeading(page)).toBeHidden()
+    await expect(page.getByRole('status')).toHaveText(new RegExp(`Partita ripresa · Smazzata 1/${roundCount}`))
+    await expect(roundIndicator(page)).toHaveText(`Smazzata 1/${roundCount}`)
+    await expect(page.getByRole('heading', { level: 1, name: PLAYER_NAME })).toBeVisible()
+    await expect(drawPileButton(page)).toHaveAttribute('aria-label', tallone!)
+    expect(await pileLabels(page)).toEqual(discards)
+
+    // One ordinary committed action rewrites the save in the current schema.
+    await drawAndDiscard(page)
+    await expect(completeNowButton(page)).toBeVisible()
+    expect(await savedTurnOwner(page)).not.toBe('player-1')
+    const rewritten = await readActiveSave(page)
+    expect(rewritten).toMatchObject({
+      version: 3,
+      setup: { humanPlayerName: PLAYER_NAME, roundCount, botDifficulty: 'normal' },
+      match: { roundCount, status: 'in-progress', currentRoundNumber: 1 },
+    })
+    expect(Object.keys(rewritten!.setup).sort()).toEqual(['botDifficulty', 'humanPlayerName', 'roundCount'])
+  })
+}
+
+test('malformed or unsupported legacy saves are discarded safely to onboarding', async ({ page }) => {
+  await startNewMatch(page)
+  const current = (await readActiveSave(page)) as unknown as Wire
+  const [v1, v2] = LEGACY_SAVES.map(({ toLegacy }) => toLegacy(current))
+  const invalid = [
+    'not json',
+    // A version-1 save cannot carry fields its version never had.
+    JSON.stringify({ ...v1, setup: { ...v1!.setup, roundCount: 4 } }),
+    // A version-2 save cannot carry a difficulty.
+    JSON.stringify({ ...v2, setup: { ...v2!.setup, botDifficulty: 'easy' } }),
+    // A legacy save still passes the full current state validation.
+    JSON.stringify({ ...v1, match: { ...v1!.match, currentRoundNumber: 5 } }),
+    // Unknown versions are never reinterpreted.
+    JSON.stringify({ ...current, version: 0 }),
+    JSON.stringify({ ...current, version: 4 }),
+  ]
+
+  for (const raw of invalid) {
+    await writeRawSave(page, raw)
+    await page.reload()
+    await expect(onboardingHeading(page)).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Tavolo di Burraco' })).toHaveCount(0)
+    expect(await readActiveSave(page)).toBeNull()
+  }
 })

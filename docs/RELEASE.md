@@ -10,10 +10,12 @@ introduced by M26 for `v1.0.0` and applies unchanged to every later production r
 | v1.0 | M25 | M26 | `v1.0.0` / `1.0.0` |
 | v1.1 | M32 | M33 | `v1.1.0` / `1.1.0` |
 | v1.1.1 | M33 (released `v1.1.0`) | M33.1 | `v1.1.1` / `1.1.1` |
-| v1.1.2 (current) | M33.1 (released `v1.1.1`) | M33.2 | `v1.1.2` / `1.1.2` |
+| v1.1.2 | M33.1 (released `v1.1.1`) | M33.2 | `v1.1.2` / `1.1.2` |
+| v1.2 (current) | M37 (on top of M34–M36, released baseline `v1.1.2`) | M38 | `v1.2.0` / `1.2.0` |
 
 In the checklist below, `<version>` is the release version without the `v` prefix (for
-v1.1.2: `1.1.2`, tag `v1.1.2`) and `<sha>` is the exact reviewed release-milestone HEAD.
+v1.2: `1.2.0`, tag `v1.2.0`) and `<sha>` is the exact reviewed release-milestone HEAD
+(for v1.2: the reviewed M38 HEAD).
 
 A patch release such as v1.1.1 or v1.1.2 follows the same exact-SHA gate: its corrective milestone
 is the release milestone and the previous release tag is its baseline.
@@ -37,8 +39,9 @@ The application is a static Vite build hosted by GitHub Pages as a project site:
    `pages: write` and `id-token: write`. It exposes the deployed page URL.
 4. `deployed-smoke` — needs `deploy`; runs `npm run smoke:deployed` in real Chromium
    against that exact URL. It fails on a missing or unreachable URL, a non-OK document,
-   an unresolved favicon, an uncaught page error, onboarding not rendering, or a match
-   that does not reach the table and `Smazzata 1/4`.
+   an unresolved favicon, an unreachable PWA manifest or icon, a service worker not
+   registered with the Pages project scope, an uncaught page error, onboarding not
+   rendering, or a match that does not reach the table and `Smazzata 1/4`.
 
 A failing job fails the workflow, and a failed `verify` makes deployment impossible.
 Running `main` workflows are not cancelled mid-deployment; a newer push waits for them.
@@ -63,9 +66,9 @@ decision.
 A production release and its version tag are closed only when every step holds for one
 and the same commit SHA:
 
-1. [ ] The previous product milestone or release baseline (for v1.1.2: the released
-   `v1.1.1`) is green on `main` and the release milestone (for v1.1.2: M33.2) has an
-   independent review with no unresolved blocker or important finding.
+1. [ ] The previous product milestone or release baseline (for v1.2: M37, integrated on
+   `main` with M34–M36) is green on `main` and the release milestone (for v1.2: M38) has
+   an independent review with no unresolved blocker or important finding.
 2. [ ] GitHub Pages is available and configured as described above.
 3. [ ] The exact reviewed release-milestone HEAD is recorded: `<sha>`; it is unchanged
    after the review.
@@ -76,30 +79,30 @@ and the same commit SHA:
 7. [ ] The `deploy` job of that same run deployed the verified artifact successfully.
 8. [ ] The `deployed-smoke` job of that same run is green against the real Pages URL.
 9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
-   v1.1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
+   v1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
 10. [ ] Only then is the annotated or lightweight tag `v<version>` created on that exact
-    commit (for v1.1.2: `v1.1.2`):
+    commit (for v1.2: `v1.2.0`):
 
     ```bash
-    git tag v1.1.2 <sha>
+    git tag v1.2.0 <sha>
     ```
 
     ```bash
-    git push origin v1.1.2
+    git push origin v1.2.0
     ```
 
 11. [ ] The tag resolves to the release SHA locally and on the remote:
 
     ```bash
-    git rev-parse 'v1.1.2^{commit}'
+    git rev-parse 'v1.2.0^{commit}'
     ```
 
     ```bash
-    git ls-remote --tags origin v1.1.2
+    git ls-remote --tags origin v1.2.0
     ```
 
 The version in `package.json` (and the root package metadata in `package-lock.json`) must
-equal the tag version without the `v` prefix; for v1.1.2 it is `1.1.2`.
+equal the tag version without the `v` prefix; for v1.2 it is `1.2.0`.
 
 A merge alone does not close a release: the post-merge `main` verification, deployment
 and deployed smoke must all be green for the release SHA before the tag is created. The
@@ -115,5 +118,5 @@ No separate rollback system exists. To restore a previous production state:
   commit; it re-verifies that commit, redeploys its verified build and re-smokes it.
   The next push to `main` deploys `main` again.
 
-Existing release tags, including `v1.0.0`, `v1.1.0` and `v1.1.1`, are immutable: they are
+Existing release tags, including `v1.0.0`, `v1.1.0`, `v1.1.1` and `v1.1.2`, are immutable: they are
 never moved, deleted or rewritten.
