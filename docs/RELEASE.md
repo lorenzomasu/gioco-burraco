@@ -1,7 +1,17 @@
 # Release
 
 This document records the production release procedure and its invariants. It was
-introduced by M26 for `v1.0.0` and applies to later production releases.
+introduced by M26 for `v1.0.0` and applies unchanged to every later production release.
+
+## Release versions
+
+| Release | Previous product milestone | Release milestone | Tag / `package.json` version |
+| --- | --- | --- | --- |
+| v1.0 | M25 | M26 | `v1.0.0` / `1.0.0` |
+| v1.1 (current) | M32 | M33 | `v1.1.0` / `1.1.0` |
+
+In the checklist below, `<version>` is the release version without the `v` prefix (for
+v1.1: `1.1.0`, tag `v1.1.0`) and `<sha>` is the exact reviewed release-milestone HEAD.
 
 ## Deployment path
 
@@ -48,40 +58,43 @@ decision.
 A production release and its version tag are closed only when every step holds for one
 and the same commit SHA:
 
-1. [ ] The previous release-critical milestone (for v1: M25) is green and the release
-   milestone (for v1: M26) has an independent review with no unresolved blocker or
+1. [ ] The previous product milestone (for v1.1: M32) is green on `main` and the release
+   milestone (for v1.1: M33) has an independent review with no unresolved blocker or
    important finding.
 2. [ ] GitHub Pages is available and configured as described above.
-3. [ ] The exact reviewed milestone HEAD is recorded: `<sha>`.
+3. [ ] The exact reviewed release-milestone HEAD is recorded: `<sha>`; it is unchanged
+   after the review.
 4. [ ] Pull-request CI is green on exactly that HEAD.
 5. [ ] Exactly that HEAD is merged into `main`, preferably by fast-forward, and `main`
    points to `<sha>`.
 6. [ ] The `main` push workflow for `<sha>` has a green `verify` job.
 7. [ ] The `deploy` job of that same run deployed the verified artifact successfully.
 8. [ ] The `deployed-smoke` job of that same run is green against the real Pages URL.
-9. [ ] The deployed URL is confirmed reachable and serves the expected release (for v1:
-   onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
-10. [ ] Only then is the annotated or lightweight tag created on that exact commit:
+9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
+   v1.1: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
+10. [ ] Only then is the annotated or lightweight tag `v<version>` created on that exact
+    commit (for v1.1: `v1.1.0`):
 
     ```bash
-    git tag v1.0.0 <sha>
+    git tag v1.1.0 <sha>
     ```
 
     ```bash
-    git push origin v1.0.0
+    git push origin v1.1.0
     ```
 
 11. [ ] The tag resolves to the release SHA locally and on the remote:
 
     ```bash
-    git rev-parse 'v1.0.0^{commit}'
+    git rev-parse 'v1.1.0^{commit}'
     ```
 
     ```bash
-    git ls-remote --tags origin v1.0.0
+    git ls-remote --tags origin v1.1.0
     ```
 
-The version in `package.json` must equal the tag version without the `v` prefix.
+The version in `package.json` (and the root package metadata in `package-lock.json`) must
+equal the tag version without the `v` prefix; for v1.1 it is `1.1.0`.
 
 A merge alone does not close a release: the post-merge `main` verification, deployment
 and deployed smoke must all be green for the release SHA before the tag is created. The
@@ -97,4 +110,5 @@ No separate rollback system exists. To restore a previous production state:
   commit; it re-verifies that commit, redeploys its verified build and re-smokes it.
   The next push to `main` deploys `main` again.
 
-Existing release tags are never moved or rewritten.
+Existing release tags, including `v1.0.0`, are immutable: they are never moved, deleted
+or rewritten.

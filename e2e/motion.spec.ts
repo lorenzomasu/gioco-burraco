@@ -1,10 +1,17 @@
 import type { Page } from '@playwright/test'
 import {
   NORMAL_BOT_DELAY_MS,
+  PLAYER_NAME,
   discardButton,
   drawPileButton,
+  completeNowButton,
   expect,
   humanHandCards,
+  leaveDialog,
+  newMatchButton,
+  onboardingHeading,
+  readActiveSave,
+  roundIndicator,
   startNewMatch,
   test,
 } from './fixtures'
@@ -106,4 +113,93 @@ test('reduced motion skips every card flight while the committed state is unchan
   await expect(drawPileButton(page)).toHaveAttribute('data-feedback', 'draw')
   expect(await flights(page)).toEqual([])
   await expect(page.locator('.motion-proxy')).toHaveCount(0)
+})
+
+/**
+ * Test-side only: holds every motion-proxy flight paused at its start, so a session can be
+ * replaced while the flight is deterministically still in progress. The held animations
+ * stay reachable so the test can later force their (stale) completion. The app is unchanged.
+ */
+const holdFlights = (page: Page) => page.addInitScript(() => {
+  const held: Animation[] = []
+  ;(window as unknown as { __heldFlights: Animation[] }).__heldFlights = held
+  const original = Element.prototype.animate
+  Element.prototype.animate = function (this: Element, keyframes, options) {
+    const animation = original.call(this, keyframes, options)
+    if (this instanceof HTMLElement && this.classList.contains('motion-proxy')) {
+      animation.pause()
+      held.push(animation)
+    }
+    return animation
+  }
+})
+
+const heldPlayStates = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __heldFlights: Animation[] }).__heldFlights.map((a) => a.playState))
+
+/** Forces every held flight to its end, firing any completion callback still attached. */
+const finishHeldFlights = (page: Page) =>
+  page.evaluate(() => {
+    for (const animation of (window as unknown as { __heldFlights: Animation[] }).__heldFlights) animation.finish()
+  })
+
+test('abandoning the match mid-flight removes the proxy and a stale completion never touches the next session', async ({ page }) => {
+  await holdFlights(page)
+  await startNewMatch(page)
+
+  await drawPileButton(page).click()
+  // The committed draw is already rendered under the still-running flight.
+  await expect(humanHandCards(page)).toHaveCount(12)
+  await expect(page.locator('.motion-layer .motion-proxy')).toHaveCount(1)
+  expect(await heldPlayStates(page)).toEqual(['paused'])
+
+  await newMatchButton(page).click()
+  await leaveDialog(page).getByRole('button', { name: 'Abbandona partita' }).click()
+
+  // Unmounting the table cancels the flight and detaches its proxy.
+  await expect(onboardingHeading(page)).toBeVisible()
+  await expect(page.locator('.motion-proxy')).toHaveCount(0)
+  expect(await heldPlayStates(page)).toEqual(['idle'])
+  expect(await readActiveSave(page)).toBeNull()
+
+  // A replacement session, then the old flight's completion fires late.
+  await page.getByLabel('Il tuo nome').fill(PLAYER_NAME)
+  await page.getByRole('button', { name: 'Inizia partita' }).click()
+  await expect(roundIndicator(page)).toHaveText('Smazzata 1/4')
+  const replacementHand = await humanHandCards(page).allTextContents()
+  await finishHeldFlights(page)
+
+  await expect(page.locator('.motion-proxy')).toHaveCount(0)
+  await expect(humanHandCards(page)).toHaveCount(11)
+  expect(await humanHandCards(page).allTextContents()).toEqual(replacementHand)
+  await expect(drawPileButton(page)).toBeEnabled()
+  await drawPileButton(page).click()
+  await expect(humanHandCards(page)).toHaveCount(12)
+})
+
+test('«Completa subito» cancels an in-flight bot flight without rolling back the committed steps', async ({ page }) => {
+  await holdFlights(page)
+  await startNewMatch(page)
+  await drawPileButton(page).click()
+  await humanHandCards(page).first().click()
+  await discardButton(page).click()
+
+  await page.clock.runFor(NORMAL_BOT_DELAY_MS)
+  await expect(page.locator('.motion-layer .motion-proxy[data-motion-flight$=">seat"]')).toHaveCount(1)
+  expect((await heldPlayStates(page)).at(-1)).toBe('paused')
+
+  await completeNowButton(page).click()
+
+  // The completed bot chain is the committed view; every earlier flight was cancelled.
+  await expect(drawPileButton(page)).toBeEnabled()
+  await expect(page.locator('.motion-proxy')).toHaveCount(0)
+  expect(new Set(await heldPlayStates(page))).toEqual(new Set(['idle']))
+  const committedHand = await humanHandCards(page).allTextContents()
+  const committedTallone = await drawPileButton(page).getAttribute('aria-label')
+
+  await finishHeldFlights(page)
+
+  await expect(page.locator('.motion-proxy')).toHaveCount(0)
+  expect(await humanHandCards(page).allTextContents()).toEqual(committedHand)
+  await expect(drawPileButton(page)).toHaveAttribute('aria-label', committedTallone!)
 })

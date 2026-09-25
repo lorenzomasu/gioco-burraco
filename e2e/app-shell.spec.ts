@@ -139,4 +139,7 @@ test('muted audio and reduced motion leave the integrated table fully playable',
   await expect(page.getByRole('region', { name: `Mano di ${PLAYER_NAME}` }).getByText('12 carte', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('gioco-burraco:audio-preferences')!)))
     .toEqual({ version: 1, muted: true, volume: 0.6 })
+  // No decorative flight was needed, and the presentation preference never enters the save.
+  await expect(page.locator('.motion-proxy')).toHaveCount(0)
+  expect(JSON.stringify(await readActiveSave(page))).not.toMatch(/muted|volume|audio/i)
 })
