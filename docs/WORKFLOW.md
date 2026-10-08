@@ -109,7 +109,7 @@ If the review has no unresolved blocker or important finding, the reviewer:
 
 1. confirms the branch HEAD is still the reviewed HEAD;
 2. opens the pull request to `main` (one PR per delivery unit; none before the review is green);
-3. checks that CI is green on exactly that HEAD;
+3. checks that CI is green on exactly that HEAD by subscribing to the PR's events, not by polling;
 4. reports to the user: reviewed SHA, CI result, ready to merge.
 
 The reviewer never merges. The user merges with one action. A review that is not green produces one focused fix brief (actionable findings only, no repeated specification) for the same implementer thread; after the fix the reviewer re-checks the previous findings and plausible regressions.
@@ -126,13 +126,13 @@ If local verification evidence is missing, that alone does not block merge when 
 
 ## Merge and completion
 
-The user merges after: every included specification is satisfied, the review is green, local verification passed or the CI fallback above applies, and PR CI passed on the HEAD being merged. Prefer a linear history that keeps the exact reviewed SHA (fast-forward) when possible.
+The user merges after: every included specification is satisfied, the review is green, local verification passed or the CI fallback above applies, and PR CI passed on the reviewed HEAD.
 
-When `reviewed HEAD = PR CI HEAD = main HEAD` the milestone is closed at once; the later push CI on `main` is a health signal, not a second merge gate. If it fails, investigate before starting further work.
+The merge is "Create a merge commit" on GitHub; a local fast-forward (`git merge --ff-only` plus push) is also allowed. A merge commit means `main` does not point to the reviewed SHA, so do not require that. A normal milestone is closed by the merge, provided PR CI was green on the reviewed HEAD. The later push CI on `main` is a health signal, not a second merge gate; if it fails, investigate before starting further work.
 
 ## Production release gate
 
-A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then does the user create the version tag on that SHA, locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
+A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then does the user create the version tag on that `main` SHA, locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
 
 ## Efficiency rules
 
@@ -143,6 +143,7 @@ Optimise delivery speed, correctness, human intervention and token cost together
 - Use targeted tests while implementing and the full gate once per delivery unit.
 - Keep reports and verification output to pass/fail, counts, SHA and actionable failures; never paste full logs into reports or prompts.
 - Read in proportion to risk; start from the directly relevant files; use direct search over spawning a subagent.
+- Start a new thread when the delivery unit changes materially or the context has become noisy; otherwise keep one warm thread.
 - Use no more than one independent review pass per delivery unit, plus re-checks after fixes.
 - Do not route between models for its own sake: use the cheaper model only for bounded work where the saving beats the coordination cost.
 - Do not ask the user for diffs, reports, test output or CI results that can be retrieved from the repository.
