@@ -109,7 +109,7 @@ If the review has no unresolved blocker or important finding, the reviewer:
 
 1. confirms the branch HEAD is still the reviewed HEAD;
 2. opens the pull request to `main` (one PR per delivery unit; none before the review is green);
-3. checks that CI is green on exactly that HEAD;
+3. checks that CI is green on exactly that HEAD by subscribing to the PR's events, not by polling;
 4. reports to the user: reviewed SHA, CI result, ready to merge.
 
 The green gate for the review and the PR is a green CI run (the canonical `npm run verify`) on exactly the reviewed HEAD, whether or not the implementer ran the full suite locally.
@@ -128,13 +128,13 @@ CI is the authoritative full gate. Missing local full-`verify` evidence does not
 
 ## Merge and completion
 
-The user merges after: every included specification is satisfied, the review is green, local verification passed or the CI fallback above applies, and PR CI passed on the HEAD being merged. Prefer a linear history that keeps the exact reviewed SHA (fast-forward) when possible.
+The user merges after: every included specification is satisfied, the review is green, local verification passed or the CI fallback above applies, and PR CI passed on the reviewed HEAD.
 
-When `reviewed HEAD = PR CI HEAD = main HEAD` the milestone is closed at once; the later push CI on `main` is a health signal, not a second merge gate. If it fails, investigate before starting further work.
+The merge is "Create a merge commit" on GitHub; a local fast-forward (`git merge --ff-only` plus push) is also allowed. A merge commit means `main` does not point to the reviewed SHA, so do not require that. A normal milestone is closed by the merge, provided PR CI was green on the reviewed HEAD. The later push CI on `main` is a health signal, not a second merge gate; if it fails, investigate before starting further work.
 
 ## Production release gate
 
-A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then is the version tag created on that SHA: automatically by the `tag` job of the same workflow run (it runs after `deployed-smoke` and creates `v<version>` from `package.json` if missing), or, as a fallback, by the user locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
+A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then is the version tag created on that `main` SHA: automatically by the `tag` job of the same workflow run (it runs after `deployed-smoke` and creates `v<version>` from `package.json` if missing), or, as a fallback, by the user locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
 
 ## Efficiency rules
 
@@ -145,6 +145,7 @@ Optimise delivery speed, correctness, human intervention and token cost together
 - Use targeted tests and `verify:fast` while implementing; the full E2E gate is CI on the exact HEAD, with a full local `verify` only where required.
 - Keep reports and verification output to pass/fail, counts, SHA and actionable failures; never paste full logs into reports or prompts.
 - Read in proportion to risk; start from the directly relevant files; use direct search over spawning a subagent.
+- Start a new thread when the delivery unit changes materially or the context has become noisy; otherwise keep one warm thread.
 - Use no more than one independent review pass per delivery unit, plus re-checks after fixes.
 - Do not route between models for its own sake: use the cheaper model only for bounded work where the saving beats the coordination cost.
 - Do not ask the user for diffs, reports, test output or CI results that can be retrieved from the repository.
