@@ -10,7 +10,8 @@ export default defineConfig({
   // A flaky browser test must fail the gate, never be retried into green.
   retries: 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'list',
+  // Compact locally (dots + full failures); CI keeps the per-test list.
+  reporter: process.env.CI ? 'list' : 'dot',
   use: {
     baseURL,
     // Diagnostics are kept only for failing tests.
