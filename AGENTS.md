@@ -2,88 +2,46 @@
 
 ## Project
 
-This repository implements a Burraco card game in TypeScript and React.
+Burraco in TypeScript and React, developed through incremental milestones. Roles, models, review and merge: `docs/WORKFLOW.md`.
 
-Development is incremental and milestone-based.
+## Sources of truth (single read order)
 
-## Sources of truth
+Read in this order, proportionally to risk:
 
-Before implementing any task, read:
-
-1. the task or milestone specification;
+1. the versioned delivery-unit specification (`docs/milestones/MXX-*.md`);
 2. `docs/WORKFLOW.md`;
-3. `docs/ROADMAP.md` when the task is a milestone or release-cycle planning work;
-4. `docs/RULES.md` when the task can affect game behaviour, rule enforcement, scoring, bots, or rule-facing UI;
-5. `docs/ARCHITECTURE.md` when present;
-6. the directly relevant implementation and tests.
+3. `docs/ROADMAP.md`, only for milestone or planning work;
+4. `docs/RULES.md`, only when the task affects rules, scoring, bots or rule-facing UI;
+5. `docs/ARCHITECTURE.md`;
+6. the directly relevant code and tests.
 
-`docs/RULES.md` is authoritative for implemented game behaviour.
+Do not load unrelated rule or implementation context for documentation-only or isolated presentation work.
 
-`docs/ROADMAP.md` is authoritative for the agreed release-cycle milestone sequence and product boundaries. A versioned milestone specification remains authoritative for the concrete implementation scope of that milestone and may refine the roadmap's higher-level details without silently changing its objective or dependencies.
+`docs/RULES.md` is authoritative for implemented behaviour. `docs/ROADMAP.md` is authoritative for release sequence and boundaries. A milestone specification is authoritative for concrete scope and may refine the roadmap without changing its objective or dependencies. Do not invent rules, behaviour or requirements. If documents, tests and implementation materially conflict, report it instead of choosing an interpretation.
 
-Do not invent Burraco rules, product behaviour, or technical requirements.
+## Git
 
-Read proportionally to task risk: do not load unrelated game-rule or implementation context for documentation-only or isolated presentation work.
-
-If documentation, tests, and implementation materially conflict, report the conflict instead of silently choosing an interpretation.
-
-Milestone preparation, implementation, independent review, fix, and merge responsibilities are defined in `docs/WORKFLOW.md`.
-
-Follow `docs/WORKFLOW.md` unless the user explicitly requests a different process.
-
-## Git workflow
-
-Work on a dedicated branch. An approved delivery batch may share one batch branch across sequential milestone specifications as defined in `docs/WORKFLOW.md`.
-
-Implementation agents never modify or merge `main` directly.
-
-ChatGPT acting as the independent reviewer / merge-gate operator may advance `main` only through the automatic green path defined in `docs/WORKFLOW.md`. A user request to review a delivery unit authorizes that documented green path when the review is green, unless the user explicitly asks to stop after review.
-
-No actor may force-push, rewrite history, or delete branches unless explicitly instructed.
+- Work only on the existing delivery branch that already contains the specification(s); do not recreate it. A batch uses one branch.
+- No agent modifies `main` directly.
+- The implementer does not review, open PRs, merge or tag. After a green review the reviewer opens the PR; the user merges and creates release tags (`docs/WORKFLOW.md`, `docs/RELEASE.md`).
+- Never force-push, rewrite history or delete branches without explicit user instruction.
 
 ## Implementation
 
-Implement only the requested scope.
+- Implement only the specification. The implementer never writes or redefines it.
+- Preserve existing behaviour unless explicitly changed. No unrelated refactors; prefer the smallest robust change.
+- Game rules belong under `src/game`, not in React components.
+- Bots and human players use the same engine legality rules.
+- Keep the engine deterministic and physical card identity intact; never expose hidden information to bots.
+- If a request materially conflicts with the specification, `docs/RULES.md`, `docs/ARCHITECTURE.md` or tests, report it before introducing an undocumented assumption.
+- When accepted work formally changes implemented behaviour, keep `docs/RULES.md` consistent.
 
-Preserve existing behaviour unless explicitly changed.
+## Tests and verification
 
-Do not perform unrelated refactors.
-
-Prefer the smallest robust change that satisfies the specification.
-
-Game rules belong under `src/game`, not in React components.
-
-Bots and human players must use the same engine legality rules.
-
-Preserve deterministic engine behaviour and physical card identity.
-
-Do not expose hidden game information to bots.
-
-## Tests
-
-New or changed game behaviour requires automated regression tests.
-
-Do not weaken or delete valid tests just to make an implementation pass.
-
-Prefer deterministic tests.
-
-## Verification
-
-Before declaring a standalone task or an approved delivery batch complete, run:
-
-npm run verify
-
-For an internal milestone checkpoint inside an approved batch, use targeted tests/checks and continue without the full gate unless risk requires it. Never claim that canonical verification passed unless it was actually executed.
+- New or changed behaviour requires deterministic regression tests. Never weaken or delete valid tests to make code pass.
+- During implementation use targeted tests. Run `npm run verify` once, when the delivery unit (standalone milestone or batch) is complete.
+- Cloud runtime mismatch: only ephemeral environment adaptation, never committed. Never claim `npm run verify` passed unless it completed successfully.
 
 ## Completion report
 
-Report concisely and do not restate the specification. For a standalone milestone report the items below; for a batch use `docs/milestones/reports/BATCH-TEMPLATE.md`.
-
-- current branch;
-- commit SHA, if applicable;
-- files changed;
-- behaviour implemented;
-- tests added or changed;
-- npm run verify result;
-- deviations from the specification;
-- remaining risks or ambiguities.
+Compact; do not restate the specification or paste logs. Use `docs/milestones/reports/TEMPLATE.md` (standalone) or `BATCH-TEMPLATE.md` (batch).

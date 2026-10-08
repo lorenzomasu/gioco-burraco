@@ -1,47 +1,32 @@
 # Delivery Batch Implementation Report
 
-## Batch
-
 - Milestones: MXX–MYY
 - Branch: `batch-mxx-myy-short-name`
-- Implementer: Codex / Claude Code / other
+- Implementer: <model>
 - Final HEAD: <sha>
 
-## Milestone checkpoints
+## Checkpoints
 
 | Milestone | Commit | Targeted checks | Deviations / risks |
 | --- | --- | --- | --- |
-| MXX | <sha> | <concise result> | None / concise note |
-| MYY | <sha> | <concise result> | None / concise note |
-
-Do not paste full test logs. Record only the checks that materially establish each checkpoint.
+| MXX | <sha> | <concise result> | None / note |
 
 ## Final verification
 
 - `npm run verify`: passed / failed
-- Tests: <count/result>
-- Build/E2E: passed / failed
-- `git diff --check`: passed / failed
-- Working tree at completion: clean / describe state
+- Tests: <counts> · Build/E2E: passed / failed · `git diff --check`: passed / failed
+- Working tree at completion: clean / describe
 
 ## Behaviour implemented
 
-Summarize the integrated batch outcome in a few bullets. Do not restate the milestone specifications.
+A few bullets on the integrated outcome; do not restate the specifications.
 
-## Deviations, risks and ambiguities
+## Deviations, risks and incidental changes
 
-Record only material deviations, assumptions, unresolved ambiguity or review-sensitive behavior.
-
-Write `None` when there are none.
-
-## Incidental changes
-
-Record only incidental changes outside the milestone specifications.
-
-Write `None` when there are none.
+Material deviations, assumptions, ambiguity and out-of-specification changes. Write `None` when there are none.
 
 ## Review focus
 
-List only the highest-value areas for independent review, especially interactions between milestones in the batch.
+Highest-value areas, especially interactions between milestones.
 
-This report is advisory review context. It does not override the milestone specifications, `docs/RULES.md`, `docs/ARCHITECTURE.md`, tests or implementation.
+Advisory context only: it does not override the specifications, `docs/RULES.md`, `docs/ARCHITECTURE.md`, tests or the implementation.

@@ -73,15 +73,15 @@ and the same commit SHA:
 3. [ ] The exact reviewed release-milestone HEAD is recorded: `<sha>`; it is unchanged
    after the review.
 4. [ ] Pull-request CI is green on exactly that HEAD.
-5. [ ] Exactly that HEAD is merged into `main`, preferably by fast-forward, and `main`
-   points to `<sha>`.
+5. [ ] Exactly that HEAD is merged into `main` by the user, preferably by fast-forward,
+   and `main` points to `<sha>`.
 6. [ ] The `main` push workflow for `<sha>` has a green `verify` job.
 7. [ ] The `deploy` job of that same run deployed the verified artifact successfully.
 8. [ ] The `deployed-smoke` job of that same run is green against the real Pages URL.
 9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
    v1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
-10. [ ] Only then is the annotated or lightweight tag `v<version>` created on that exact
-    commit (for v1.2: `v1.2.0`):
+10. [ ] Only then does the user create, locally, the annotated or lightweight tag
+    `v<version>` on that exact commit (for v1.2: `v1.2.0`):
 
     ```bash
     git tag v1.2.0 <sha>
@@ -106,7 +106,8 @@ equal the tag version without the `v` prefix; for v1.2 it is `1.2.0`.
 
 A merge alone does not close a release: the post-merge `main` verification, deployment
 and deployed smoke must all be green for the release SHA before the tag is created. The
-implementation agent never creates the tag and never merges.
+implementer and the reviewer never merge and never create the tag; the cloud
+environment cannot push tags.
 
 ## Rollback
 
