@@ -14,8 +14,8 @@ introduced by M26 for `v1.0.0` and applies unchanged to every later production r
 | v1.2 (current) | M37 (on top of M34–M36, released baseline `v1.1.2`) | M38 | `v1.2.0` / `1.2.0` |
 
 In the checklist below, `<version>` is the release version without the `v` prefix (for
-v1.2: `1.2.0`, tag `v1.2.0`) and `<sha>` is the exact reviewed release-milestone HEAD
-(for v1.2: the reviewed M38 HEAD).
+v1.2: `1.2.0`, tag `v1.2.0`) and `<sha>` is the `main` SHA after the merge of the
+reviewed release-milestone HEAD (for v1.2: the reviewed M38 HEAD).
 
 A patch release such as v1.1.1 or v1.1.2 follows the same exact-SHA gate: its corrective milestone
 is the release milestone and the previous release tag is its baseline.
@@ -70,18 +70,18 @@ and the same commit SHA:
    `main` with M34–M36) is green on `main` and the release milestone (for v1.2: M38) has
    an independent review with no unresolved blocker or important finding.
 2. [ ] GitHub Pages is available and configured as described above.
-3. [ ] The exact reviewed release-milestone HEAD is recorded: `<sha>`; it is unchanged
-   after the review.
+3. [ ] The reviewed release-milestone HEAD is recorded and unchanged after the review.
 4. [ ] Pull-request CI is green on exactly that HEAD.
-5. [ ] Exactly that HEAD is merged into `main`, preferably by fast-forward, and `main`
-   points to `<sha>`.
+5. [ ] The user merges that HEAD into `main` ("Create a merge commit", or a local
+   `git merge --ff-only` plus push). `<sha>` is the resulting `main` SHA (the reviewed
+   HEAD itself only for a fast-forward).
 6. [ ] The `main` push workflow for `<sha>` has a green `verify` job.
 7. [ ] The `deploy` job of that same run deployed the verified artifact successfully.
 8. [ ] The `deployed-smoke` job of that same run is green against the real Pages URL.
 9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
    v1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
-10. [ ] Only then is the annotated or lightweight tag `v<version>` created on that exact
-    commit (for v1.2: `v1.2.0`):
+10. [ ] Only then does the user create, locally, the annotated or lightweight tag
+    `v<version>` on that exact commit (for v1.2: `v1.2.0`):
 
     ```bash
     git tag v1.2.0 <sha>
@@ -106,7 +106,8 @@ equal the tag version without the `v` prefix; for v1.2 it is `1.2.0`.
 
 A merge alone does not close a release: the post-merge `main` verification, deployment
 and deployed smoke must all be green for the release SHA before the tag is created. The
-implementation agent never creates the tag and never merges.
+implementer and the reviewer never merge and never create the tag; the cloud
+environment cannot push tags.
 
 ## Rollback
 
