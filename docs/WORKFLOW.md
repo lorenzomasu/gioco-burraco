@@ -51,7 +51,7 @@ Use for high-risk work or work that benefits from an isolated merge gate: engine
 
 Batch sequential milestones that share an implementation surface, have a clear dependency order, and are cheaper to review together than separately. A batch is approved once the orchestrator has selected the grouping and versioned all included specifications on the shared branch; no separate user confirmation is needed unless the user asks for it. Fewer threads also means fewer repeated reads of the shared documents.
 
-A batch uses one branch from current `main`, specifications committed before implementation, one implementer thread, one commit per milestone, targeted checks at each checkpoint, one `npm run verify` after the whole batch, one compact report, one review, one PR.
+A batch uses one branch from current `main`, specifications committed before implementation, one implementer thread, one commit per milestone, targeted checks at each checkpoint, `verify:fast` plus targeted E2E after the whole batch (full `npm run verify` where required), one compact report, one review, one PR.
 
 Do not run the full verification or push at internal checkpoints unless a concrete risk justifies it. Split a batch if implementation crosses into engine semantics, persistence format, CI/deployment or release mechanics, or the cumulative diff is too large to review confidently. Default grouping for a release cycle lives in `docs/ROADMAP.md`; the orchestrator may change it when risk or coupling justifies.
 

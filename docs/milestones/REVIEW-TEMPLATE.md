@@ -25,4 +25,4 @@ Findings, grouped as blocker, important, optional. For each:
 - Required correction:
 - Regression test (if apt):
 
-Also record: unrelated or future-scope changes (None / list), verification evidence (implementer `npm run verify` result and CI result on the reviewed HEAD), and for a green review the PR link and CI status on that HEAD.
+Also record: unrelated or future-scope changes (None / list), verification evidence (implementer verification (`verify:fast` + targeted E2E, or full `verify` where required) and CI result on the reviewed HEAD), and for a green review the PR link and CI status on that HEAD.

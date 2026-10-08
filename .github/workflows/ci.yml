@@ -117,10 +117,17 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           tag="v${version}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            remote_sha="$(git ls-remote origin "refs/tags/${tag}^{}" "refs/tags/${tag}" | tail -n1 | cut -f1)"
-            echo "Tag ${tag} already exists (${remote_sha}); nothing to do."
+          # --exit-code: 0 = tag found, 2 = no matching ref, anything else = a real error.
+          set +e
+          refs="$(git ls-remote --exit-code --tags origin "refs/tags/${tag}" "refs/tags/${tag}^{}")"
+          status=$?
+          set -e
+          if [ "${status}" -eq 0 ]; then
+            echo "Tag ${tag} already exists ($(echo "${refs}" | tail -n1 | cut -f1)); nothing to do."
             exit 0
+          elif [ "${status}" -ne 2 ]; then
+            echo "::error::git ls-remote failed with exit code ${status}; cannot tell whether ${tag} exists."
+            exit "${status}"
           fi
           git tag "${tag}" "${GITHUB_SHA}"
           git push origin "refs/tags/${tag}"

@@ -89,7 +89,8 @@ on that `main` SHA):
 9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
    v1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
 10. [ ] Only then is the tag `v<version>` created on that exact commit (for v1.2:
-    `v1.2.0`): automatically by the `tag` job of the green run (check that it ran), or,
+    `v1.2.0`): automatically by the `tag` job of the green run (check that it ran; step 9 is then covered by
+    its `deployed-smoke` dependency), or,
     as a fallback if it did not run or failed, by the user locally (lightweight, same
     convention as earlier releases):
 
