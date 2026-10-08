@@ -55,10 +55,17 @@ npm run build
 ```
 
 Run the canonical verification gate (Vitest, production build, Playwright Chromium
-end-to-end suite, `git diff --check`):
+end-to-end suite, `git diff --check`); CI runs this on every pull request and `main` push:
 
 ```bash
 npm run verify
+```
+
+`npm run verify:fast` runs the same minus the Playwright suite. Outside CI both print compact
+output (summary and full failures).
+
+```bash
+npm run verify:fast
 ```
 
 Smoke-test a deployed copy of the site in Chromium:

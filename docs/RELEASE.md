@@ -43,6 +43,12 @@ The application is a static Vite build hosted by GitHub Pages as a project site:
    registered with the Pages project scope, an uncaught page error, onboarding not
    rendering, or a match that does not reach the table and `Smazzata 1/4`.
 
+5. `tag` — needs `deployed-smoke`; runs on push to `main` only, with `contents: write`
+   limited to this job. It reads `version` from `package.json` and, if `v<version>` does
+   not exist on the remote, creates a lightweight tag on the workflow's commit
+   (`GITHUB_SHA`) and pushes it. If the tag exists it logs and exits successfully,
+   never moving or recreating it.
+
 A failing job fails the workflow, and a failed `verify` makes deployment impossible.
 Running `main` workflows are not cancelled mid-deployment; a newer push waits for them.
 
@@ -80,8 +86,10 @@ and the same commit SHA:
 8. [ ] The `deployed-smoke` job of that same run is green against the real Pages URL.
 9. [ ] The deployed URL is confirmed reachable and serves the expected release (for
    v1.2: onboarding of the Burraco game at `https://lorenzomasu.github.io/gioco-burraco/`).
-10. [ ] Only then does the user create, locally, the annotated or lightweight tag
-    `v<version>` on that exact commit (for v1.2: `v1.2.0`):
+10. [ ] Only then is the tag `v<version>` created on that exact commit (for v1.2:
+    `v1.2.0`): automatically by the `tag` job of the green run (check that it ran), or,
+    as a fallback if it did not run or failed, by the user locally (lightweight, same
+    convention as earlier releases):
 
     ```bash
     git tag v1.2.0 <sha>
@@ -91,7 +99,7 @@ and the same commit SHA:
     git push origin v1.2.0
     ```
 
-11. [ ] The tag resolves to the release SHA locally and on the remote:
+11. [ ] The tag (automatic or manual) resolves to the release SHA locally and on the remote:
 
     ```bash
     git rev-parse 'v1.2.0^{commit}'
@@ -106,8 +114,8 @@ equal the tag version without the `v` prefix; for v1.2 it is `1.2.0`.
 
 A merge alone does not close a release: the post-merge `main` verification, deployment
 and deployed smoke must all be green for the release SHA before the tag is created. The
-implementer and the reviewer never merge and never create the tag; the cloud
-environment cannot push tags.
+implementer and the reviewer never merge and never create the tag by hand; the cloud
+environment cannot push tags, only the CI `tag` job or the user can.
 
 ## Rollback
 

@@ -99,3 +99,29 @@ jobs:
         env:
           DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
         run: npm run smoke:deployed
+
+  # Creates the release tag for the version in package.json on this exact commit, only after the
+  # verified build was deployed and smoked. Idempotent: an existing tag is left untouched.
+  tag:
+    needs: deployed-smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create version tag if missing
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            remote_sha="$(git ls-remote origin "refs/tags/${tag}^{}" "refs/tags/${tag}" | tail -n1 | cut -f1)"
+            echo "Tag ${tag} already exists (${remote_sha}); nothing to do."
+            exit 0
+          fi
+          git tag "${tag}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${tag}"
+          echo "Created lightweight tag ${tag} on ${GITHUB_SHA}."

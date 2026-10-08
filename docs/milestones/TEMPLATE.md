@@ -40,6 +40,6 @@ Happy paths, rejected behaviour, boundaries, regression of affected behaviour. F
 
 ## Verification and completion
 
-Standalone: `npm run verify` before completion. Batch checkpoint: targeted checks only; `npm run verify` at batch completion (`docs/WORKFLOW.md`).
+Standalone: `npm run verify:fast` plus targeted E2E before completion; full `npm run verify` instead when the unit touches CI, build or verify scripts, PWA or persistence. Batch checkpoint: targeted checks only; the same gate at batch completion (`docs/WORKFLOW.md`). CI on the exact HEAD is the full E2E gate.
 
 Complete when: all acceptance criteria hold, required tests exist and pass, canonical verification passes at the delivery gate, documentation matches behaviour, no unrelated or future-scope work, and remaining risks are reported.

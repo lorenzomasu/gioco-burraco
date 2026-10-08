@@ -54,6 +54,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/tests/setup.ts'],
+    // Compact locally (summary + full failures); CI keeps the default reporter.
+    reporters: process.env.CI ? ['default'] : ['dot'],
     // Browser E2E specs run only through Playwright against the production build.
     exclude: [...configDefaults.exclude, 'e2e/**'],
   },

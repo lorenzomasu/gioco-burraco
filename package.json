@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "test:e2e": "npm run build && playwright test",
+    "verify:fast": "npm test && npm run build && git diff --check",
     "verify": "npm test && npm run test:e2e && git diff --check",
     "smoke:deployed": "node scripts/deployed-smoke.mjs"
   },

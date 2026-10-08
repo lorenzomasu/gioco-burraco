@@ -13,8 +13,9 @@
 
 ## Final verification
 
-- `npm run verify`: passed / failed
-- Tests: <counts> · Build/E2E: passed / failed · `git diff --check`: passed / failed
+- `npm run verify:fast`: passed / failed · targeted E2E: <specs> passed / failed / n/a
+- `npm run verify` (full; required only per `docs/WORKFLOW.md`): passed / failed / not run (CI is the gate)
+- Tests: <counts> · Build: passed / failed · E2E: <counts or n/a> · `git diff --check`: passed / failed
 - Working tree at completion: clean / describe
 
 ## Behaviour implemented

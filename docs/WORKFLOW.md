@@ -36,7 +36,7 @@ Rules:
 
 - Works on the existing delivery branch containing the versioned specification(s); does not recreate it.
 - Implements sequentially, with no future-scope work, using targeted tests.
-- Runs `npm run verify` once at delivery-unit completion, writes the report, commits and pushes only the delivery branch.
+- Verifies once at delivery-unit completion as described under Implementation (`verify:fast` plus targeted E2E; full `npm run verify` only when required), writes the report, commits and pushes only the delivery branch.
 - Never writes or redefines the specification; never reviews, opens PRs, merges or tags.
 - Review-driven fixes stay in the same thread while its context remains useful.
 - May use a subagent only for bounded, independent analysis, test investigation or audit work, never to split the implementation.
@@ -74,7 +74,7 @@ A brief is a few lines: repository, existing delivery branch, specification path
 1. Read the sources in the order in `AGENTS.md`, then the directly relevant code and tests.
 2. Implement only the specification; add the required deterministic regression tests; use targeted checks while iterating.
 3. Review your own complete diff.
-4. Run `npm run verify` (Vitest, production build, Playwright Chromium E2E, `git diff --check`; the browser runtime is installed once per machine with `npx playwright install chromium`). Report the result as a pass/fail summary with counts, not as logs.
+4. Run `npm run verify:fast` (Vitest, production build, `git diff --check`; no Playwright) plus the targeted E2E specs of the touched areas (`npx playwright test e2e/<spec>`; the browser runtime is installed once per machine with `npx playwright install chromium`). The full local `npm run verify` (adds the whole E2E suite) is mandatory only when the delivery unit touches CI, build or verify scripts, the PWA, persistence/saves, or the implementer judges it necessary. The full E2E suite is otherwise gated by CI on the exact HEAD (see Pull requests and CI). Outside CI both scripts print compact output (summary, failures in full). Report the result as a pass/fail summary with counts, not as logs, stating which of `verify:fast`, targeted E2E and full `verify` ran.
 5. Fix failures caused by the change and rerun what is needed. A known failing verification is blocking.
 6. Write the report (`docs/milestones/reports/TEMPLATE.md` or `BATCH-TEMPLATE.md`), commit, push the delivery branch only.
 
@@ -84,7 +84,7 @@ The report is advisory context. It does not redefine scope or make a deviation a
 
 ## Thread closure
 
-After implementation, targeted tests, `npm run verify`, report, commit and push, the implementer's work is complete and the thread is closed; it is not left waiting for a PR, merge or tag. A thread reopens only for review-driven fixes of the same delivery unit, and closes again once they are pushed.
+After implementation, verification (`verify:fast` plus targeted E2E, or full `verify` where required), report, commit and push, the implementer's work is complete and the thread is closed; it is not left waiting for a PR, merge or tag. A thread reopens only for review-driven fixes of the same delivery unit, and closes again once they are pushed.
 
 ## Independent review
 
@@ -112,17 +112,19 @@ If the review has no unresolved blocker or important finding, the reviewer:
 3. checks that CI is green on exactly that HEAD;
 4. reports to the user: reviewed SHA, CI result, ready to merge.
 
+The green gate for the review and the PR is a green CI run (the canonical `npm run verify`) on exactly the reviewed HEAD, whether or not the implementer ran the full suite locally.
+
 The reviewer never merges. The user merges with one action. A review that is not green produces one focused fix brief (actionable findings only, no repeated specification) for the same implementer thread; after the fix the reviewer re-checks the previous findings and plausible regressions.
 
 ## Fix loop
 
-The implementer changes only what the findings require, reruns targeted tests and `npm run verify`, updates the report if evidence or risks changed, and pushes the same branch.
+The implementer changes only what the findings require, reruns targeted tests and `verify:fast` (full `verify` where required), updates the report if evidence or risks changed, and pushes the same branch. A failing E2E in CI is a review-fix: it is fixed in the same thread, reproduced with the targeted spec before pushing.
 
 ## Pull requests and CI
 
 CI runs the canonical `npm run verify` on pull requests to `main` and on pushes to `main`, after installing Playwright Chromium. CI complements local verification and does not replace review. Obsolete in-progress runs for the same branch or PR are cancelled.
 
-If local verification evidence is missing, that alone does not block merge when all of these hold: the review is green; the reviewed HEAD equals the HEAD verified by CI; CI ran the canonical `npm run verify` successfully; nothing was pushed after that run; no local failure is known. It never overrides a known local failure.
+CI is the authoritative full gate. Missing local full-`verify` evidence does not block merge when all of these hold: the review is green; the reviewed HEAD equals the HEAD verified by CI; CI ran the canonical `npm run verify` successfully; nothing was pushed after that run; no local failure is known. It never overrides a known local failure, and units that require a full local `verify` (above) still need it.
 
 ## Merge and completion
 
@@ -132,7 +134,7 @@ When `reviewed HEAD = PR CI HEAD = main HEAD` the milestone is closed at once; t
 
 ## Production release gate
 
-A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then does the user create the version tag on that SHA, locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
+A production release and its tag additionally require the post-merge `main` workflow for the exact release SHA to be green: canonical verify, Pages deployment of that run's verified `dist`, and the deployed Chromium smoke. Only then is the version tag created on that SHA: automatically by the `tag` job of the same workflow run (it runs after `deployed-smoke` and creates `v<version>` from `package.json` if missing), or, as a fallback, by the user locally (the cloud environment cannot push tags). The implementer and the reviewer never merge or tag. Checklist: `docs/RELEASE.md`.
 
 ## Efficiency rules
 
@@ -140,7 +142,7 @@ Optimise delivery speed, correctness, human intervention and token cost together
 
 - Specifications live in `docs/milestones/`; briefs stay a few lines.
 - Prefer a batch of small, coherent milestones in one thread over many threads.
-- Use targeted tests while implementing and the full gate once per delivery unit.
+- Use targeted tests and `verify:fast` while implementing; the full E2E gate is CI on the exact HEAD, with a full local `verify` only where required.
 - Keep reports and verification output to pass/fail, counts, SHA and actionable failures; never paste full logs into reports or prompts.
 - Read in proportion to risk; start from the directly relevant files; use direct search over spawning a subagent.
 - Use no more than one independent review pass per delivery unit, plus re-checks after fixes.

@@ -39,8 +39,8 @@ Do not load unrelated rule or implementation context for documentation-only or i
 ## Tests and verification
 
 - New or changed behaviour requires deterministic regression tests. Never weaken or delete valid tests to make code pass.
-- During implementation use targeted tests. Run `npm run verify` once, when the delivery unit (standalone milestone or batch) is complete.
-- Cloud runtime mismatch: only ephemeral environment adaptation, never committed. Never claim `npm run verify` passed unless it completed successfully.
+- During implementation use targeted tests. At delivery-unit completion (standalone milestone or batch) run `npm run verify:fast` plus the targeted E2E of the touched areas. Run the full `npm run verify` instead when the unit touches CI, build or verify scripts, PWA, persistence/saves, or you judge it necessary. CI on the exact HEAD is the full E2E gate (`docs/WORKFLOW.md`).
+- Cloud runtime mismatch: only ephemeral environment adaptation, never committed. Never claim `npm run verify` (or `verify:fast`) passed unless it completed successfully.
 
 ## Completion report
 
